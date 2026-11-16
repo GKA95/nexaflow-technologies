@@ -97,6 +97,10 @@ const PaymentSchema = new Schema(
     courseId: { type: Schema.Types.ObjectId, ref: 'Course', required: true, index: true },
     reference: { type: String, required: true, unique: true, index: true },
     amount: { type: Number, required: true, min: 0 },
+    originalAmount: { type: Number, min: 0 },
+    discountAmount: { type: Number, default: 0, min: 0 },
+    discountPercent: { type: Number, default: 0, min: 0, max: 100 },
+    couponCode: { type: String, default: '', uppercase: true, trim: true },
     currency: { type: String, default: 'GHS', uppercase: true },
     status: {
       type: String,
@@ -541,7 +545,24 @@ export const WorkShowcase =
   mongoose.models.WorkShowcase || mongoose.model('WorkShowcase', WorkShowcaseSchema);
 export const Testimonial =
   mongoose.models.Testimonial || mongoose.model('Testimonial', TestimonialSchema);
+const CouponSchema = new Schema(
+  {
+    code: { type: String, required: true, unique: true, uppercase: true, trim: true, index: true },
+    description: { type: String, default: '', trim: true, maxlength: 240 },
+    discountPercent: { type: Number, required: true, min: 1, max: 100 },
+    courseId: { type: Schema.Types.ObjectId, ref: 'Course', default: null, index: true },
+    maxUses: { type: Number, default: 0, min: 0 },
+    usedCount: { type: Number, default: 0, min: 0 },
+    expiresAt: { type: Date, default: null },
+    active: { type: Boolean, default: true, index: true },
+  },
+  { timestamps: true }
+);
+CouponSchema.index({ active: 1, expiresAt: 1 });
+
 export const CourseReview =
   mongoose.models.CourseReview || mongoose.model('CourseReview', CourseReviewSchema);
 export const OAuthPollResult =
   mongoose.models.OAuthPollResult || mongoose.model('OAuthPollResult', OAuthPollResultSchema);
+export const Coupon = mongoose.models.Coupon || mongoose.model('Coupon', CouponSchema);
+

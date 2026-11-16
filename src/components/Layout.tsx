@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Download,
   Menu,
@@ -36,10 +36,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { label: 'About', href: '/about' },
   ];
 
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [currentPath]);
+
+  // Prevent background scrolling & close on Escape while mobile drawer is open
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [mobileOpen]);
+
   const handleNav = (href: string) => {
     setMobileOpen(false);
     navigate(href);
   };
+
+  const isRouteActive = (href: string) =>
+    currentPath === href || currentPath.startsWith(`${href}/`);
 
   const isAdminUser = user?.role === 'admin' || user?.role === 'super_admin';
   const showLearnerPortal = Boolean(user && !isAdminUser);
@@ -48,12 +71,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex flex-col bg-[#F6F8FC] text-[#070B24] dark:bg-[#03051B] dark:text-[#F7F8FF]">
       {/* Primary Top Bar grounded in #03051B so the approved NexaFlow logo artwork blends seamlessly */}
       <header className="sticky top-0 z-40 bg-[#03051B]/95 backdrop-blur-md border-b border-[#1A2550] text-[#F7F8FF]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 lg:gap-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 sm:gap-4 lg:gap-8">
           {/* Zone 1: Exact Supplied NexaFlow Brand Mark (horizontal on desktop/tablet, compact N mark on small mobile) */}
           <button
             type="button"
             onClick={() => handleNav('/')}
-            className="flex items-center gap-2.5 shrink-0 focus-visible:outline-2 focus-visible:outline-[#00D4FF] rounded-md"
+            className="flex items-center gap-2.5 shrink-0 min-h-[44px] focus-visible:outline-2 focus-visible:outline-[#00D4FF] rounded-md"
             aria-label="NexaFlow Technologies Home"
           >
             <img
@@ -79,14 +102,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             className="hidden lg:flex items-center gap-5 xl:gap-7 text-sm font-medium text-[#AEB8D4]"
           >
             {navItems.map((item) => {
-              const active =
-                currentPath === item.href || currentPath.startsWith(`${item.href}/`);
+              const active = isRouteActive(item.href);
               return (
                 <button
                   key={item.href}
                   type="button"
                   onClick={() => handleNav(item.href)}
-                  className={`whitespace-nowrap shrink-0 py-1 transition-colors border-b-2 ${
+                  aria-current={active ? 'page' : undefined}
+                  className={`whitespace-nowrap shrink-0 py-1.5 transition-colors border-b-2 ${
                     active
                       ? 'text-[#F7F8FF] border-[#00D4FF]'
                       : 'border-transparent hover:text-[#F7F8FF]'
@@ -99,12 +122,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
 
           {/* Zone 3: Theme, Learner Account, Primary Consultation CTA & Optional PWA Install */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             {!isInstalled && isInstallable && (
               <button
                 type="button"
                 onClick={install}
-                className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 py-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] hover:border-[#00D4FF]/50 transition-colors whitespace-nowrap shrink-0"
+                className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 min-h-[40px] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] hover:border-[#00D4FF]/50 transition-colors whitespace-nowrap shrink-0"
               >
                 <Download className="w-3.5 h-3.5" />
                 Install App
@@ -114,7 +137,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setShowIOSModal(true)}
-                className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 py-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] transition-colors whitespace-nowrap shrink-0"
+                className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 min-h-[40px] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] transition-colors whitespace-nowrap shrink-0"
               >
                 <Download className="w-3.5 h-3.5" />
                 Install App
@@ -125,7 +148,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={toggleTheme}
               aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-              className="p-2 rounded-lg border border-[#1A2550] text-[#AEB8D4] hover:text-[#F7F8FF] hover:border-[#176BFF] transition-colors"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-[#1A2550] text-[#AEB8D4] hover:text-[#F7F8FF] hover:border-[#176BFF] transition-colors"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
@@ -134,7 +157,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => handleNav('/learner')}
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-[#00D4FF]/40 bg-[#080D2B] px-3.5 py-2 text-xs font-semibold text-[#F7F8FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-[#00D4FF]/40 bg-[#080D2B] px-3.5 min-h-[40px] text-xs font-semibold text-[#F7F8FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
               >
                 <User className="w-3.5 h-3.5 text-[#00D4FF]" />
                 My Portal
@@ -144,7 +167,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => handleNav('/auth/login')}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 py-2 text-xs font-medium text-[#F7F8FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 min-h-[40px] text-xs font-medium text-[#F7F8FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
                 >
                   <User className="w-3.5 h-3.5 text-[#00D4FF]" />
                   Sign In
@@ -152,7 +175,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => handleNav('/auth/register')}
-                  className="inline-flex items-center rounded-lg border border-[#00D4FF]/40 px-3 py-2 text-xs font-semibold text-[#00D4FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
+                  className="inline-flex items-center rounded-lg border border-[#00D4FF]/40 px-3 min-h-[40px] text-xs font-semibold text-[#00D4FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
                 >
                   Register
                 </button>
@@ -162,7 +185,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => handleNav('/contact?type=consultation')}
-              className="hidden md:inline-flex items-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0"
+              className="hidden md:inline-flex items-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 min-h-[40px] text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0"
             >
               Request Consultation
             </button>
@@ -170,41 +193,103 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setMobileOpen((o) => !o)}
-              aria-label="Toggle Menu"
-              className="lg:hidden p-2 rounded-lg border border-[#1A2550] text-[#F7F8FF]"
+              aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={mobileOpen}
+              aria-controls="public-mobile-drawer"
+              className="lg:hidden min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-[#1A2550] text-[#F7F8FF] hover:border-[#00D4FF]/60 transition-colors"
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
 
+        {/* Mobile Drawer Backdrop */}
+        {mobileOpen && (
+          <div
+            aria-hidden="true"
+            onClick={() => setMobileOpen(false)}
+            className="lg:hidden fixed inset-x-0 top-16 bottom-0 z-30 bg-black/60 backdrop-blur-[2px]"
+          />
+        )}
+
         {/* Mobile Drawer */}
         {mobileOpen && (
-          <div className="lg:hidden border-t border-[#1A2550] bg-[#080D2B] px-4 py-4 space-y-2">
-            {navItems.map((item) => (
-              <button
-                key={item.href}
-                type="button"
-                onClick={() => handleNav(item.href)}
-                className="block w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-[#F7F8FF] hover:bg-[#10183A]"
-              >
-                {item.label}
-              </button>
-            ))}
+          <nav
+            id="public-mobile-drawer"
+            aria-label="Mobile Navigation"
+            className="lg:hidden relative z-40 border-t border-[#1A2550] bg-[#080D2B] px-4 py-4 space-y-1.5 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain shadow-2xl"
+          >
+            {navItems.map((item) => {
+              const active = isRouteActive(item.href);
+              return (
+                <button
+                  key={item.href}
+                  type="button"
+                  onClick={() => handleNav(item.href)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex items-center justify-between w-full text-left px-3.5 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-[#176BFF]/15 text-[#00D4FF] border border-[#00D4FF]/30 font-semibold'
+                      : 'text-[#F7F8FF] hover:bg-[#10183A]'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  {active && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#00D4FF]" aria-hidden="true" />
+                  )}
+                </button>
+              );
+            })}
             <button
               type="button"
               onClick={() => handleNav('/contact')}
-              className="block w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-[#F7F8FF] hover:bg-[#10183A]"
+              aria-current={isRouteActive('/contact') ? 'page' : undefined}
+              className={`flex items-center justify-between w-full text-left px-3.5 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
+                isRouteActive('/contact')
+                  ? 'bg-[#176BFF]/15 text-[#00D4FF] border border-[#00D4FF]/30 font-semibold'
+                  : 'text-[#F7F8FF] hover:bg-[#10183A]'
+              }`}
             >
-              Contact
+              <span>Contact</span>
+              {isRouteActive('/contact') && (
+                <span className="h-1.5 w-1.5 rounded-full bg-[#00D4FF]" aria-hidden="true" />
+              )}
             </button>
-            <div className="pt-2 border-t border-[#1A2550] flex flex-col gap-2">
+
+            {!isInstalled && isInstallable && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(false);
+                  void install();
+                }}
+                className="flex items-center gap-2 w-full text-left px-3.5 min-h-[44px] rounded-lg text-sm font-medium text-[#AEB8D4] hover:text-[#F7F8FF] hover:bg-[#10183A]"
+              >
+                <Download className="w-4 h-4 text-[#00D4FF]" />
+                Install NexaFlow App
+              </button>
+            )}
+            {!isInstalled && !isInstallable && isIOS && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(false);
+                  setShowIOSModal(true);
+                }}
+                className="flex items-center gap-2 w-full text-left px-3.5 min-h-[44px] rounded-lg text-sm font-medium text-[#AEB8D4] hover:text-[#F7F8FF] hover:bg-[#10183A]"
+              >
+                <Download className="w-4 h-4 text-[#00D4FF]" />
+                Install App on iOS
+              </button>
+            )}
+
+            <div className="pt-3 mt-2 border-t border-[#1A2550] flex flex-col gap-2.5">
               {showLearnerPortal ? (
                 <>
                   <button
                     type="button"
                     onClick={() => handleNav('/learner')}
-                    className="w-full rounded-lg border border-[#00D4FF]/40 px-4 py-2.5 text-sm font-semibold text-[#F7F8FF] text-center"
+                    className="w-full min-h-[44px] rounded-lg border border-[#00D4FF]/40 px-4 py-2.5 text-sm font-semibold text-[#F7F8FF] text-center"
                   >
                     My Portal
                   </button>
@@ -214,24 +299,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       setMobileOpen(false);
                       void logout();
                     }}
-                    className="w-full rounded-lg border border-[#1A2550] px-4 py-2 text-xs font-medium text-[#AEB8D4] text-center"
+                    className="w-full min-h-[44px] rounded-lg border border-[#1A2550] px-4 py-2 text-xs font-medium text-[#AEB8D4] text-center"
                   >
                     Sign Out
                   </button>
                 </>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => handleNav('/auth/login')}
-                    className="w-full rounded-lg border border-[#1A2550] px-3 py-2.5 text-sm font-medium text-[#F7F8FF] text-center"
+                    className="w-full min-h-[44px] rounded-lg border border-[#1A2550] px-3 py-2.5 text-sm font-medium text-[#F7F8FF] text-center"
                   >
                     Sign In
                   </button>
                   <button
                     type="button"
                     onClick={() => handleNav('/auth/register')}
-                    className="w-full rounded-lg border border-[#00D4FF]/40 px-3 py-2.5 text-sm font-semibold text-[#00D4FF] text-center"
+                    className="w-full min-h-[44px] rounded-lg border border-[#00D4FF]/40 px-3 py-2.5 text-sm font-semibold text-[#00D4FF] text-center"
                   >
                     Register
                   </button>
@@ -240,12 +325,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => handleNav('/contact?type=consultation')}
-                className="w-full rounded-lg bg-[#176BFF] px-4 py-2.5 text-sm font-semibold text-white text-center"
+                className="w-full min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2.5 text-sm font-semibold text-white text-center transition-colors"
               >
                 Request Consultation
               </button>
             </div>
-          </div>
+          </nav>
         )}
       </header>
 
@@ -253,12 +338,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Quiet Architectural Brand Footer — Zero Admin Links */}
       <footer className="bg-[#03051B] text-[#AEB8D4] border-t border-[#1A2550]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
-            <div className="lg:col-span-1">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-14">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10">
+            <div className="sm:col-span-2 lg:col-span-1">
               <img
                 src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
                 alt="NexaFlow Technologies"
+                loading="lazy"
                 className="h-12 w-auto object-contain"
               />
               <p className="mt-4 text-sm text-[#AEB8D4] leading-relaxed">
@@ -274,24 +360,40 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             <div>
               <h4 className="text-sm font-semibold text-[#F7F8FF] mb-3">Platform</h4>
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-1 text-sm">
                 <li>
-                  <button onClick={() => navigate('/solutions')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/solutions')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Solutions &amp; Services
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => navigate('/products')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/products')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Products
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => navigate('/learn')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/learn')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     NexaFlow Learn
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => navigate('/insights')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/insights')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Insights &amp; Resources
                   </button>
                 </li>
@@ -300,35 +402,50 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             <div>
               <h4 className="text-sm font-semibold text-[#F7F8FF] mb-3">Company &amp; Contact</h4>
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-1 text-sm">
                 <li>
-                  <button onClick={() => navigate('/about')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/about')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     About NexaFlow
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => navigate('/contact')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/contact')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Contact &amp; Enquiries
                   </button>
                 </li>
                 <li>
                   <button
+                    type="button"
                     onClick={() => navigate('/contact?type=consultation')}
-                    className="hover:text-[#00D4FF] transition-colors"
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Request Consultation
                   </button>
                 </li>
                 {settings?.email && (
                   <li>
-                    <a href={`mailto:${settings.email}`} className="hover:text-[#00D4FF] transition-colors">
+                    <a
+                      href={`mailto:${settings.email}`}
+                      className="inline-flex items-center min-h-[40px] py-1 hover:text-[#00D4FF] transition-colors break-all"
+                    >
                       {settings.email}
                     </a>
                   </li>
                 )}
                 {settings?.phone && (
                   <li>
-                    <a href={`tel:${settings.phone}`} className="hover:text-[#00D4FF] transition-colors">
+                    <a
+                      href={`tel:${settings.phone}`}
+                      className="inline-flex items-center min-h-[40px] py-1 hover:text-[#00D4FF] transition-colors"
+                    >
                       {settings.phone}
                     </a>
                   </li>
@@ -338,29 +455,49 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             <div>
               <h4 className="text-sm font-semibold text-[#F7F8FF] mb-3">Legal &amp; Governance</h4>
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-1 text-sm">
                 <li>
-                  <button onClick={() => navigate('/legal/privacy')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/legal/privacy')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Privacy Policy
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => navigate('/legal/terms')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/legal/terms')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Terms of Service
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => navigate('/legal/cookies')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/legal/cookies')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Cookie &amp; Analytics Notice
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => navigate('/legal/refund')} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/legal/refund')}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Course &amp; Refund Policy
                   </button>
                 </li>
                 <li>
-                  <button onClick={resetConsentPrompt} className="hover:text-[#00D4FF] transition-colors">
+                  <button
+                    type="button"
+                    onClick={resetConsentPrompt}
+                    className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
+                  >
                     Cookie Preferences
                   </button>
                 </li>
@@ -368,29 +505,49 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="mt-12 pt-6 border-t border-[#1A2550] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#AEB8D4]/80">
+          <div className="mt-10 pt-6 border-t border-[#1A2550] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#AEB8D4]/80 text-center sm:text-left">
             <p>
               &copy; {new Date().getFullYear()} {settings?.businessName || 'NexaFlow Technologies'}.
               All rights reserved.
             </p>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center justify-center gap-4">
               {settings?.socialLinks?.linkedin && (
-                <a href={settings.socialLinks.linkedin} target="_blank" rel="noopener noreferrer" className="hover:text-[#F7F8FF]">
+                <a
+                  href={settings.socialLinks.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center min-h-[40px] px-1 hover:text-[#F7F8FF]"
+                >
                   LinkedIn
                 </a>
               )}
               {settings?.socialLinks?.youtube && (
-                <a href={settings.socialLinks.youtube} target="_blank" rel="noopener noreferrer" className="hover:text-[#F7F8FF]">
+                <a
+                  href={settings.socialLinks.youtube}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center min-h-[40px] px-1 hover:text-[#F7F8FF]"
+                >
                   YouTube
                 </a>
               )}
               {settings?.socialLinks?.instagram && (
-                <a href={settings.socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="hover:text-[#F7F8FF]">
+                <a
+                  href={settings.socialLinks.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center min-h-[40px] px-1 hover:text-[#F7F8FF]"
+                >
                   Instagram
                 </a>
               )}
               {settings?.socialLinks?.facebook && (
-                <a href={settings.socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="hover:text-[#F7F8FF]">
+                <a
+                  href={settings.socialLinks.facebook}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center min-h-[40px] px-1 hover:text-[#F7F8FF]"
+                >
                   Facebook
                 </a>
               )}
@@ -404,7 +561,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div
           role="region"
           aria-label="Analytics Cookie Consent"
-          className="fixed bottom-4 left-4 right-4 sm:left-6 sm:right-auto sm:max-w-md z-40 rounded-xl bg-[#080D2B] border border-[#1A2550] p-4 shadow-2xl text-[#F7F8FF]"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 sm:left-6 sm:right-auto sm:max-w-md z-40 rounded-xl bg-[#080D2B] border border-[#1A2550] p-4 shadow-2xl text-[#F7F8FF]"
         >
           <p className="text-xs text-[#AEB8D4] leading-relaxed">
             NexaFlow uses essential session cookies for secure sign-in. Optional analytics cookies
@@ -418,18 +575,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
             .
           </p>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setConsentChoice('accepted')}
-              className="px-3.5 py-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] text-xs font-semibold text-white transition-colors"
+              className="min-h-[44px] px-4 py-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] text-xs font-semibold text-white transition-colors"
             >
               Accept Analytics
             </button>
             <button
               type="button"
               onClick={() => setConsentChoice('declined')}
-              className="px-3.5 py-1.5 rounded-lg border border-[#1A2550] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] transition-colors"
+              className="min-h-[44px] px-4 py-2 rounded-lg border border-[#1A2550] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] transition-colors"
             >
               Essential Only
             </button>
@@ -450,7 +607,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setShowIOSModal(false)}
-              className="mt-4 w-full rounded-lg bg-[#176BFF] py-2 text-sm font-medium text-white"
+              className="mt-4 w-full min-h-[44px] rounded-lg bg-[#176BFF] py-2 text-sm font-medium text-white"
             >
               Close
             </button>

@@ -157,116 +157,184 @@ export function AdminCrmModule() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="w-4 h-4 text-[#4A5578] dark:text-[#AEB8D4] absolute left-3 top-2.5" />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="relative flex-1 min-w-0">
+          <Search className="w-4 h-4 text-[#4A5578] dark:text-[#AEB8D4] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
+            aria-label="Search leads"
             type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search name, email, company, interest..."
-            className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] pl-9 pr-3 py-2 text-sm"
+            className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] pl-9 pr-3 py-2 text-sm"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] px-3 py-2 text-sm"
-        >
-          <option value="All">All Statuses</option>
-          {LEAD_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select
-          value={interestFilter}
-          onChange={(e) => setInterestFilter(e.target.value)}
-          className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] px-3 py-2 text-sm"
-        >
-          <option value="All">All Categories</option>
-          <option value="service">Services</option>
-          <option value="product">Products</option>
-          <option value="course">Courses</option>
-          <option value="consultation">Consultation</option>
-          <option value="general">General</option>
-        </select>
+        <div className="grid grid-cols-2 sm:flex items-center gap-2.5">
+          <select
+            aria-label="Filter leads by status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full sm:w-auto min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] px-3 py-2 text-sm"
+          >
+            <option value="All">All Statuses</option>
+            {LEAD_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter leads by category"
+            value={interestFilter}
+            onChange={(e) => setInterestFilter(e.target.value)}
+            className="w-full sm:w-auto min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] px-3 py-2 text-sm"
+          >
+            <option value="All">All Categories</option>
+            <option value="service">Services</option>
+            <option value="product">Products</option>
+            <option value="course">Courses</option>
+            <option value="consultation">Consultation</option>
+            <option value="general">General</option>
+          </select>
+        </div>
       </div>
 
-      {/* Leads Table */}
-      <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-x-auto">
+      {/* Leads List (Mobile cards + Desktop table) */}
+      <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden">
         {leads.length === 0 ? (
           <div className="p-10 text-center text-sm text-[#4A5578] dark:text-[#AEB8D4]">
             No enquiries received yet matching your filters.
           </div>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-[#DCE3F2] dark:border-[#1A2550] text-xs text-[#4A5578] dark:text-[#AEB8D4]">
-                <th className="p-3 w-8" />
-                <th className="p-3">Contact</th>
-                <th className="p-3">Interest</th>
-                <th className="p-3">Source</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Received</th>
-                <th className="p-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
+          <>
+            {/* Mobile Cards (<md) */}
+            <div className="md:hidden divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
               {leads.map((lead) => (
-                <tr key={lead._id} className="hover:bg-[#EEF2FA]/50 dark:hover:bg-[#10183A]/40">
-                  <td className="p-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(lead._id)}
-                      onChange={() => toggleSelect(lead._id)}
-                      aria-label={`Select ${lead.fullName}`}
-                    />
-                  </td>
-                  <td className="p-3">
-                    <p className="font-semibold">{lead.fullName}</p>
-                    <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">{lead.email}</p>
-                  </td>
-                  <td className="p-3">
-                    <p className="font-medium">{lead.interestName}</p>
-                    <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4] capitalize">
-                      {lead.interestType}
-                    </p>
-                  </td>
-                  <td className="p-3 text-xs">{lead.utmSource || lead.source || 'direct'}</td>
-                  <td className="p-3 font-medium text-xs">{lead.status}</td>
-                  <td className="p-3 font-mono text-xs tabular-nums">
-                    {new Date(lead.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="p-3 text-right">
+                <div key={lead._id} className="p-4 space-y-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <label className="flex items-start gap-2.5 min-w-0 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(lead._id)}
+                        onChange={() => toggleSelect(lead._id)}
+                        aria-label={`Select ${lead.fullName}`}
+                        className="mt-1 h-4 w-4 shrink-0"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-sm text-[#070B24] dark:text-[#F7F8FF]">
+                          {lead.fullName}
+                        </span>
+                        <span className="block text-xs text-[#4A5578] dark:text-[#AEB8D4] break-all">
+                          {lead.email}
+                        </span>
+                      </span>
+                    </label>
+                    <span className="shrink-0 text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF]">
+                      {lead.status}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center justify-between gap-2 pl-6">
+                    <span>
+                      <strong className="text-[#070B24] dark:text-[#F7F8FF]">{lead.interestName}</strong>{' '}
+                      (<span className="capitalize">{lead.interestType}</span>)
+                    </span>
+                    <span className="font-mono tabular-nums">
+                      {new Date(lead.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pl-6 pt-1">
+                    <span className="text-[11px] text-[#4A5578] dark:text-[#AEB8D4]">
+                      Source: {lead.utmSource || lead.source || 'direct'}
+                    </span>
                     <button
                       type="button"
                       onClick={() => openLead(lead)}
-                      className="text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                      className="min-h-[40px] px-3 py-1.5 rounded-lg border border-[#176BFF]/40 text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:bg-[#176BFF]/10"
                     >
                       Manage
                     </button>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            {/* Desktop Table (md+) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[#DCE3F2] dark:border-[#1A2550] text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                    <th className="p-3 w-8" />
+                    <th className="p-3">Contact</th>
+                    <th className="p-3">Interest</th>
+                    <th className="p-3">Source</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Received</th>
+                    <th className="p-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
+                  {leads.map((lead) => (
+                    <tr key={lead._id} className="hover:bg-[#EEF2FA]/50 dark:hover:bg-[#10183A]/40">
+                      <td className="p-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(lead._id)}
+                          onChange={() => toggleSelect(lead._id)}
+                          aria-label={`Select ${lead.fullName}`}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <p className="font-semibold">{lead.fullName}</p>
+                        <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">{lead.email}</p>
+                      </td>
+                      <td className="p-3">
+                        <p className="font-medium">{lead.interestName}</p>
+                        <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4] capitalize">
+                          {lead.interestType}
+                        </p>
+                      </td>
+                      <td className="p-3 text-xs">{lead.utmSource || lead.source || 'direct'}</td>
+                      <td className="p-3 font-medium text-xs">{lead.status}</td>
+                      <td className="p-3 font-mono text-xs tabular-nums">
+                        {new Date(lead.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openLead(lead)}
+                          className="text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                        >
+                          Manage
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
       {/* Lead Detail Drawer */}
       {activeLead && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/60">
-          <div className="w-full max-w-xl bg-white dark:bg-[#080D2B] border-l border-[#DCE3F2] dark:border-[#1A2550] h-full overflow-y-auto p-6 space-y-6">
+          <div className="w-full max-w-xl bg-white dark:bg-[#080D2B] border-l border-[#DCE3F2] dark:border-[#1A2550] h-full overflow-y-auto p-5 sm:p-6 space-y-6">
             <div className="flex items-start justify-between gap-4 border-b border-[#DCE3F2] dark:border-[#1A2550] pb-4">
-              <div>
+              <div className="min-w-0">
                 <h2 className="text-xl font-bold">{activeLead.fullName}</h2>
-                <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4] break-all">
                   {activeLead.email} {activeLead.phone ? `· ${activeLead.phone}` : ''}
                 </p>
               </div>
-              <button type="button" onClick={() => setActiveLead(null)} aria-label="Close">
+              <button
+                type="button"
+                onClick={() => setActiveLead(null)}
+                aria-label="Close"
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] shrink-0"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -288,7 +356,7 @@ export function AdminCrmModule() {
               <p>
                 <strong>Preferred Contact:</strong> {activeLead.preferredContact}
               </p>
-              <p>
+              <p className="break-words">
                 <strong>Attribution:</strong> Source: {activeLead.source} · Landing:{' '}
                 {activeLead.landingPage || '/'} {activeLead.utmCampaign ? `· UTM: ${activeLead.utmCampaign}` : ''}
               </p>
@@ -304,9 +372,10 @@ export function AdminCrmModule() {
               <h3 className="text-sm font-semibold">Update Pipeline Status</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <select
+                  aria-label="Lead pipeline status"
                   value={editStatus}
                   onChange={(e) => setEditStatus(e.target.value)}
-                  className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                 >
                   {LEAD_STATUSES.map((s) => (
                     <option key={s} value={s}>
@@ -315,22 +384,24 @@ export function AdminCrmModule() {
                   ))}
                 </select>
                 <input
+                  aria-label="Follow-up date"
                   type="date"
                   value={editFollowUp}
                   onChange={(e) => setEditFollowUp(e.target.value)}
-                  className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                 />
               </div>
               <input
+                aria-label="Conversion or lost reason"
                 type="text"
                 value={editReason}
                 onChange={(e) => setEditReason(e.target.value)}
                 placeholder="Conversion or lost reason (optional)"
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
               />
               <button
                 type="submit"
-                className="rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+                className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2 text-xs font-semibold text-white"
               >
                 Save Status &amp; Follow-Up
               </button>
@@ -341,11 +412,12 @@ export function AdminCrmModule() {
               className="space-y-3 border-t border-[#DCE3F2] dark:border-[#1A2550] pt-4"
             >
               <h3 className="text-sm font-semibold">Log Note or Contact History</h3>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <select
+                  aria-label="Activity type"
                   value={noteType}
                   onChange={(e) => setNoteType(e.target.value)}
-                  className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs"
+                  className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs"
                 >
                   <option value="note">Internal Note</option>
                   <option value="call">Phone Call</option>
@@ -354,15 +426,16 @@ export function AdminCrmModule() {
                   <option value="meeting">Meeting</option>
                 </select>
                 <input
+                  aria-label="Activity note summary"
                   type="text"
                   value={noteContent}
                   onChange={(e) => setNoteContent(e.target.value)}
                   placeholder="Summary of call, email, or note..."
-                  className="flex-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  className="flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                 />
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+                  className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2 text-xs font-semibold text-white"
                 >
                   Log
                 </button>
@@ -374,7 +447,7 @@ export function AdminCrmModule() {
                     key={a._id}
                     className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] p-3 text-xs"
                   >
-                    <div className="flex justify-between text-[#4A5578] dark:text-[#AEB8D4] mb-1">
+                    <div className="flex flex-wrap justify-between gap-2 text-[#4A5578] dark:text-[#AEB8D4] mb-1">
                       <span className="font-semibold uppercase">{a.type} · {a.adminName}</span>
                       <span>{new Date(a.createdAt).toLocaleString()}</span>
                     </div>

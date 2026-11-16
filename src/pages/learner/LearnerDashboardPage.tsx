@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useId, useState } from 'react';
 import {
   Bell,
   BookOpen,
@@ -53,6 +53,7 @@ interface LearnerNotification {
 
 export function LearnerDashboardPage() {
   const { user, authLoading, navigate, logout, searchParams, showToast, refreshAuth } = useApp();
+  const uid = useId();
 
   const initialTab = (searchParams.get('tab') as LearnerTab) || 'overview';
   const [tab, setTab] = useState<LearnerTab>(initialTab);
@@ -218,13 +219,13 @@ export function LearnerDashboardPage() {
     setNotifications((prev) => prev.map((n) => (n._id === id ? { ...n, read: true } : n)));
   };
 
-  const navButtons: Array<{ id: LearnerTab; label: string; icon: React.ReactNode }> = [
-    { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
-    { id: 'courses', label: 'My Courses', icon: <BookOpen className="w-4 h-4" /> },
-    { id: 'support', label: 'My Questions & Complaints', icon: <MessageSquare className="w-4 h-4" /> },
-    { id: 'messages', label: 'My Messages', icon: <Bell className="w-4 h-4" /> },
-    { id: 'payments', label: 'Payment History', icon: <CreditCard className="w-4 h-4" /> },
-    { id: 'settings', label: 'Account Settings', icon: <Settings className="w-4 h-4" /> },
+  const navButtons: Array<{ id: LearnerTab; label: string; shortLabel: string; icon: React.ReactNode }> = [
+    { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: <LayoutDashboard className="w-4 h-4 shrink-0" /> },
+    { id: 'courses', label: 'My Courses', shortLabel: 'Courses', icon: <BookOpen className="w-4 h-4 shrink-0" /> },
+    { id: 'support', label: 'My Questions & Complaints', shortLabel: 'Support', icon: <MessageSquare className="w-4 h-4 shrink-0" /> },
+    { id: 'messages', label: 'My Messages', shortLabel: 'Messages', icon: <Bell className="w-4 h-4 shrink-0" /> },
+    { id: 'payments', label: 'Payment History', shortLabel: 'Payments', icon: <CreditCard className="w-4 h-4 shrink-0" /> },
+    { id: 'settings', label: 'Account Settings', shortLabel: 'Settings', icon: <Settings className="w-4 h-4 shrink-0" /> },
   ];
 
   if (authLoading || !user) {
@@ -245,37 +246,59 @@ export function LearnerDashboardPage() {
         noIndex
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar Navigation */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+          {/* Sidebar Navigation (Compact scrollable horizontal tab bar on mobile/tablet, sidebar on lg+) */}
           <aside className="lg:w-64 shrink-0">
-            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-4 space-y-1">
-              <div className="px-3 py-2 mb-2 border-b border-[#DCE3F2] dark:border-[#1A2550]">
-                <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">Learner Account</p>
-                <p className="text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF] truncate">
-                  {user.name}
-                </p>
-              </div>
-              {navButtons.map((btn) => (
-                <button
-                  key={btn.id}
-                  type="button"
-                  onClick={() => setTab(btn.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    tab === btn.id
-                      ? 'bg-[#176BFF] text-white'
-                      : 'text-[#4A5578] dark:text-[#AEB8D4] hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] hover:text-[#070B24] dark:hover:text-[#F7F8FF]'
-                  }`}
-                >
-                  {btn.icon}
-                  <span className="truncate">{btn.label}</span>
-                </button>
-              ))}
-              <div className="pt-2 mt-2 border-t border-[#DCE3F2] dark:border-[#1A2550]">
+            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-3 px-2 sm:px-3 pb-2.5 mb-2.5 border-b border-[#DCE3F2] dark:border-[#1A2550]">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-[#4A5578] dark:text-[#AEB8D4]">Learner Account</p>
+                  <p className="text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF] truncate">
+                    {user.name}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={logout}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-[#4A5578] dark:text-[#AEB8D4] hover:text-red-500 transition-colors"
+                  className="lg:hidden min-h-[40px] inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] hover:text-red-500 transition-colors shrink-0"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Sign Out
+                </button>
+              </div>
+
+              <nav
+                aria-label="Learner Workspace Navigation"
+                className="flex lg:flex-col gap-1.5 overflow-x-auto no-scrollbar pb-1 lg:pb-0"
+              >
+                {navButtons.map((btn) => {
+                  const active = tab === btn.id;
+                  return (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={() => setTab(btn.id)}
+                      aria-current={active ? 'page' : undefined}
+                      className={`shrink-0 whitespace-nowrap lg:w-full min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                        active
+                          ? 'bg-[#176BFF] text-white'
+                          : 'text-[#4A5578] dark:text-[#AEB8D4] hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] hover:text-[#070B24] dark:hover:text-[#F7F8FF]'
+                      }`}
+                    >
+                      {btn.icon}
+                      <span className="lg:hidden">{btn.shortLabel}</span>
+                      <span className="hidden lg:inline truncate">{btn.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+
+              <div className="hidden lg:block pt-2 mt-2 border-t border-[#DCE3F2] dark:border-[#1A2550]">
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="w-full min-h-[44px] flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-[#4A5578] dark:text-[#AEB8D4] hover:text-red-500 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -306,13 +329,13 @@ export function LearnerDashboardPage() {
                       <button
                         type="button"
                         onClick={() => navigate('/learn')}
-                        className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
+                        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
                       >
                         Browse Courses
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                       {[
                         { label: 'Enrolled Courses', value: stats.enrolledCourses },
                         { label: 'Completed Lessons', value: stats.completedLessons },
@@ -321,7 +344,7 @@ export function LearnerDashboardPage() {
                       ].map((kpi) => (
                         <div
                           key={kpi.label}
-                          className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5"
+                          className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-4 sm:p-5"
                         >
                           <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">{kpi.label}</p>
                           <p className="mt-2 text-2xl font-bold font-mono tabular-nums text-[#070B24] dark:text-[#F7F8FF]">
@@ -332,7 +355,7 @@ export function LearnerDashboardPage() {
                     </div>
 
                     {/* Continue Learning */}
-                    <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6">
+                    <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6">
                       <h2 className="text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
                         Continue Learning
                       </h2>
@@ -344,7 +367,7 @@ export function LearnerDashboardPage() {
                           <button
                             type="button"
                             onClick={() => navigate('/learn')}
-                            className="mt-3 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                            className="mt-3 min-h-[44px] inline-flex items-center text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                           >
                             Explore the Course Catalogue
                           </button>
@@ -373,7 +396,7 @@ export function LearnerDashboardPage() {
                               <button
                                 type="button"
                                 onClick={() => navigate(`/learner/courses/${item.course.slug}`)}
-                                className="inline-flex items-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white whitespace-nowrap shrink-0"
+                                className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white whitespace-nowrap shrink-0"
                               >
                                 <Play className="w-3.5 h-3.5" />
                                 Continue Learning
@@ -387,7 +410,7 @@ export function LearnerDashboardPage() {
                 )}
 
                 {tab === 'courses' && (
-                  <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6">
+                  <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6">
                     <h1 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                       My Courses &amp; Progress
                     </h1>
@@ -419,7 +442,7 @@ export function LearnerDashboardPage() {
                             <button
                               type="button"
                               onClick={() => navigate(`/learner/courses/${item.course.slug}`)}
-                              className="mt-5 w-full rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white"
+                              className="mt-5 w-full min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white"
                             >
                               Open Course Classroom
                             </button>
@@ -444,7 +467,7 @@ export function LearnerDashboardPage() {
                       <button
                         type="button"
                         onClick={() => setShowNewTicket((s) => !s)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
+                        className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
                       >
                         <Plus className="w-4 h-4" />
                         New Ticket
@@ -454,16 +477,19 @@ export function LearnerDashboardPage() {
                     {showNewTicket && (
                       <form
                         onSubmit={handleCreateTicket}
-                        className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
+                        className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4"
                       >
                         <h2 className="text-base font-semibold">Submit Support Ticket</h2>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-xs font-medium mb-1">Category</label>
+                            <label htmlFor={`${uid}-tcat`} className="block text-xs font-medium mb-1">
+                              Category
+                            </label>
                             <select
+                              id={`${uid}-tcat`}
                               value={ticketCategory}
                               onChange={(e) => setTicketCategory(e.target.value)}
-                              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                             >
                               <option value="Course Question">Course Question</option>
                               <option value="Topic Clarification">Topic Clarification</option>
@@ -473,11 +499,14 @@ export function LearnerDashboardPage() {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs font-medium mb-1">Related Course (Optional)</label>
+                            <label htmlFor={`${uid}-tcourse`} className="block text-xs font-medium mb-1">
+                              Related Course (Optional)
+                            </label>
                             <select
+                              id={`${uid}-tcourse`}
                               value={ticketCourseId}
                               onChange={(e) => setTicketCourseId(e.target.value)}
-                              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                             >
                               <option value="">General / Not course-specific</option>
                               {courses.map((c) => (
@@ -489,18 +518,24 @@ export function LearnerDashboardPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium mb-1">Subject *</label>
+                          <label htmlFor={`${uid}-tsubj`} className="block text-xs font-medium mb-1">
+                            Subject *
+                          </label>
                           <input
+                            id={`${uid}-tsubj`}
                             type="text"
                             required
                             value={ticketSubject}
                             onChange={(e) => setTicketSubject(e.target.value)}
-                            className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                            className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium mb-1">Description *</label>
+                          <label htmlFor={`${uid}-tdesc`} className="block text-xs font-medium mb-1">
+                            Description *
+                          </label>
                           <textarea
+                            id={`${uid}-tdesc`}
                             rows={4}
                             required
                             value={ticketDesc}
@@ -510,7 +545,7 @@ export function LearnerDashboardPage() {
                         </div>
                         <button
                           type="submit"
-                          className="rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+                          className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2 text-xs font-semibold text-white"
                         >
                           Submit Ticket
                         </button>
@@ -530,11 +565,11 @@ export function LearnerDashboardPage() {
                                 <button
                                   type="button"
                                   onClick={() => openTicketThread(t._id)}
-                                  className={`w-full text-left p-4 hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] transition-colors ${
+                                  className={`w-full min-h-[44px] text-left p-4 hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] transition-colors ${
                                     activeTicketId === t._id ? 'bg-[#EEF2FA] dark:bg-[#10183A]' : ''
                                   }`}
                                 >
-                                  <div className="flex items-center justify-between text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                                  <div className="flex items-center justify-between gap-2 text-xs text-[#4A5578] dark:text-[#AEB8D4]">
                                     <span className="font-mono">{t.referenceNumber}</span>
                                     <span>{t.status}</span>
                                   </div>
@@ -551,7 +586,7 @@ export function LearnerDashboardPage() {
                         )}
                       </div>
 
-                      <div className="lg:col-span-7 rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6">
+                      <div className="lg:col-span-7 rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6">
                         {!activeTicket ? (
                           <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">
                             Select a ticket to view the conversation history and reply.
@@ -575,7 +610,7 @@ export function LearnerDashboardPage() {
                                       : 'bg-[#F6F8FC] dark:bg-[#03051B] border border-[#DCE3F2] dark:border-[#1A2550]'
                                   }`}
                                 >
-                                  <div className="flex items-center justify-between text-xs text-[#4A5578] dark:text-[#AEB8D4] mb-1">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#4A5578] dark:text-[#AEB8D4] mb-1">
                                     <span className="font-semibold">
                                       {m.senderName} ({m.senderRole === 'admin' ? 'NexaFlow Support' : 'You'})
                                     </span>
@@ -586,17 +621,18 @@ export function LearnerDashboardPage() {
                               ))}
                             </div>
 
-                            <form onSubmit={handleReplyTicket} className="flex gap-2 pt-2">
+                            <form onSubmit={handleReplyTicket} className="flex flex-col sm:flex-row gap-2.5 pt-2">
                               <input
                                 type="text"
+                                aria-label="Reply to support ticket"
                                 value={replyText}
                                 onChange={(e) => setReplyText(e.target.value)}
                                 placeholder="Write a reply..."
-                                className="flex-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                                className="flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                               />
                               <button
                                 type="submit"
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+                                className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white shrink-0"
                               >
                                 <Send className="w-3.5 h-3.5" />
                                 Reply
@@ -610,7 +646,7 @@ export function LearnerDashboardPage() {
                 )}
 
                 {tab === 'messages' && (
-                  <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6">
+                  <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6">
                     <h1 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                       My Messages &amp; Notifications
                     </h1>
@@ -622,7 +658,7 @@ export function LearnerDashboardPage() {
                       <ul className="mt-4 divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
                         {notifications.map((n) => (
                           <li key={n._id} className="py-4 flex items-start justify-between gap-4">
-                            <div>
+                            <div className="min-w-0">
                               <p className="text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF]">
                                 {n.title}
                               </p>
@@ -637,12 +673,12 @@ export function LearnerDashboardPage() {
                               <button
                                 type="button"
                                 onClick={() => markNotifRead(n._id)}
-                                className="text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline shrink-0"
+                                className="min-h-[40px] px-2 text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline shrink-0"
                               >
                                 Mark read
                               </button>
                             ) : (
-                              <CheckCircle2 className="w-4 h-4 text-[#00D4FF] shrink-0" />
+                              <CheckCircle2 className="w-4 h-4 text-[#00D4FF] shrink-0 mt-1" />
                             )}
                           </li>
                         ))}
@@ -652,7 +688,7 @@ export function LearnerDashboardPage() {
                 )}
 
                 {tab === 'payments' && (
-                  <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6">
+                  <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6">
                     <h1 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                       Payment History
                     </h1>
@@ -661,36 +697,65 @@ export function LearnerDashboardPage() {
                         No payment transactions recorded yet.
                       </p>
                     ) : (
-                      <div className="mt-4 overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                          <thead>
-                            <tr className="border-b border-[#DCE3F2] dark:border-[#1A2550] text-xs text-[#4A5578] dark:text-[#AEB8D4]">
-                              <th className="py-2.5 pr-4">Date</th>
-                              <th className="py-2.5 pr-4">Course</th>
-                              <th className="py-2.5 pr-4">Reference</th>
-                              <th className="py-2.5 pr-4 text-right">Amount</th>
-                              <th className="py-2.5 pl-4">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
-                            {payments.map((p) => (
-                              <tr key={p._id}>
-                                <td className="py-3 pr-4 font-mono text-xs tabular-nums">
-                                  {new Date(p.createdAt).toLocaleDateString()}
-                                </td>
-                                <td className="py-3 pr-4 font-medium">
+                      <>
+                        {/* Mobile stacked card view */}
+                        <div className="md:hidden mt-4 space-y-3">
+                          {payments.map((p) => (
+                            <div
+                              key={p._id}
+                              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] p-4 space-y-1.5 text-sm"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-semibold text-[#070B24] dark:text-[#F7F8FF]">
                                   {p.courseId?.title || 'Course'}
-                                </td>
-                                <td className="py-3 pr-4 font-mono text-xs">{p.reference}</td>
-                                <td className="py-3 pr-4 text-right font-mono tabular-nums">
+                                </span>
+                                <span className="font-mono font-bold tabular-nums shrink-0">
                                   {p.currency} {p.amount}
-                                </td>
-                                <td className="py-3 pl-4 capitalize">{p.status}</td>
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2 text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                                <span className="font-mono">{new Date(p.createdAt).toLocaleDateString()}</span>
+                                <span className="capitalize font-medium">{p.status}</span>
+                              </div>
+                              <p className="font-mono text-[11px] text-[#4A5578] dark:text-[#AEB8D4] break-all">
+                                Ref: {p.reference}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Desktop table view */}
+                        <div className="hidden md:block mt-4 overflow-x-auto">
+                          <table className="w-full text-left text-sm">
+                            <thead>
+                              <tr className="border-b border-[#DCE3F2] dark:border-[#1A2550] text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                                <th className="py-2.5 pr-4">Date</th>
+                                <th className="py-2.5 pr-4">Course</th>
+                                <th className="py-2.5 pr-4">Reference</th>
+                                <th className="py-2.5 pr-4 text-right">Amount</th>
+                                <th className="py-2.5 pl-4">Status</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
+                              {payments.map((p) => (
+                                <tr key={p._id}>
+                                  <td className="py-3 pr-4 font-mono text-xs tabular-nums">
+                                    {new Date(p.createdAt).toLocaleDateString()}
+                                  </td>
+                                  <td className="py-3 pr-4 font-medium">
+                                    {p.courseId?.title || 'Course'}
+                                  </td>
+                                  <td className="py-3 pr-4 font-mono text-xs">{p.reference}</td>
+                                  <td className="py-3 pr-4 text-right font-mono tabular-nums">
+                                    {p.currency} {p.amount}
+                                  </td>
+                                  <td className="py-3 pl-4 capitalize">{p.status}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
                     )}
                   </div>
                 )}
@@ -699,40 +764,53 @@ export function LearnerDashboardPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <form
                       onSubmit={handleSaveProfile}
-                      className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
+                      className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4"
                     >
                       <h2 className="text-lg font-bold">Profile Details</h2>
                       <div>
-                        <label className="block text-xs font-medium mb-1">Full Name</label>
+                        <label htmlFor={`${uid}-pname`} className="block text-xs font-medium mb-1">
+                          Full Name
+                        </label>
                         <input
+                          id={`${uid}-pname`}
                           type="text"
                           required
+                          autoComplete="name"
                           value={profileName}
                           onChange={(e) => setProfileName(e.target.value)}
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium mb-1">Phone</label>
+                        <label htmlFor={`${uid}-pphone`} className="block text-xs font-medium mb-1">
+                          Phone
+                        </label>
                         <input
+                          id={`${uid}-pphone`}
                           type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
                           value={profilePhone}
                           onChange={(e) => setProfilePhone(e.target.value)}
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium mb-1">Organisation</label>
+                        <label htmlFor={`${uid}-porg`} className="block text-xs font-medium mb-1">
+                          Organisation
+                        </label>
                         <input
+                          id={`${uid}-porg`}
                           type="text"
+                          autoComplete="organization"
                           value={profileOrg}
                           onChange={(e) => setProfileOrg(e.target.value)}
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                         />
                       </div>
                       <button
                         type="submit"
-                        className="rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+                        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2 text-xs font-semibold text-white"
                       >
                         Save Profile
                       </button>
@@ -740,33 +818,41 @@ export function LearnerDashboardPage() {
 
                     <form
                       onSubmit={handleChangePassword}
-                      className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
+                      className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4"
                     >
                       <h2 className="text-lg font-bold">Change Password</h2>
                       <div>
-                        <label className="block text-xs font-medium mb-1">Current Password</label>
+                        <label htmlFor={`${uid}-curpw`} className="block text-xs font-medium mb-1">
+                          Current Password
+                        </label>
                         <input
+                          id={`${uid}-curpw`}
                           type="password"
                           required
+                          autoComplete="current-password"
                           value={currentPassword}
                           onChange={(e) => setCurrentPassword(e.target.value)}
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium mb-1">New Password</label>
+                        <label htmlFor={`${uid}-newpw`} className="block text-xs font-medium mb-1">
+                          New Password
+                        </label>
                         <input
+                          id={`${uid}-newpw`}
                           type="password"
                           required
+                          autoComplete="new-password"
                           minLength={8}
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                         />
                       </div>
                       <button
                         type="submit"
-                        className="rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+                        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2 text-xs font-semibold text-white"
                       >
                         Update Password
                       </button>

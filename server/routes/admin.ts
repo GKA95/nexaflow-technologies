@@ -23,6 +23,7 @@ import {
   AdminActivity,
   AnalyticsEvent,
   Article,
+  Coupon,
   Course,
   CourseReview,
   Enrolment,
@@ -1718,6 +1719,176 @@ router.delete('/reviews/:id', async (req, res) => {
     deleted.authorName
   );
   res.json({ ok: true });
+});
+
+// 16. Course Discount Coupons CRUD
+router.get('/coupons', async (_req, res) => {
+  try {
+    const [coupons, courses] = await Promise.all([
+      Coupon.find().populate('courseId', 'title slug').sort({ createdAt: -1 }).lean(),
+      Course.find().select('_id title slug price currency published').sort({ order: 1, createdAt: -1 }).lean(),
+    ]);
+    res.json({ coupons, courses });
+  } catch (err) {
+    console.error('[Admin Coupons GET] Error:', err);
+    res.status(500).json({ error: 'Unable to load coupons.' });
+  }
+});
+
+const couponPayloadSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .min(2, 'Coupon code must be at least 2 characters.')
+    .max(40, 'Coupon code cannot exceed 40 characters.')
+    .regex(/^[A-Za-z0-9_-]+$/, 'Coupon code may only contain letters, numbers, hyphens, or underscores.'),
+  description: z.string().trim().max(240).optional().default(''),
+  discountPercent: z.number().min(1, 'Discount must be between 1% and 100%.').max(100),
+  courseId: z.string().trim().nullable().optional().default(null),
+  maxUses: z.number().int().min(0).optional().default(0),
+  expiresAt: z.string().trim().nullable().optional().default(null),
+  active: z.boolean().optional().default(true),
+});
+
+router.post('/coupons', async (req, res) => {
+  try {
+    const raw = req.body || {};
+    const parsed = couponPayloadSchema.safeParse({
+      ...raw,
+      discountPercent: Number(raw.discountPercent),
+      maxUses: raw.maxUses !== undefined && raw.maxUses !== '' ? Number(raw.maxUses) : 0,
+      courseId: raw.courseId && String(raw.courseId).trim() ? String(raw.courseId).trim() : null,
+      expiresAt: raw.expiresAt && String(raw.expiresAt).trim() ? String(raw.expiresAt).trim() : null,
+      active: raw.active !== false,
+    });
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid coupon data.' });
+    }
+
+    const code = parsed.data.code.toUpperCase();
+    const existing = await Coupon.findOne({ code }).lean();
+    if (existing) {
+      return res.status(409).json({ error: `A coupon with code "${code}" already exists.` });
+    }
+
+    if (parsed.data.courseId) {
+      const courseExists = await Course.exists({ _id: parsed.data.courseId });
+      if (!courseExists) return res.status(404).json({ error: 'Selected course does not exist.' });
+    }
+
+    const expiresAtDate = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;
+    if (expiresAtDate && Number.isNaN(expiresAtDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid expiration date.' });
+    }
+
+    const created = await Coupon.create({
+      code,
+      description: stripHtmlTags(parsed.data.description),
+      discountPercent: Math.round(parsed.data.discountPercent),
+      courseId: parsed.data.courseId || null,
+      maxUses: parsed.data.maxUses,
+      expiresAt: expiresAtDate,
+      active: parsed.data.active,
+    });
+
+    const populated = await Coupon.findById(created._id).populate('courseId', 'title slug').lean();
+    await logAdminActivity(
+      req.user!,
+      'create_coupon',
+      'Coupon',
+      created._id.toString(),
+      `${code} (${Math.round(parsed.data.discountPercent)}% off)`
+    );
+
+    res.status(201).json({ coupon: populated });
+  } catch (err) {
+    console.error('[Admin Coupons POST] Error:', err);
+    res.status(500).json({ error: 'Unable to create coupon.' });
+  }
+});
+
+router.patch('/coupons/:id', async (req, res) => {
+  try {
+    const raw = req.body || {};
+    const update: Record<string, unknown> = {};
+
+    if (raw.code !== undefined) {
+      const cleanCode = String(raw.code).trim().toUpperCase();
+      if (!/^[A-Z0-9_-]{2,40}$/.test(cleanCode)) {
+        return res.status(400).json({
+          error: 'Coupon code must be 2–40 alphanumeric, hyphen, or underscore characters.',
+        });
+      }
+      const clash = await Coupon.findOne({ code: cleanCode, _id: { $ne: req.params.id } }).lean();
+      if (clash) {
+        return res.status(409).json({ error: `Coupon code "${cleanCode}" is already used.` });
+      }
+      update.code = cleanCode;
+    }
+    if (raw.description !== undefined) update.description = stripHtmlTags(String(raw.description).trim());
+    if (raw.discountPercent !== undefined) {
+      const pct = Number(raw.discountPercent);
+      if (Number.isNaN(pct) || pct < 1 || pct > 100) {
+        return res.status(400).json({ error: 'Discount percentage must be between 1 and 100.' });
+      }
+      update.discountPercent = Math.round(pct);
+    }
+    if (raw.courseId !== undefined) {
+      const cid = raw.courseId && String(raw.courseId).trim() ? String(raw.courseId).trim() : null;
+      if (cid) {
+        const exists = await Course.exists({ _id: cid });
+        if (!exists) return res.status(404).json({ error: 'Selected course does not exist.' });
+      }
+      update.courseId = cid;
+    }
+    if (raw.maxUses !== undefined) {
+      update.maxUses = Math.max(0, Math.round(Number(raw.maxUses || 0)));
+    }
+    if (raw.expiresAt !== undefined) {
+      if (!raw.expiresAt || !String(raw.expiresAt).trim()) {
+        update.expiresAt = null;
+      } else {
+        const dt = new Date(String(raw.expiresAt));
+        if (Number.isNaN(dt.getTime())) {
+          return res.status(400).json({ error: 'Invalid expiration date.' });
+        }
+        update.expiresAt = dt;
+      }
+    }
+    if (raw.active !== undefined) {
+      update.active = Boolean(raw.active);
+    }
+
+    const updated = await Coupon.findByIdAndUpdate(req.params.id, update, { new: true })
+      .populate('courseId', 'title slug')
+      .lean();
+    if (!updated) return res.status(404).json({ error: 'Coupon not found.' });
+
+    const u = updated as { _id: unknown; code: string; discountPercent: number; active: boolean };
+    await logAdminActivity(
+      req.user!,
+      'update_coupon',
+      'Coupon',
+      String(u._id),
+      `${u.code} (${u.discountPercent}% off, active=${u.active})`
+    );
+    res.json({ coupon: updated });
+  } catch (err) {
+    console.error('[Admin Coupons PATCH] Error:', err);
+    res.status(500).json({ error: 'Unable to update coupon.' });
+  }
+});
+
+router.delete('/coupons/:id', async (req, res) => {
+  try {
+    const deleted = await Coupon.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Coupon not found.' });
+    await logAdminActivity(req.user!, 'delete_coupon', 'Coupon', req.params.id, deleted.code);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Admin Coupons DELETE] Error:', err);
+    res.status(500).json({ error: 'Unable to delete coupon.' });
+  }
 });
 
 export default router;

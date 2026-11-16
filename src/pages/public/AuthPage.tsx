@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { ArrowLeft, CheckCircle2, KeyRound, Lock, Mail, UserPlus } from 'lucide-react';
 import { GoogleIcon } from '../../components/GoogleIcon';
 import { SEOHead } from '../../components/SEOHead';
@@ -13,6 +13,7 @@ export function AuthPage({
   mode: 'login' | 'register' | 'forgot' | 'reset';
 }) {
   const { user, authLoading, navigate, refreshAuth, setAuthenticatedSession, searchParams, showToast } = useApp();
+  const uid = useId();
   const rawRedirect = searchParams.get('redirect') || '/learner';
   const redirectTarget = rawRedirect.startsWith('/') ? rawRedirect : '/learner';
   const queryToken = searchParams.get('token') || '';
@@ -200,22 +201,22 @@ export function AuthPage({
         noIndex
       />
 
-      <section className="py-16 px-4">
+      <section className="py-10 sm:py-16 px-4">
         <div className="max-w-md mx-auto rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden shadow-xl">
-          <div className="bg-[#03051B] px-6 py-6 border-b border-[#1A2550] flex justify-center">
+          <div className="bg-[#03051B] px-6 py-5 sm:py-6 border-b border-[#1A2550] flex justify-center">
             <img
               src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
               alt="NexaFlow Technologies"
-              className="h-12 w-auto object-contain"
+              className="h-11 sm:h-12 w-auto object-contain"
             />
           </div>
 
-          <div className="p-6 sm:p-8">
+          <div className="p-5 sm:p-8">
             {(mode === 'forgot' || mode === 'reset') && (
               <button
                 type="button"
                 onClick={() => navigate('/auth/login')}
-                className="inline-flex items-center gap-1.5 text-xs text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#176BFF] dark:hover:text-[#00D4FF] mb-4"
+                className="inline-flex items-center gap-1.5 min-h-[40px] text-xs text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#176BFF] dark:hover:text-[#00D4FF] mb-3"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Back to Sign In
@@ -229,7 +230,7 @@ export function AuthPage({
                   onClick={() =>
                     navigate(`/auth/login?redirect=${encodeURIComponent(redirectTarget)}`)
                   }
-                  className={`py-2 text-xs font-semibold rounded-md transition-colors ${
+                  className={`min-h-[40px] py-2 text-xs font-semibold rounded-md transition-colors ${
                     mode === 'login'
                       ? 'bg-[#176BFF] text-white shadow-sm'
                       : 'text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-[#F7F8FF]'
@@ -242,7 +243,7 @@ export function AuthPage({
                   onClick={() =>
                     navigate(`/auth/register?redirect=${encodeURIComponent(redirectTarget)}`)
                   }
-                  className={`py-2 text-xs font-semibold rounded-md transition-colors ${
+                  className={`min-h-[40px] py-2 text-xs font-semibold rounded-md transition-colors ${
                     mode === 'register'
                       ? 'bg-[#176BFF] text-white shadow-sm'
                       : 'text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-[#F7F8FF]'
@@ -270,7 +271,7 @@ export function AuthPage({
                   type="button"
                   onClick={handleGoogleSignIn}
                   disabled={googleLoading}
-                  className="mt-5 w-full inline-flex items-center justify-center gap-2.5 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] hover:bg-[#EDF2FA] dark:hover:bg-[#10183A] disabled:opacity-60 py-2.5 px-4 text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF] transition-colors"
+                  className="mt-5 w-full min-h-[44px] inline-flex items-center justify-center gap-2.5 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] hover:bg-[#EDF2FA] dark:hover:bg-[#10183A] disabled:opacity-60 py-2.5 px-4 text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF] transition-colors"
                 >
                   <GoogleIcon className="w-4 h-4" />
                   {googleLoading ? 'Connecting Google...' : 'Continue with Google'}
@@ -287,48 +288,63 @@ export function AuthPage({
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
               {mode === 'register' && (
                 <div>
-                  <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                  <label
+                    htmlFor={`${uid}-name`}
+                    className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                  >
                     Full Name *
                   </label>
                   <input
+                    id={`${uid}-name`}
                     type="text"
                     required
+                    autoComplete="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Your full name"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
                   />
                 </div>
               )}
 
               {mode !== 'reset' && (
                 <div>
-                  <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                  <label
+                    htmlFor={`${uid}-email`}
+                    className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                  >
                     Email Address *
                   </label>
                   <input
+                    id={`${uid}-email`}
                     type="email"
                     required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
                   />
                 </div>
               )}
 
               {mode === 'reset' && (
                 <div>
-                  <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                  <label
+                    htmlFor={`${uid}-token`}
+                    className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                  >
                     Reset Token *
                   </label>
                   <input
+                    id={`${uid}-token`}
                     type="text"
                     required
+                    autoComplete="one-time-code"
                     value={resetToken}
                     onChange={(e) => setResetToken(e.target.value)}
                     placeholder="Paste reset token"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm font-mono text-[#070B24] dark:text-[#F7F8FF]"
+                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm font-mono text-[#070B24] dark:text-[#F7F8FF]"
                   />
                 </div>
               )}
@@ -336,22 +352,27 @@ export function AuthPage({
               {mode !== 'forgot' && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4]">
+                    <label
+                      htmlFor={`${uid}-password`}
+                      className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4]"
+                    >
                       {mode === 'reset' ? 'New Password *' : 'Password *'}
                     </label>
                     {mode === 'login' && (
                       <button
                         type="button"
                         onClick={() => navigate('/auth/forgot-password')}
-                        className="text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                        className="text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline py-1"
                       >
                         Forgot password?
                       </button>
                     )}
                   </div>
                   <input
+                    id={`${uid}-password`}
                     type="password"
                     required
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                     minLength={mode === 'register' || mode === 'reset' ? 8 : 1}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -360,24 +381,29 @@ export function AuthPage({
                         ? 'Minimum 8 characters'
                         : 'Enter password'
                     }
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
                   />
                 </div>
               )}
 
               {mode === 'reset' && (
                 <div>
-                  <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                  <label
+                    htmlFor={`${uid}-confirm-password`}
+                    className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                  >
                     Confirm New Password *
                   </label>
                   <input
+                    id={`${uid}-confirm-password`}
                     type="password"
                     required
+                    autoComplete="new-password"
                     minLength={8}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter new password"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF]"
+                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF]"
                   />
                 </div>
               )}
@@ -385,38 +411,55 @@ export function AuthPage({
               {mode === 'register' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                    <label
+                      htmlFor={`${uid}-phone`}
+                      className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                    >
                       Phone (Optional)
                     </label>
                     <input
+                      id={`${uid}-phone`}
                       type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF]"
+                      className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF]"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                    <label
+                      htmlFor={`${uid}-org`}
+                      className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                    >
                       Organisation (Optional)
                     </label>
                     <input
+                      id={`${uid}-org`}
                       type="text"
+                      autoComplete="organization"
                       value={organization}
                       onChange={(e) => setOrganization(e.target.value)}
-                      className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF]"
+                      className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF]"
                     />
                   </div>
                 </div>
               )}
 
               {errorMsg && (
-                <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-600 dark:text-red-300">
+                <div
+                  role="alert"
+                  className="rounded-lg border border-red-500/40 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-600 dark:text-red-300"
+                >
                   {errorMsg}
                 </div>
               )}
 
               {infoMsg && (
-                <div className="rounded-lg border border-[#00D4FF]/40 bg-[#00D4FF]/10 px-3.5 py-2.5 text-xs text-[#070B24] dark:text-[#D2F9FF] flex items-start gap-2">
+                <div
+                  role="status"
+                  className="rounded-lg border border-[#00D4FF]/40 bg-[#00D4FF]/10 px-3.5 py-2.5 text-xs text-[#070B24] dark:text-[#D2F9FF] flex items-start gap-2"
+                >
                   <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#00D4FF]" />
                   <span>{infoMsg}</span>
                 </div>
@@ -425,7 +468,7 @@ export function AuthPage({
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 py-2.5 text-sm font-semibold text-white transition-colors"
+                className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 py-2.5 text-sm font-semibold text-white transition-colors"
               >
                 {mode === 'register' ? (
                   <UserPlus className="w-4 h-4" />
@@ -458,7 +501,7 @@ export function AuthPage({
                       onClick={() =>
                         navigate(`/auth/login?redirect=${encodeURIComponent(redirectTarget)}`)
                       }
-                      className="font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                      className="font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline py-1"
                     >
                       Sign In
                     </button>
@@ -471,7 +514,7 @@ export function AuthPage({
                       onClick={() =>
                         navigate(`/auth/register?redirect=${encodeURIComponent(redirectTarget)}`)
                       }
-                      className="font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                      className="font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline py-1"
                     >
                       Create Learner Account
                     </button>

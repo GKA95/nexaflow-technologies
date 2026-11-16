@@ -143,6 +143,38 @@ export interface CourseItem {
   focusKeyword?: string;
 }
 
+export interface AppliedCoupon {
+  couponId?: string;
+  code: string;
+  description?: string;
+  discountPercent: number;
+  courseId: string | null;
+  courseTitle: string | null;
+  expiresAt: string | null;
+}
+
+export interface CouponItem {
+  _id: string;
+  code: string;
+  description: string;
+  discountPercent: number;
+  courseId?: string | { _id: string; title: string; slug: string } | null;
+  maxUses: number;
+  usedCount: number;
+  expiresAt?: string | null;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CourseDiscountPricing {
+  applies: boolean;
+  originalPrice: number;
+  discountPercent: number;
+  discountAmount: number;
+  finalPrice: number;
+}
+
 export interface WorkShowcaseItem {
   _id: string;
   title: string;

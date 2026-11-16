@@ -2,7 +2,7 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>NexaFlow Technologies | AI, Data &amp; Digital Solutions</title>
     <meta
       name="description"
@@ -39,12 +39,20 @@
     />
     <meta name="twitter:image" content="/og-image.png" />
 
-    <!-- Typography: Plus Jakarta Sans (Display/Headings), DM Sans (Body), JetBrains Mono (Tabular Telemetry) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Self-Hosted Typography Preloads (zero external font requests) -->
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
-      rel="stylesheet"
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/fonts/plus-jakarta-sans-latin-normal-8.woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/fonts/dm-sans-latin-normal-4.woff2"
+      crossorigin
     />
 
     <script>

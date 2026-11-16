@@ -1,9 +1,11 @@
 import { ArrowRight, BookOpen, Briefcase, Check, Compass, Cpu, ExternalLink, FileText, Quote } from 'lucide-react';
+import { CouponApplyBar } from '../../components/CouponApplyBar';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
 import { SEOHead } from '../../components/SEOHead';
 import { StarRatingDisplay } from '../../components/StarRating';
 import { useApp } from '../../context/AppContext';
+import { formatMoneyAmount, getCourseDiscountPricing } from '../../utils/pricing';
 
 export function HomePage() {
   const {
@@ -16,6 +18,7 @@ export function HomePage() {
     workItems,
     testimonials,
     seoPages,
+    appliedCoupon,
   } = useApp();
 
   const homeSeo = seoPages.find((p) => p.pageKey === 'home');
@@ -83,27 +86,27 @@ export function HomePage() {
 
       {/* 1. Hero Proposition Section */}
       <section className="relative bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-24">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-center">
               <p className="text-xs font-medium tracking-wider uppercase text-[#00D4FF] mb-3">
                 {settings?.descriptor || 'AI, Data & Digital Solutions'}
               </p>
-              <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-[#F7F8FF] leading-[1.12] max-w-2xl">
+              <h1 className="text-[clamp(1.85rem,4.4vw,3.15rem)] font-bold tracking-tight text-[#F7F8FF] leading-[1.12] max-w-2xl">
                 {settings?.heroHeadline ||
                   'Intelligent systems, reliable data, and practical digital engineering.'}
               </h1>
-              <p className="mt-5 text-base sm:text-lg text-[#AEB8D4] leading-relaxed max-w-2xl">
+              <p className="mt-4 sm:mt-5 text-base sm:text-lg text-[#AEB8D4] leading-relaxed max-w-2xl">
                 {settings?.heroSubheadline ||
                   'NexaFlow Technologies partners with organisations to build AI automation, custom web platforms, data analytics, applied machine learning, and structured technical training.'}
               </p>
 
-              {/* Four clear primary user pathways without visual clutter */}
-              <div className="mt-8 flex flex-wrap items-center gap-3">
+              {/* Primary CTA + clean balanced exploration buttons */}
+              <div className="mt-7 sm:mt-8 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={() => navigate('/contact?type=consultation')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-colors whitespace-nowrap"
+                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-colors whitespace-nowrap"
                 >
                   Request a Consultation
                   <ArrowRight className="w-4 h-4" />
@@ -111,21 +114,21 @@ export function HomePage() {
                 <button
                   type="button"
                   onClick={() => navigate('/solutions')}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
+                  className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
                 >
                   Explore Solutions
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate('/products')}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
+                  className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
                 >
                   Explore Products
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate('/learn')}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
+                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
                 >
                   Explore Courses
                 </button>
@@ -133,10 +136,12 @@ export function HomePage() {
             </div>
 
             <div className="lg:col-span-5">
-              <div className="h-full min-h-[280px] rounded-xl overflow-hidden border border-[#1A2550] bg-[#080D2B]">
+              <div className="h-full min-h-[220px] sm:min-h-[280px] rounded-xl overflow-hidden border border-[#1A2550] bg-[#080D2B]">
                 <MediaImage
                   src="/assets/images/hero_nexaflow_architecture.jpg"
                   alt="NexaFlow Technologies layered AI and data systems architecture"
+                  loading="eager"
+                  fetchPriority="high"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -280,7 +285,7 @@ export function HomePage() {
       {/* 4. Featured Courses (NexaFlow Learn) */}
       <section className="py-16 lg:py-20 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
                 NexaFlow Learn
@@ -292,11 +297,16 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => navigate('/learn')}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
+              className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               Explore course catalogue
               <ArrowRight className="w-4 h-4" />
             </button>
+          </div>
+
+          {/* Front-page Coupon Code Input */}
+          <div className="mb-8">
+            <CouponApplyBar variant="surface" compact />
           </div>
 
           {featuredCourses.length === 0 ? (
@@ -317,63 +327,88 @@ export function HomePage() {
               <button
                 type="button"
                 onClick={() => navigate('/contact?type=course')}
-                className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2.5 text-sm font-medium text-[#070B24] dark:text-[#F7F8FF] hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] whitespace-nowrap shrink-0"
+                className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2.5 text-sm font-medium text-[#070B24] dark:text-[#F7F8FF] hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] whitespace-nowrap shrink-0"
               >
                 Enquire About Training
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {featuredCourses.map((course) => (
-                <article
-                  key={course.slug}
-                  className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="aspect-video bg-[#03051B]">
-                      <MediaImage
-                        src={course.coverImage}
-                        alt={course.title}
-                        fallbackLabel={course.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="p-6">
-                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex items-center gap-2 tabular-nums">
-                        <span>{course.moduleCount ?? 0} Modules</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{course.lessonCount ?? 0} Lessons</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-mono font-medium text-[#070B24] dark:text-[#F7F8FF]">
-                          {course.price > 0 ? `${course.currency} ${course.price}` : 'Free'}
-                        </span>
-                      </div>
-                      <h3 className="mt-2 text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                        {course.title}
-                      </h3>
-                      <div className="mt-2">
-                        <StarRatingDisplay
-                          rating={course.averageRating}
-                          count={course.reviewCount}
-                          size="xs"
+              {featuredCourses.map((course) => {
+                const pricing = getCourseDiscountPricing(course, appliedCoupon);
+                return (
+                  <article
+                    key={course.slug}
+                    className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="aspect-video bg-[#03051B]">
+                        <MediaImage
+                          src={course.coverImage}
+                          alt={course.title}
+                          fallbackLabel={course.title}
+                          className="w-full h-full object-cover"
                         />
                       </div>
-                      <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] line-clamp-3">
-                        {course.shortDescription}
-                      </p>
+                      <div className="p-5 sm:p-6">
+                        <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+                          <span>{course.moduleCount ?? 0} Modules</span>
+                          <span aria-hidden="true">·</span>
+                          <span>{course.lessonCount ?? 0} Lessons</span>
+                          <span aria-hidden="true">·</span>
+                          {course.price > 0 ? (
+                            pricing.applies ? (
+                              <span className="inline-flex items-center gap-1.5 font-mono">
+                                <span className="line-through opacity-60">
+                                  {course.currency} {formatMoneyAmount(pricing.originalPrice)}
+                                </span>
+                                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                  {pricing.finalPrice <= 0
+                                    ? 'Free'
+                                    : `${course.currency} ${formatMoneyAmount(pricing.finalPrice)}`}
+                                </span>
+                                <span className="text-[11px] font-semibold text-[#176BFF] dark:text-[#00D4FF]">
+                                  (-{pricing.discountPercent}%)
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="font-mono font-medium text-[#070B24] dark:text-[#F7F8FF]">
+                                {course.currency} {course.price}
+                              </span>
+                            )
+                          ) : (
+                            <span className="font-mono font-medium text-[#070B24] dark:text-[#F7F8FF]">
+                              Free
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-2 text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                          {course.title}
+                        </h3>
+                        <div className="mt-2">
+                          <StarRatingDisplay
+                            rating={course.averageRating}
+                            count={course.reviewCount}
+                            size="xs"
+                          />
+                        </div>
+                        <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] line-clamp-3">
+                          {course.shortDescription}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="px-6 pb-6">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/learn/${course.slug}`)}
-                      className="w-full rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
-                    >
-                      View Course
-                    </button>
-                  </div>
-                </article>
-              ))}
+                    <div className="px-5 sm:px-6 pb-5 sm:pb-6">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/learn/${course.slug}`)}
+                        className="w-full min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
+                      >
+                        View Course
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>

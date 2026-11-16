@@ -6,9 +6,18 @@ interface MediaImageProps {
   alt: string;
   className?: string;
   fallbackLabel?: string;
+  loading?: 'lazy' | 'eager';
+  fetchPriority?: 'high' | 'low' | 'auto';
 }
 
-export function MediaImage({ src, alt, className = '', fallbackLabel }: MediaImageProps) {
+export function MediaImage({
+  src,
+  alt,
+  className = '',
+  fallbackLabel,
+  loading = 'lazy',
+  fetchPriority = 'auto',
+}: MediaImageProps) {
   const [errored, setErrored] = useState(false);
 
   if (!src || errored) {
@@ -30,6 +39,9 @@ export function MediaImage({ src, alt, className = '', fallbackLabel }: MediaIma
     <img
       src={src}
       alt={alt}
+      loading={loading}
+      decoding="async"
+      fetchPriority={fetchPriority}
       referrerPolicy="no-referrer"
       onError={() => setErrored(true)}
       className={className}

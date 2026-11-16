@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, CheckCircle2, Lock, PlayCircle } from 'lucide-react';
+import { CouponApplyBar } from '../../components/CouponApplyBar';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
 import { SEOHead } from '../../components/SEOHead';
@@ -8,9 +9,10 @@ import { useApp } from '../../context/AppContext';
 import type { CourseItem, CourseReviewItem, ModuleItem } from '../../types';
 import { trackEvent } from '../../utils/analytics';
 import { apiFetch } from '../../utils/authSession';
+import { formatMoneyAmount, getCourseDiscountPricing } from '../../utils/pricing';
 
 export function CourseDetailPage({ slug }: { slug: string }) {
-  const { user, navigate, showToast, consent } = useApp();
+  const { user, navigate, showToast, consent, appliedCoupon, clearAppliedCoupon } = useApp();
   const [course, setCourse] = useState<CourseItem | null>(null);
   const [curriculum, setCurriculum] = useState<ModuleItem[]>([]);
   const [reviews, setReviews] = useState<CourseReviewItem[]>([]);
@@ -66,26 +68,37 @@ export function CourseDetailPage({ slug }: { slug: string }) {
       return;
     }
 
+    const pricing = getCourseDiscountPricing(course, appliedCoupon);
+    const activeCouponCode = pricing.applies && appliedCoupon ? appliedCoupon.code : undefined;
+
+    const completeFreeEnrolment = async (couponCodeUsed?: string) => {
+      const res = await apiFetch('/api/learner/enrol-free', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          courseId: course._id,
+          ...(couponCodeUsed ? { couponCode: couponCodeUsed } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Could not complete enrolment.', 'error');
+        return;
+      }
+      if (couponCodeUsed) clearAppliedCoupon();
+      showToast('Enrolment activated!', 'success');
+      trackEvent('enrolment_complete', {
+        entitySlug: course.slug,
+        consentAccepted: consent === 'accepted',
+      });
+      navigate(`/learner/courses/${course.slug}`);
+    };
+
     setEnrolling(true);
     try {
-      if (course.price <= 0) {
-        const res = await apiFetch('/api/learner/enrol-free', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ courseId: course._id }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          showToast(data.error || 'Could not complete enrolment.', 'error');
-          return;
-        }
-        showToast('Enrolment activated!', 'success');
-        trackEvent('enrolment_complete', {
-          entitySlug: course.slug,
-          consentAccepted: consent === 'accepted',
-        });
-        navigate(`/learner/courses/${course.slug}`);
+      if (pricing.finalPrice <= 0) {
+        await completeFreeEnrolment(activeCouponCode);
         return;
       }
 
@@ -93,9 +106,16 @@ export function CourseDetailPage({ slug }: { slug: string }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ courseId: course._id }),
+        body: JSON.stringify({
+          courseId: course._id,
+          ...(activeCouponCode ? { couponCode: activeCouponCode } : {}),
+        }),
       });
       const data = await res.json();
+      if (res.ok && data.freeWithCoupon) {
+        await completeFreeEnrolment(activeCouponCode);
+        return;
+      }
       if (!res.ok || !data.authorizationUrl) {
         showToast(data.error || 'Unable to start Paystack checkout.', 'error');
         return;
@@ -159,6 +179,8 @@ export function CourseDetailPage({ slug }: { slug: string }) {
       : {}),
   };
 
+  const pricing = getCourseDiscountPricing(course, appliedCoupon);
+
   return (
     <>
       <SEOHead
@@ -171,29 +193,48 @@ export function CourseDetailPage({ slug }: { slug: string }) {
         structuredData={structuredData}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-14 lg:py-20">
+      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-14 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate('/learn')}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-6"
+            className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             All Courses
           </button>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-center">
-              <div className="text-xs text-[#00D4FF] flex items-center gap-2 tabular-nums mb-2">
+              <div className="text-xs text-[#00D4FF] flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums mb-2">
                 <span>{course.moduleCount ?? 0} Modules</span>
                 <span aria-hidden="true">·</span>
                 <span>{course.lessonCount ?? 0} Lessons</span>
                 <span aria-hidden="true">·</span>
-                <span className="font-mono font-semibold">
-                  {course.price > 0 ? `${course.currency} ${course.price}` : 'Free'}
-                </span>
+                {course.price > 0 ? (
+                  pricing.applies ? (
+                    <span className="inline-flex items-center gap-2 font-mono font-semibold">
+                      <span className="line-through text-[#AEB8D4]/70">
+                        {course.currency} {formatMoneyAmount(pricing.originalPrice)}
+                      </span>
+                      <span className="text-emerald-400">
+                        {pricing.finalPrice <= 0
+                          ? 'Free (100% Off)'
+                          : `${course.currency} ${formatMoneyAmount(pricing.finalPrice)} (${pricing.discountPercent}% Off)`}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="font-mono font-semibold">
+                      {course.currency} {course.price}
+                    </span>
+                  )
+                ) : (
+                  <span className="font-mono font-semibold">Free</span>
+                )}
               </div>
-              <h1 className="text-3xl sm:text-5xl font-bold tracking-tight">{course.title}</h1>
+              <h1 className="text-[clamp(1.75rem,4vw,3rem)] font-bold tracking-tight">
+                {course.title}
+              </h1>
               <div className="mt-3">
                 <StarRatingDisplay
                   rating={course.averageRating}
@@ -206,20 +247,28 @@ export function CourseDetailPage({ slug }: { slug: string }) {
                 {course.shortDescription}
               </p>
 
-              <div className="mt-7 flex flex-wrap items-center gap-4">
+              {course.price > 0 && !enrolledAlready && (
+                <div className="mt-6">
+                  <CouponApplyBar courseId={course._id} variant="dark" compact />
+                </div>
+              )}
+
+              <div className="mt-6 flex flex-wrap items-center gap-4">
                 <button
                   type="button"
                   disabled={enrolling}
                   onClick={handleEnrol}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-6 py-3 text-sm font-semibold text-white transition-colors"
+                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-6 py-3 text-sm font-semibold text-white transition-colors"
                 >
                   {enrolledAlready
                     ? 'Go to Course Player'
                     : enrolling
                       ? 'Preparing Enrolment...'
-                      : course.price > 0
-                        ? `Enrol Now (${course.currency} ${course.price})`
-                        : 'Enrol for Free'}
+                      : pricing.finalPrice > 0
+                        ? `Enrol Now (${course.currency} ${formatMoneyAmount(pricing.finalPrice)})`
+                        : pricing.applies
+                          ? 'Enrol Free With Coupon'
+                          : 'Enrol for Free'}
                 </button>
                 {!user && (
                   <span className="text-xs text-[#AEB8D4]">
@@ -230,11 +279,13 @@ export function CourseDetailPage({ slug }: { slug: string }) {
             </div>
 
             <div className="lg:col-span-5">
-              <div className="h-full min-h-[240px] rounded-xl overflow-hidden border border-[#1A2550]">
+              <div className="h-full min-h-[220px] sm:min-h-[240px] rounded-xl overflow-hidden border border-[#1A2550]">
                 <MediaImage
                   src={course.coverImage}
                   alt={course.title}
                   fallbackLabel={course.title}
+                  loading="eager"
+                  fetchPriority="high"
                   className="w-full h-full object-cover"
                 />
               </div>

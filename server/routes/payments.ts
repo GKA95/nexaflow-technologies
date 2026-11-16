@@ -2,7 +2,8 @@ import crypto from 'crypto';
 import { Request, Router } from 'express';
 import { connectDB, isDBConfigured } from '../db.js';
 import { getBaseUrl, requireAuth, requireDatabase } from '../middleware/auth.js';
-import { Course, Enrolment, Notification, Payment, User } from '../models.js';
+import { Coupon, Course, Enrolment, Notification, Payment, User } from '../models.js';
+import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
 import { sendTransactionalEmail } from '../utils/email.js';
 import {
   getPaystackMode,
@@ -50,6 +51,11 @@ async function activateEnrolmentFromVerifiedPayment(params: {
     return { alreadyProcessed: false, activated: false };
   }
 
+  // Increment coupon usage atomically only on first verified transition to 'success'
+  if (paymentDoc.couponCode) {
+    await Coupon.updateOne({ code: paymentDoc.couponCode }, { $inc: { usedCount: 1 } });
+  }
+
   // Idempotent enrolment upsert
   await Enrolment.findOneAndUpdate(
     { userId: paymentDoc.userId, courseId: paymentDoc.courseId },
@@ -84,7 +90,7 @@ async function activateEnrolmentFromVerifiedPayment(params: {
     Notification.create({
       targetRole: 'admin',
       title: `Verified Payment: ${paymentDoc.currency} ${paymentDoc.amount}`,
-      message: `${learnerName} enrolled in "${courseTitle}" (Ref: ${paymentDoc.reference}).`,
+      message: `${learnerName} enrolled in "${courseTitle}"${paymentDoc.couponCode ? ` with coupon ${paymentDoc.couponCode}` : ''} (Ref: ${paymentDoc.reference}).`,
       link: '/portal-admin?tab=payments',
     }),
   ]);
@@ -101,80 +107,133 @@ async function activateEnrolmentFromVerifiedPayment(params: {
 }
 
 router.post('/initialize', requireDatabase, requireAuth, async (req, res) => {
-  const { courseId } = req.body || {};
-  if (!courseId) return res.status(400).json({ error: 'Course ID is required.' });
+  try {
+    const { courseId, couponCode } = req.body || {};
+    if (!courseId) return res.status(400).json({ error: 'Course ID is required.' });
 
-  const course = await Course.findOne({ _id: courseId, published: true }).lean();
-  if (!course) return res.status(404).json({ error: 'Course not found or unpublished.' });
+    const course = await Course.findOne({ _id: courseId, published: true }).lean();
+    if (!course) return res.status(404).json({ error: 'Course not found or unpublished.' });
 
-  const c = course as { _id: { toString(): string }; title: string; slug: string; price: number; currency: string };
-  if (c.price <= 0) {
-    return res.status(400).json({ error: 'This course is free and does not require Paystack checkout.' });
-  }
+    const c = course as {
+      _id: { toString(): string };
+      title: string;
+      slug: string;
+      price: number;
+      currency: string;
+    };
+    if (c.price <= 0) {
+      return res
+        .status(400)
+        .json({ error: 'This course is free and does not require Paystack checkout.' });
+    }
 
-  const existingEnrolment = await Enrolment.findOne({
-    userId: req.user!.id,
-    courseId: c._id,
-    status: 'active',
-  }).lean();
-  if (existingEnrolment) {
-    return res.status(400).json({ error: 'You are already enrolled in this course.' });
-  }
-
-  if (!isPaystackConfigured()) {
-    return res.status(503).json({
-      error:
-        'Paystack payment gateway is not configured yet. Set PAYSTACK_SECRET_KEY in server environment variables.',
-      code: 'PAYSTACK_NOT_CONFIGURED',
-    });
-  }
-
-  const reference = `NF-PAY-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-  const currency = (c.currency || 'GHS').toUpperCase();
-  const amountMinor = Math.round(c.price * 100);
-
-  const payment = await Payment.create({
-    userId: req.user!.id,
-    courseId: c._id,
-    reference,
-    amount: c.price,
-    currency,
-    status: 'pending',
-    provider: 'paystack',
-    mode: getPaystackMode(),
-  });
-
-  const origin = getBaseUrl(req);
-  const callbackUrl = `${origin.replace(/\/$/, '')}/learner/payment/verify?reference=${encodeURIComponent(reference)}`;
-
-  const initResult = await initializePaystackTransaction({
-    email: req.user!.email,
-    amountMinor,
-    currency,
-    reference,
-    callbackUrl,
-    metadata: {
+    const existingEnrolment = await Enrolment.findOne({
       userId: req.user!.id,
-      courseId: c._id.toString(),
-      courseTitle: c.title,
-      paymentId: payment._id.toString(),
-    },
-  });
+      courseId: c._id,
+      status: 'active',
+    }).lean();
+    if (existingEnrolment) {
+      return res.status(400).json({ error: 'You are already enrolled in this course.' });
+    }
 
-  if (!initResult.ok || !initResult.authorizationUrl) {
-    payment.status = 'failed';
-    payment.gatewayResponse = initResult.error || 'Initialization failed';
-    await payment.save();
-    return res.status(502).json({
-      error: initResult.error || 'Unable to initialize Paystack checkout.',
+    let appliedCode = '';
+    let discountPercent = 0;
+    let originalAmount = c.price;
+    let discountAmount = 0;
+    let finalAmount = c.price;
+
+    if (couponCode && String(couponCode).trim()) {
+      const couponCheck = await validateCouponForPricing({
+        code: String(couponCode),
+        courseId: c._id.toString(),
+      });
+      if (!couponCheck.ok) {
+        return res.status(couponCheck.status).json({ error: couponCheck.error });
+      }
+      const pricing = calculateCouponDiscount(c.price, couponCheck.coupon.discountPercent);
+      appliedCode = couponCheck.coupon.code;
+      discountPercent = pricing.discountPercent;
+      originalAmount = pricing.originalAmount;
+      discountAmount = pricing.discountAmount;
+      finalAmount = pricing.finalAmount;
+
+      if (finalAmount <= 0) {
+        return res.json({
+          freeWithCoupon: true,
+          couponCode: appliedCode,
+          discountPercent,
+          originalAmount,
+          finalAmount: 0,
+        });
+      }
+    }
+
+    if (!isPaystackConfigured()) {
+      return res.status(503).json({
+        error:
+          'Paystack payment gateway is not configured yet. Set PAYSTACK_SECRET_KEY in server environment variables.',
+        code: 'PAYSTACK_NOT_CONFIGURED',
+      });
+    }
+
+    const reference = `NF-PAY-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    const currency = (c.currency || 'GHS').toUpperCase();
+    const amountMinor = Math.round(finalAmount * 100);
+
+    const payment = await Payment.create({
+      userId: req.user!.id,
+      courseId: c._id,
+      reference,
+      amount: finalAmount,
+      originalAmount,
+      discountAmount,
+      discountPercent,
+      couponCode: appliedCode,
+      currency,
+      status: 'pending',
+      provider: 'paystack',
+      mode: getPaystackMode(),
     });
-  }
 
-  res.json({
-    authorizationUrl: initResult.authorizationUrl,
-    reference,
-    mode: getPaystackMode(),
-  });
+    const origin = getBaseUrl(req);
+    const callbackUrl = `${origin.replace(/\/$/, '')}/learner/payment/verify?reference=${encodeURIComponent(reference)}`;
+
+    const initResult = await initializePaystackTransaction({
+      email: req.user!.email,
+      amountMinor,
+      currency,
+      reference,
+      callbackUrl,
+      metadata: {
+        userId: req.user!.id,
+        courseId: c._id.toString(),
+        courseTitle: c.title,
+        paymentId: payment._id.toString(),
+        couponCode: appliedCode || undefined,
+      },
+    });
+
+    if (!initResult.ok || !initResult.authorizationUrl) {
+      payment.status = 'failed';
+      payment.gatewayResponse = initResult.error || 'Initialization failed';
+      await payment.save();
+      return res.status(502).json({
+        error: initResult.error || 'Unable to initialize Paystack checkout.',
+      });
+    }
+
+    return res.json({
+      authorizationUrl: initResult.authorizationUrl,
+      reference,
+      mode: getPaystackMode(),
+      amount: finalAmount,
+      couponCode: appliedCode || undefined,
+      discountPercent,
+    });
+  } catch (err) {
+    console.error('[Payment Initialize] Error:', err);
+    return res.status(500).json({ error: 'Unable to initialize checkout right now.' });
+  }
 });
 
 router.get('/verify/:reference', requireDatabase, requireAuth, async (req, res) => {

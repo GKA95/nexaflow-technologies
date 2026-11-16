@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { CheckCircle2, MessageSquare, Send } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { getLeadAttribution, trackEvent } from '../utils/analytics';
@@ -25,6 +25,7 @@ export function LeadForm({
   submitLabel = 'Submit Enquiry',
 }: LeadFormProps) {
   const { settings, consent, navigate, showToast } = useApp();
+  const uid = useId();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -119,7 +120,7 @@ export function LeadForm({
                 setSubmitted(false);
                 setDescription('');
               }}
-              className="mt-4 text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+              className="mt-4 min-h-[44px] inline-flex items-center text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
             >
               Send another enquiry
             </button>
@@ -130,7 +131,7 @@ export function LeadForm({
   }
 
   return (
-    <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 sm:p-8">
+    <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-8">
       {heading && (
         <h3 className="text-xl font-semibold text-[#070B24] dark:text-[#F7F8FF]">{heading}</h3>
       )}
@@ -141,9 +142,9 @@ export function LeadForm({
       <form onSubmit={handleSubmit} className="mt-5 space-y-4">
         {/* Honeypot anti-bot field */}
         <div className="hidden" aria-hidden="true">
-          <label htmlFor={`hp-${interestSlug}`}>Website</label>
+          <label htmlFor={`${uid}-hp`}>Website</label>
           <input
-            id={`hp-${interestSlug}`}
+            id={`${uid}-hp`}
             type="text"
             tabIndex={-1}
             autoComplete="off"
@@ -154,59 +155,80 @@ export function LeadForm({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+            <label
+              htmlFor={`${uid}-name`}
+              className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+            >
               Full Name *
             </label>
             <input
+              id={`${uid}-name`}
               type="text"
               required
+              autoComplete="name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Your full name"
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+            <label
+              htmlFor={`${uid}-email`}
+              className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+            >
               Email Address *
             </label>
             <input
+              id={`${uid}-email`}
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@organisation.com"
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+            <label
+              htmlFor={`${uid}-phone`}
+              className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+            >
               Phone / WhatsApp Number
             </label>
             <input
+              id={`${uid}-phone`}
               type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="Include country code"
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
             />
           </div>
 
           {showCompany && (
             <div>
-              <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+              <label
+                htmlFor={`${uid}-company`}
+                className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+              >
                 Company / Organisation
               </label>
               <input
+                id={`${uid}-company`}
                 type="text"
+                autoComplete="organization"
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
                 placeholder="Organisation name (optional)"
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+                className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
               />
             </div>
           )}
@@ -214,15 +236,19 @@ export function LeadForm({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+            <label
+              htmlFor={`${uid}-preferred`}
+              className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+            >
               Preferred Contact Method
             </label>
             <select
+              id={`${uid}-preferred`}
               value={preferredContact}
               onChange={(e) =>
                 setPreferredContact(e.target.value as 'Email' | 'Phone' | 'WhatsApp')
               }
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
             >
               <option value="Email">Email</option>
               <option value="Phone">Phone</option>
@@ -232,13 +258,17 @@ export function LeadForm({
 
           {showBudget && (
             <div>
-              <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+              <label
+                htmlFor={`${uid}-budget`}
+                className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+              >
                 Estimated Budget Range (Optional)
               </label>
               <select
+                id={`${uid}-budget`}
                 value={budgetRange}
                 onChange={(e) => setBudgetRange(e.target.value)}
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
               >
                 <option value="">Prefer to discuss</option>
                 <option value="Under GHS 5,000">Under GHS 5,000</option>
@@ -251,10 +281,14 @@ export function LeadForm({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+          <label
+            htmlFor={`${uid}-desc`}
+            className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+          >
             Project Requirements / Question *
           </label>
           <textarea
+            id={`${uid}-desc`}
             required
             rows={4}
             value={description}
@@ -264,12 +298,16 @@ export function LeadForm({
           />
         </div>
 
-        <label className="flex items-start gap-2.5 text-xs text-[#4A5578] dark:text-[#AEB8D4] cursor-pointer">
+        <label
+          htmlFor={`${uid}-consent`}
+          className="flex items-start gap-2.5 py-1 text-xs text-[#4A5578] dark:text-[#AEB8D4] cursor-pointer"
+        >
           <input
+            id={`${uid}-consent`}
             type="checkbox"
             checked={consentGiven}
             onChange={(e) => setConsentGiven(e.target.checked)}
-            className="mt-0.5 rounded border-[#DCE3F2] dark:border-[#1A2550] text-[#176BFF] focus:ring-[#176BFF]"
+            className="mt-0.5 h-4 w-4 rounded border-[#DCE3F2] dark:border-[#1A2550] text-[#176BFF] focus:ring-[#176BFF] shrink-0"
           />
           <span>
             I consent to NexaFlow Technologies storing and processing this enquiry to contact me
@@ -286,16 +324,19 @@ export function LeadForm({
         </label>
 
         {errorMsg && (
-          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-600 dark:text-red-300">
+          <div
+            role="alert"
+            className="rounded-lg border border-red-500/40 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-600 dark:text-red-300"
+          >
             {errorMsg}
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-3 pt-1">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 pt-1">
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white transition-colors whitespace-nowrap"
+            className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white transition-colors whitespace-nowrap"
           >
             <Send className="w-4 h-4" />
             {submitting ? 'Submitting...' : submitLabel}
@@ -312,7 +353,7 @@ export function LeadForm({
                   consentAccepted: consent === 'accepted',
                 })
               }
-              className="inline-flex items-center gap-2 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2.5 text-sm font-medium text-[#070B24] dark:text-[#F7F8FF] hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] transition-colors whitespace-nowrap"
+              className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2.5 text-sm font-medium text-[#070B24] dark:text-[#F7F8FF] hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] transition-colors whitespace-nowrap"
             >
               <MessageSquare className="w-4 h-4 text-[#00D4FF]" />
               Enquire via WhatsApp

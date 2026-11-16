@@ -405,6 +405,7 @@ export function ProtectedVideoPlayer({
       onContextMenu={(e) => e.preventDefault()}
       onDragStart={(e) => e.preventDefault()}
       onMouseMove={scheduleHideControls}
+      onTouchStart={scheduleHideControls}
       className="relative rounded-xl overflow-hidden border border-[#1A2550] bg-[#03051B] aspect-video select-none focus:outline-none focus:ring-2 focus:ring-[#176BFF] group"
     >
       {/* YouTube IFrame Host — pointer-events strictly disabled so YouTube links/menus/download hooks cannot be triggered */}
@@ -415,7 +416,7 @@ export function ProtectedVideoPlayer({
 
       {/* Top On-Platform Classroom Bar — covers YouTube title / Watch on YouTube / Share hover area */}
       <div
-        className={`absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-b from-[#03051B]/95 via-[#03051B]/80 to-transparent transition-opacity duration-200 pointer-events-none ${
+        className={`absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-b from-[#03051B]/95 via-[#03051B]/80 to-transparent transition-opacity duration-200 pointer-events-none ${
           controlsVisible || !playing ? 'opacity-100' : 'opacity-0'
         }`}
       >
@@ -453,8 +454,8 @@ export function ProtectedVideoPlayer({
           <div className="w-12 h-12 rounded-full border-2 border-[#1A2550] border-t-[#00D4FF] animate-spin" />
         ) : !playing ? (
           <div className="flex flex-col items-center gap-2">
-            <div className="w-16 h-16 rounded-full bg-[#176BFF]/95 hover:bg-[#176BFF] text-white flex items-center justify-center shadow-2xl border border-white/20 transition-transform group-hover:scale-105">
-              <Play className="w-7 h-7 fill-white ml-0.5" />
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[#176BFF]/95 hover:bg-[#176BFF] text-white flex items-center justify-center shadow-2xl border border-white/20 transition-transform group-hover:scale-105">
+              <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-white ml-0.5" />
             </div>
             {!ready && (
               <span className="text-[11px] font-mono text-[#AEB8D4] bg-[#03051B]/80 px-2.5 py-1 rounded">
@@ -469,7 +470,7 @@ export function ProtectedVideoPlayer({
       {watermark && videoId && !sessionError && (
         <div
           aria-hidden="true"
-          className={`absolute z-15 pointer-events-none select-none px-2.5 py-1 rounded bg-[#03051B]/45 text-[10px] font-mono text-white/45 transition-all duration-700 ${watermarkPositionClass}`}
+          className={`absolute z-15 pointer-events-none select-none px-2 py-0.5 sm:px-2.5 sm:py-1 rounded bg-[#03051B]/45 text-[9px] sm:text-[10px] font-mono text-white/45 transition-all duration-700 max-w-[70%] truncate ${watermarkPositionClass}`}
         >
           {watermark}
         </div>
@@ -480,12 +481,12 @@ export function ProtectedVideoPlayer({
         <div
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
-          className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-[#03051B]/95 via-[#03051B]/85 to-transparent px-3 sm:px-4 pt-6 pb-3 transition-opacity duration-200 ${
+          className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-[#03051B]/95 via-[#03051B]/85 to-transparent px-2.5 sm:px-4 pt-5 pb-2 sm:pb-3 transition-opacity duration-200 ${
             controlsVisible || !playing ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
           {/* Seek Bar */}
-          <div className="relative flex items-center mb-2">
+          <div className="relative flex items-center mb-1.5 sm:mb-2">
             <input
               type="range"
               aria-label="Seek video"
@@ -494,21 +495,21 @@ export function ProtectedVideoPlayer({
               step={0.5}
               value={currentTime}
               onChange={(e) => handleSeek(Number(e.target.value))}
-              className="w-full h-1.5 accent-[#00D4FF] cursor-pointer rounded-lg bg-[#1A2550]"
+              className="w-full h-2 accent-[#00D4FF] cursor-pointer rounded-lg bg-[#1A2550]"
               style={{
                 background: `linear-gradient(to right, #00D4FF ${progressPercent}%, rgba(255,255,255,0.2) ${progressPercent}%)`,
               }}
             />
           </div>
 
-          <div className="flex items-center justify-between gap-2 text-xs text-[#F7F8FF]">
-            <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center justify-between gap-1 sm:gap-2 text-xs text-[#F7F8FF]">
+            <div className="flex items-center gap-0.5 sm:gap-2 min-w-0">
               <button
                 type="button"
                 onClick={togglePlay}
                 disabled={!ready}
                 aria-label={playing ? 'Pause' : 'Play'}
-                className="p-1.5 rounded hover:bg-white/10 disabled:opacity-40"
+                className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] inline-flex items-center justify-center rounded-md hover:bg-white/10 disabled:opacity-40 shrink-0"
               >
                 {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               </button>
@@ -519,7 +520,7 @@ export function ProtectedVideoPlayer({
                   onClick={onPrev}
                   aria-label="Previous video"
                   title="Previous sub-video"
-                  className="p-1.5 rounded hover:bg-white/10"
+                  className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] inline-flex items-center justify-center rounded-md hover:bg-white/10 shrink-0"
                 >
                   <SkipBack className="w-4 h-4" />
                 </button>
@@ -531,18 +532,18 @@ export function ProtectedVideoPlayer({
                   onClick={onNext}
                   aria-label="Next video"
                   title="Next sub-video"
-                  className="p-1.5 rounded hover:bg-white/10"
+                  className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] inline-flex items-center justify-center rounded-md hover:bg-white/10 shrink-0"
                 >
                   <SkipForward className="w-4 h-4" />
                 </button>
               )}
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
                   onClick={toggleMute}
                   aria-label={muted ? 'Unmute' : 'Mute'}
-                  className="p-1.5 rounded hover:bg-white/10"
+                  className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] inline-flex items-center justify-center rounded-md hover:bg-white/10"
                 >
                   {muted || volume === 0 ? (
                     <VolumeX className="w-4 h-4" />
@@ -561,17 +562,17 @@ export function ProtectedVideoPlayer({
                 />
               </div>
 
-              <span className="font-mono text-[11px] text-[#AEB8D4] tabular-nums ml-1">
+              <span className="font-mono text-[11px] text-[#AEB8D4] tabular-nums ml-0.5 truncate">
                 {formatClock(currentTime)} / {formatClock(duration)}
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <select
                 aria-label="Playback speed"
                 value={rate}
                 onChange={(e) => handleSpeedChange(Number(e.target.value))}
-                className="rounded bg-[#080D2B] border border-[#1A2550] px-1.5 py-1 text-[11px] font-mono text-[#F7F8FF] focus:outline-none"
+                className="min-h-[36px] rounded bg-[#080D2B] border border-[#1A2550] px-1.5 py-1 text-[11px] font-mono text-[#F7F8FF] focus:outline-none"
               >
                 {[0.75, 1, 1.25, 1.5, 2].map((r) => (
                   <option key={r} value={r}>
@@ -584,7 +585,7 @@ export function ProtectedVideoPlayer({
                 type="button"
                 onClick={() => void toggleFullscreen()}
                 aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-                className="p-1.5 rounded hover:bg-white/10"
+                className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] inline-flex items-center justify-center rounded-md hover:bg-white/10 shrink-0"
               >
                 {isFullscreen ? (
                   <Minimize2 className="w-4 h-4" />

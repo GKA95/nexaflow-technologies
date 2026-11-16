@@ -217,21 +217,23 @@ export function AdminLearnersModule() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-initial">
             <Search className="w-4 h-4 text-[#4A5578] dark:text-[#AEB8D4] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
+              aria-label="Search learners by name or email"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search name or email..."
-              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-[#176BFF]"
+              className="w-full sm:w-60 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-[#176BFF]"
             />
           </div>
 
           <select
+            aria-label="Filter learners by status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'suspended')}
-            className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] px-3 py-2 text-sm focus:outline-none focus:border-[#176BFF]"
+            className="w-full sm:w-auto min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] px-3 py-2 text-sm focus:outline-none focus:border-[#176BFF]"
           >
             <option value="all">All Statuses</option>
             <option value="active">Active Only</option>
@@ -240,7 +242,7 @@ export function AdminLearnersModule() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-x-auto">
+      <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-sm text-[#4A5578] dark:text-[#AEB8D4]">
             Loading learners...
@@ -250,68 +252,28 @@ export function AdminLearnersModule() {
             No matching learner accounts found.
           </div>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-[#DCE3F2] dark:border-[#1A2550] text-xs text-[#4A5578] dark:text-[#AEB8D4]">
-                <th className="p-3.5">Learner</th>
-                <th className="p-3.5">Enrolled Courses</th>
-                <th className="p-3.5">Progress</th>
-                <th className="p-3.5">Status</th>
-                <th className="p-3.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
+          <>
+            {/* Mobile card list (<md) */}
+            <div className="md:hidden divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
               {visibleLearners.map((l) => {
                 const isBusy = busyId === l._id;
                 const activeEnrolments = l.enrolments.filter((e) => e.courseId?._id);
-
                 return (
-                  <tr key={l._id} className="align-top">
-                    <td className="p-3.5">
-                      <p className="font-semibold text-[#070B24] dark:text-[#F7F8FF]">{l.name}</p>
-                      <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">{l.email}</p>
-                      {(l.organization || l.phone) && (
-                        <p className="mt-1 text-[11px] text-[#4A5578] dark:text-[#AEB8D4]/80">
-                          {[l.organization, l.phone].filter(Boolean).join(' · ')}
+                  <div key={l._id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[#070B24] dark:text-[#F7F8FF]">{l.name}</p>
+                        <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4] break-all">
+                          {l.email}
                         </p>
-                      )}
-                    </td>
-
-                    <td className="p-3.5 max-w-xs">
-                      {activeEnrolments.length === 0 ? (
-                        <span className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
-                          No active courses
-                        </span>
-                      ) : (
-                        <div className="flex flex-col gap-1.5">
-                          {activeEnrolments.map((enr) => (
-                            <div
-                              key={enr._id}
-                              className="flex items-center justify-between gap-2 rounded-md border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-2.5 py-1.5 text-xs"
-                            >
-                              <span className="font-medium truncate">{enr.courseId?.title}</span>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => openUnenrollModal(l, enr.courseId?._id)}
-                                className="shrink-0 text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-50"
-                                title="Un-enroll from this course"
-                              >
-                                Un-enroll
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="p-3.5 font-mono tabular-nums text-xs">
-                      {Number(l.completedLessons || 0)} lessons
-                    </td>
-
-                    <td className="p-3.5 text-xs">
+                        {(l.organization || l.phone) && (
+                          <p className="mt-1 text-[11px] text-[#4A5578] dark:text-[#AEB8D4]/80">
+                            {[l.organization, l.phone].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </div>
                       <span
-                        className={`inline-block font-semibold ${
+                        className={`shrink-0 text-xs font-semibold ${
                           l.active
                             ? 'text-emerald-600 dark:text-emerald-400'
                             : 'text-red-600 dark:text-red-400'
@@ -319,78 +281,243 @@ export function AdminLearnersModule() {
                       >
                         {l.active ? 'Active' : 'Suspended'}
                       </span>
-                    </td>
+                    </div>
 
-                    <td className="p-3.5 text-right">
-                      <div className="inline-flex flex-wrap items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => openEnrollModal(l)}
-                          className="inline-flex items-center gap-1 rounded-md border border-[#176BFF]/40 bg-[#176BFF]/10 px-2.5 py-1.5 text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] hover:bg-[#176BFF]/20 disabled:opacity-50"
-                        >
-                          <BookPlus className="w-3.5 h-3.5" />
-                          Enroll
-                        </button>
+                    <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] font-mono tabular-nums">
+                      Progress: {Number(l.completedLessons || 0)} completed lessons
+                    </div>
 
-                        {activeEnrolments.length > 0 && (
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => openUnenrollModal(l)}
-                            className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+                    {activeEnrolments.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {activeEnrolments.map((enr) => (
+                          <div
+                            key={enr._id}
+                            className="flex items-center justify-between gap-2 rounded-md border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs"
                           >
-                            <BookMinus className="w-3.5 h-3.5" />
-                            Un-enroll
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleToggleSuspend(l)}
-                          className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50 ${
-                            l.active
-                              ? 'border-[#DCE3F2] dark:border-[#1A2550] text-[#4A5578] dark:text-[#AEB8D4] hover:border-amber-500/50 hover:text-amber-600 dark:hover:text-amber-300'
-                              : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20'
-                          }`}
-                        >
-                          {l.active ? (
-                            <>
-                              <UserX className="w-3.5 h-3.5" />
-                              Suspend
-                            </>
-                          ) : (
-                            <>
-                              <UserCheck className="w-3.5 h-3.5" />
-                              Activate
-                            </>
-                          )}
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => setRemoveTarget(l)}
-                          className="inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/20 disabled:opacity-50"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Remove
-                        </button>
+                            <span className="font-medium truncate">{enr.courseId?.title}</span>
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => openUnenrollModal(l, enr.courseId?._id)}
+                              className="shrink-0 min-h-[32px] px-1 text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-50"
+                            >
+                              Un-enroll
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                    </td>
-                  </tr>
+                    ) : (
+                      <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                        No active courses
+                      </p>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => openEnrollModal(l)}
+                        className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#176BFF]/40 bg-[#176BFF]/10 px-3 py-2 text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] disabled:opacity-50"
+                      >
+                        <BookPlus className="w-3.5 h-3.5" />
+                        Enroll
+                      </button>
+
+                      {activeEnrolments.length > 0 && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => openUnenrollModal(l)}
+                          className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300 disabled:opacity-50"
+                        >
+                          <BookMinus className="w-3.5 h-3.5" />
+                          Un-enroll
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => handleToggleSuspend(l)}
+                        className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-50 ${
+                          l.active
+                            ? 'border-[#DCE3F2] dark:border-[#1A2550] text-[#4A5578] dark:text-[#AEB8D4]'
+                            : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                        }`}
+                      >
+                        {l.active ? (
+                          <>
+                            <UserX className="w-3.5 h-3.5" />
+                            Suspend
+                          </>
+                        ) : (
+                          <>
+                            <UserCheck className="w-3.5 h-3.5" />
+                            Activate
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => setRemoveTarget(l)}
+                        className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-400 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+
+            {/* Desktop table (md+) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[#DCE3F2] dark:border-[#1A2550] text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                    <th className="p-3.5">Learner</th>
+                    <th className="p-3.5">Enrolled Courses</th>
+                    <th className="p-3.5">Progress</th>
+                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
+                  {visibleLearners.map((l) => {
+                    const isBusy = busyId === l._id;
+                    const activeEnrolments = l.enrolments.filter((e) => e.courseId?._id);
+
+                    return (
+                      <tr key={l._id} className="align-top">
+                        <td className="p-3.5">
+                          <p className="font-semibold text-[#070B24] dark:text-[#F7F8FF]">{l.name}</p>
+                          <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">{l.email}</p>
+                          {(l.organization || l.phone) && (
+                            <p className="mt-1 text-[11px] text-[#4A5578] dark:text-[#AEB8D4]/80">
+                              {[l.organization, l.phone].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 max-w-xs">
+                          {activeEnrolments.length === 0 ? (
+                            <span className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                              No active courses
+                            </span>
+                          ) : (
+                            <div className="flex flex-col gap-1.5">
+                              {activeEnrolments.map((enr) => (
+                                <div
+                                  key={enr._id}
+                                  className="flex items-center justify-between gap-2 rounded-md border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-2.5 py-1.5 text-xs"
+                                >
+                                  <span className="font-medium truncate">{enr.courseId?.title}</span>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => openUnenrollModal(l, enr.courseId?._id)}
+                                    className="shrink-0 text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-50"
+                                    title="Un-enroll from this course"
+                                  >
+                                    Un-enroll
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 font-mono tabular-nums text-xs">
+                          {Number(l.completedLessons || 0)} lessons
+                        </td>
+
+                        <td className="p-3.5 text-xs">
+                          <span
+                            className={`inline-block font-semibold ${
+                              l.active
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-red-600 dark:text-red-400'
+                            }`}
+                          >
+                            {l.active ? 'Active' : 'Suspended'}
+                          </span>
+                        </td>
+
+                        <td className="p-3.5 text-right">
+                          <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => openEnrollModal(l)}
+                              className="inline-flex items-center gap-1 rounded-md border border-[#176BFF]/40 bg-[#176BFF]/10 px-2.5 py-1.5 text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] hover:bg-[#176BFF]/20 disabled:opacity-50"
+                            >
+                              <BookPlus className="w-3.5 h-3.5" />
+                              Enroll
+                            </button>
+
+                            {activeEnrolments.length > 0 && (
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => openUnenrollModal(l)}
+                                className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+                              >
+                                <BookMinus className="w-3.5 h-3.5" />
+                                Un-enroll
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleToggleSuspend(l)}
+                              className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                                l.active
+                                  ? 'border-[#DCE3F2] dark:border-[#1A2550] text-[#4A5578] dark:text-[#AEB8D4] hover:border-amber-500/50 hover:text-amber-600 dark:hover:text-amber-300'
+                                  : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20'
+                              }`}
+                            >
+                              {l.active ? (
+                                <>
+                                  <UserX className="w-3.5 h-3.5" />
+                                  Suspend
+                                </>
+                              ) : (
+                                <>
+                                  <UserCheck className="w-3.5 h-3.5" />
+                                  Activate
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => setRemoveTarget(l)}
+                              className="inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
       {/* Enroll Learner in a Course Modal */}
       {enrollTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 shadow-2xl">
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold">Enroll Learner in Course</h2>
@@ -400,8 +527,9 @@ export function AdminLearnersModule() {
               </div>
               <button
                 type="button"
+                aria-label="Close modal"
                 onClick={() => setEnrollTarget(null)}
-                className="p-1 rounded-md text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-white"
+                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -421,7 +549,7 @@ export function AdminLearnersModule() {
                     required
                     value={selectedCourseId}
                     onChange={(e) => setSelectedCourseId(e.target.value)}
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2.5 text-sm"
+                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2.5 text-sm"
                   >
                     <option value="">-- Choose a course --</option>
                     {courses.map((c) => {
@@ -444,14 +572,14 @@ export function AdminLearnersModule() {
                 <button
                   type="button"
                   onClick={() => setEnrollTarget(null)}
-                  className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
+                  className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!selectedCourseId || busyId === enrollTarget._id}
-                  className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white"
+                  className="min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white"
                 >
                   {busyId === enrollTarget._id ? 'Enrolling...' : 'Enroll Learner'}
                 </button>
@@ -464,7 +592,7 @@ export function AdminLearnersModule() {
       {/* Un-enroll Learner Modal */}
       {unenrollTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 shadow-2xl">
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold">Un-enroll Learner</h2>
@@ -474,8 +602,9 @@ export function AdminLearnersModule() {
               </div>
               <button
                 type="button"
+                aria-label="Close modal"
                 onClick={() => setUnenrollTarget(null)}
-                className="p-1 rounded-md text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-white"
+                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -489,7 +618,7 @@ export function AdminLearnersModule() {
                 <select
                   value={unenrollCourseId}
                   onChange={(e) => setUnenrollCourseId(e.target.value)}
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2.5 text-sm"
+                  className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2.5 text-sm"
                 >
                   {unenrollTarget.enrolments
                     .filter((enr) => enr.courseId?._id)
@@ -509,7 +638,7 @@ export function AdminLearnersModule() {
                 <button
                   type="button"
                   onClick={() => setUnenrollTarget(null)}
-                  className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
+                  className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
                 >
                   Cancel
                 </button>
@@ -517,7 +646,7 @@ export function AdminLearnersModule() {
                   type="button"
                   disabled={!unenrollCourseId || busyId === unenrollTarget._id}
                   onClick={handleUnenrollConfirm}
-                  className="rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white"
+                  className="min-h-[44px] rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white"
                 >
                   {busyId === unenrollTarget._id ? 'Un-enrolling...' : 'Confirm Un-enroll'}
                 </button>
@@ -530,7 +659,7 @@ export function AdminLearnersModule() {
       {/* Remove Learner Confirmation Modal */}
       {removeTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-xl border border-red-500/40 bg-white dark:bg-[#080D2B] p-6 shadow-2xl">
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-xl border border-red-500/40 bg-white dark:bg-[#080D2B] p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-red-600 dark:text-red-400">
@@ -542,8 +671,9 @@ export function AdminLearnersModule() {
               </div>
               <button
                 type="button"
+                aria-label="Close modal"
                 onClick={() => setRemoveTarget(null)}
-                className="p-1 rounded-md text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-white"
+                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -559,7 +689,7 @@ export function AdminLearnersModule() {
               <button
                 type="button"
                 onClick={() => setRemoveTarget(null)}
-                className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
+                className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
               >
                 Cancel
               </button>
@@ -567,7 +697,7 @@ export function AdminLearnersModule() {
                 type="button"
                 disabled={busyId === removeTarget._id}
                 onClick={handleRemovePerson}
-                className="rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white"
+                className="min-h-[44px] rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white"
               >
                 {busyId === removeTarget._id ? 'Removing...' : 'Remove Person'}
               </button>

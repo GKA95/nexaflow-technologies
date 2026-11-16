@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import type {
+  AppliedCoupon,
   ArticleItem,
   AuthUser,
   CourseItem,
@@ -62,6 +63,12 @@ interface AppContextValue {
   resetConsentPrompt: () => void;
   pageMeta: ResolvedMetaTags;
   setPageMeta: (meta: PageMetaConfig | null) => void;
+  appliedCoupon: AppliedCoupon | null;
+  applyCouponCode: (
+    code: string,
+    courseId?: string
+  ) => Promise<{ ok: true; coupon: AppliedCoupon } | { ok: false; error: string }>;
+  clearAppliedCoupon: () => void;
   showToast: (text: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -98,6 +105,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     path: string;
     config: PageMetaConfig;
   } | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = sessionStorage.getItem('nf-applied-coupon');
+      return saved ? (JSON.parse(saved) as AppliedCoupon) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const showToast = useCallback((text: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = Math.random().toString(36).slice(2);
@@ -225,6 +241,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setConsent('unset');
   }, []);
 
+  const clearAppliedCoupon = useCallback(() => {
+    try {
+      sessionStorage.removeItem('nf-applied-coupon');
+    } catch {
+      // ignore storage errors
+    }
+    setAppliedCoupon(null);
+  }, []);
+
+  const applyCouponCode = useCallback(
+    async (
+      code: string,
+      courseId?: string
+    ): Promise<{ ok: true; coupon: AppliedCoupon } | { ok: false; error: string }> => {
+      const trimmed = String(code || '').trim().toUpperCase();
+      if (!trimmed) {
+        return { ok: false, error: 'Please enter a coupon code.' };
+      }
+      try {
+        const res = await fetch('/api/public/coupons/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: trimmed, ...(courseId ? { courseId } : {}) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.coupon) {
+          return { ok: false, error: data.error || 'Invalid coupon code.' };
+        }
+        const coupon = data.coupon as AppliedCoupon;
+        setAppliedCoupon(coupon);
+        try {
+          sessionStorage.setItem('nf-applied-coupon', JSON.stringify(coupon));
+        } catch {
+          // ignore storage errors
+        }
+        return { ok: true, coupon };
+      } catch {
+        return { ok: false, error: 'Network error validating coupon code.' };
+      }
+    },
+    []
+  );
+
   const [pathnameOnly, searchStr = ''] = currentUrl.split('?');
   const searchParams = useMemo(() => new URLSearchParams(searchStr), [searchStr]);
   const normalizedPath = pathnameOnly || '/';
@@ -311,6 +370,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         resetConsentPrompt,
         pageMeta,
         setPageMeta,
+        appliedCoupon,
+        applyCouponCode,
+        clearAppliedCoupon,
         showToast,
       }}
     >
@@ -319,7 +381,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       {/* Accessible Global Toast Stack */}
       <div
         aria-live="polite"
-        className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"
+        className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 sm:right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-2 sm:px-0"
       >
         {toasts.map((toast) => (
           <div

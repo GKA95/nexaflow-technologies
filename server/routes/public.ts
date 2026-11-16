@@ -26,9 +26,31 @@ import {
   WorkShowcase,
 } from '../models.js';
 import { sendTransactionalEmail } from '../utils/email.js';
+import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
 import { isPaystackConfigured, getPaystackMode } from '../utils/paystack.js';
 
 const router = Router();
+
+async function getCourseCountMaps(courseIds: unknown[]) {
+  const moduleMap = new Map<string, number>();
+  const lessonMap = new Map<string, number>();
+  if (courseIds.length === 0) return { moduleMap, lessonMap };
+
+  const [modRows, lessonRows] = await Promise.all([
+    Module.aggregate([
+      { $match: { courseId: { $in: courseIds } } },
+      { $group: { _id: '$courseId', count: { $sum: 1 } } },
+    ]),
+    Lesson.aggregate([
+      { $match: { courseId: { $in: courseIds }, published: true } },
+      { $group: { _id: '$courseId', count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  for (const row of modRows) moduleMap.set(String(row._id), Number(row.count || 0));
+  for (const row of lessonRows) lessonMap.set(String(row._id), Number(row.count || 0));
+  return { moduleMap, lessonMap };
+}
 
 async function getCourseRatingMap(courseIds: unknown[]) {
   if (courseIds.length === 0) return new Map<string, { averageRating: number; reviewCount: number }>();
@@ -118,20 +140,22 @@ router.get('/bootstrap', async (_req, res) => {
       Testimonial.find({ published: true }).sort({ featured: -1, order: 1, createdAt: -1 }).limit(6).lean(),
     ]);
 
-  const ratingMap = await getCourseRatingMap(
-    courses.map((c: Record<string, unknown>) => c._id)
-  );
+  const courseIds = courses.map((c: Record<string, unknown>) => c._id);
+  const [ratingMap, { moduleMap, lessonMap }] = await Promise.all([
+    getCourseRatingMap(courseIds),
+    getCourseCountMaps(courseIds),
+  ]);
 
-  const enrichedCourses = await Promise.all(
-    courses.map(async (c: Record<string, unknown>) => {
-      const [moduleCount, lessonCount] = await Promise.all([
-        Module.countDocuments({ courseId: c._id }),
-        Lesson.countDocuments({ courseId: c._id, published: true }),
-      ]);
-      const rating = ratingMap.get(String(c._id)) || { averageRating: 0, reviewCount: 0 };
-      return { ...c, moduleCount, lessonCount, ...rating };
-    })
-  );
+  const enrichedCourses = courses.map((c: Record<string, unknown>) => {
+    const idStr = String(c._id);
+    const rating = ratingMap.get(idStr) || { averageRating: 0, reviewCount: 0 };
+    return {
+      ...c,
+      moduleCount: moduleMap.get(idStr) || 0,
+      lessonCount: lessonMap.get(idStr) || 0,
+      ...rating,
+    };
+  });
 
   res.json({
     dbConnected: true,
@@ -191,19 +215,21 @@ router.get('/courses', async (_req, res) => {
     return res.json({ courses: [] });
   }
   const courses = await Course.find({ published: true }).sort({ order: 1, createdAt: -1 }).lean();
-  const ratingMap = await getCourseRatingMap(
-    courses.map((c: Record<string, unknown>) => c._id)
-  );
-  const enriched = await Promise.all(
-    courses.map(async (c: Record<string, unknown>) => {
-      const [moduleCount, lessonCount] = await Promise.all([
-        Module.countDocuments({ courseId: c._id }),
-        Lesson.countDocuments({ courseId: c._id, published: true }),
-      ]);
-      const rating = ratingMap.get(String(c._id)) || { averageRating: 0, reviewCount: 0 };
-      return { ...c, moduleCount, lessonCount, ...rating };
-    })
-  );
+  const courseIds = courses.map((c: Record<string, unknown>) => c._id);
+  const [ratingMap, { moduleMap, lessonMap }] = await Promise.all([
+    getCourseRatingMap(courseIds),
+    getCourseCountMaps(courseIds),
+  ]);
+  const enriched = courses.map((c: Record<string, unknown>) => {
+    const idStr = String(c._id);
+    const rating = ratingMap.get(idStr) || { averageRating: 0, reviewCount: 0 };
+    return {
+      ...c,
+      moduleCount: moduleMap.get(idStr) || 0,
+      lessonCount: lessonMap.get(idStr) || 0,
+      ...rating,
+    };
+  });
   res.json({ courses: enriched });
 });
 
@@ -254,6 +280,36 @@ router.get('/courses/:slug', async (req, res) => {
     curriculum,
     reviews,
   });
+});
+
+router.post('/coupons/validate', requireDatabase, async (req, res) => {
+  try {
+    const code = String(req.body?.code || '').trim();
+    const courseId = req.body?.courseId ? String(req.body.courseId).trim() : undefined;
+
+    const result = await validateCouponForPricing({ code, courseId });
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    let pricing: ReturnType<typeof calculateCouponDiscount> | null = null;
+    if (courseId) {
+      const course = await Course.findOne({ _id: courseId, published: true })
+        .select('price currency title')
+        .lean();
+      if (course) {
+        pricing = calculateCouponDiscount(
+          Number((course as { price?: number }).price || 0),
+          result.coupon.discountPercent
+        );
+      }
+    }
+
+    return res.json({ ok: true, coupon: result.coupon, pricing });
+  } catch (err) {
+    console.error('[Public Coupon Validate] Error:', err);
+    return res.status(500).json({ error: 'Unable to validate coupon code right now.' });
+  }
 });
 
 router.get('/work', async (_req, res) => {

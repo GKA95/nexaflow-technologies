@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -9,6 +10,7 @@ import {
   supportLimiter,
 } from '../middleware/auth.js';
 import {
+  Coupon,
   Course,
   CourseReview,
   Enrolment,
@@ -20,6 +22,7 @@ import {
   SupportMessage,
   SupportTicket,
 } from '../models.js';
+import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
 
 const router = Router();
 
@@ -94,34 +97,109 @@ router.get('/dashboard', async (req, res) => {
   });
 });
 
-// Enrolment for explicitly free courses (price === 0 only)
+// Enrolment for explicitly free courses OR 100%-off validated coupon codes
 router.post('/enrol-free', async (req, res) => {
-  const { courseId } = req.body || {};
-  if (!courseId) return res.status(400).json({ error: 'Course ID required.' });
+  try {
+    const { courseId, couponCode } = req.body || {};
+    if (!courseId) return res.status(400).json({ error: 'Course ID required.' });
 
-  const course = await Course.findOne({ _id: courseId, published: true }).lean();
-  if (!course) return res.status(404).json({ error: 'Course not found.' });
+    const course = await Course.findOne({ _id: courseId, published: true }).lean();
+    if (!course) return res.status(404).json({ error: 'Course not found.' });
 
-  const c = course as Record<string, unknown>;
-  if (Number(c.price) > 0) {
-    return res.status(400).json({ error: 'Paid courses require verified Paystack payment.' });
+    const c = course as Record<string, unknown>;
+    const coursePrice = Number(c.price || 0);
+    let redeemedCouponCode = '';
+
+    if (coursePrice > 0) {
+      if (!couponCode || !String(couponCode).trim()) {
+        return res.status(400).json({ error: 'Paid courses require verified Paystack payment.' });
+      }
+      const check = await validateCouponForPricing({
+        code: String(couponCode),
+        courseId: String(c._id),
+      });
+      if (!check.ok) {
+        return res.status(check.status).json({ error: check.error });
+      }
+      const pricing = calculateCouponDiscount(coursePrice, check.coupon.discountPercent);
+      if (pricing.finalAmount > 0) {
+        return res.status(400).json({
+          error: `Coupon "${check.coupon.code}" gives ${check.coupon.discountPercent}% off — please complete checkout for ${String(c.currency || 'GHS')} ${pricing.finalAmount}.`,
+        });
+      }
+
+      const atomicCoupon = await Coupon.findOneAndUpdate(
+        {
+          _id: check.coupon.couponId,
+          active: true,
+          $or: [{ maxUses: { $lte: 0 } }, { $expr: { $lt: ['$usedCount', '$maxUses'] } }],
+        },
+        { $inc: { usedCount: 1 } },
+        { new: true }
+      );
+      if (!atomicCoupon) {
+        return res.status(400).json({ error: 'This coupon has reached its redemption limit.' });
+      }
+      redeemedCouponCode = atomicCoupon.code;
+    }
+
+    let paymentId: unknown = undefined;
+    if (redeemedCouponCode) {
+      const ref = `NF-CPN-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+      const zeroPay = await Payment.create({
+        userId: req.user!.id,
+        courseId: c._id,
+        reference: ref,
+        amount: 0,
+        originalAmount: coursePrice,
+        discountAmount: coursePrice,
+        discountPercent: 100,
+        couponCode: redeemedCouponCode,
+        currency: String(c.currency || 'GHS').toUpperCase(),
+        status: 'success',
+        provider: 'coupon',
+        gatewayResponse: `100% discount coupon (${redeemedCouponCode})`,
+        verifiedAt: new Date(),
+      });
+      paymentId = zeroPay._id;
+    }
+
+    const enrolment = await Enrolment.findOneAndUpdate(
+      { userId: req.user!.id, courseId: c._id },
+      {
+        userId: req.user!.id,
+        courseId: c._id,
+        ...(paymentId ? { paymentId } : {}),
+        status: 'active',
+        activatedAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    await Notification.create({
+      userId: req.user!.id,
+      targetRole: 'learner',
+      title: `Enrolled: ${String(c.title)}`,
+      message: redeemedCouponCode
+        ? `Your 100% discount coupon (${redeemedCouponCode}) unlocked course access.`
+        : 'Your free course access is now active.',
+      link: `/learner/courses/${String(c.slug)}`,
+    });
+
+    if (redeemedCouponCode) {
+      await Notification.create({
+        targetRole: 'admin',
+        title: `100% Coupon Enrolment: ${redeemedCouponCode}`,
+        message: `${req.user!.name} enrolled in "${String(c.title)}" using 100% coupon ${redeemedCouponCode}.`,
+        link: '/portal-admin?tab=coupons',
+      });
+    }
+
+    return res.json({ ok: true, enrolment });
+  } catch (err) {
+    console.error('[Learner Enrol-Free] Error:', err);
+    return res.status(500).json({ error: 'Unable to activate course enrolment.' });
   }
-
-  const enrolment = await Enrolment.findOneAndUpdate(
-    { userId: req.user!.id, courseId: c._id },
-    { userId: req.user!.id, courseId: c._id, status: 'active', activatedAt: new Date() },
-    { upsert: true, new: true }
-  );
-
-  await Notification.create({
-    userId: req.user!.id,
-    targetRole: 'learner',
-    title: `Enrolled: ${String(c.title)}`,
-    message: 'Your free course access is now active.',
-    link: `/learner/courses/${String(c.slug)}`,
-  });
-
-  res.json({ ok: true, enrolment });
 });
 
 // Protected course classroom player — checks active enrolment strictly server-side

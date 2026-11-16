@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Award,
@@ -20,6 +20,7 @@ import { apiFetch } from '../../utils/authSession';
 
 export function CoursePlayerPage({ slug }: { slug: string }) {
   const { user, authLoading, navigate, showToast } = useApp();
+  const uid = useId();
   const [course, setCourse] = useState<CourseItem | null>(null);
   const [modules, setModules] = useState<ModuleItem[]>([]);
   const [activeLesson, setActiveLesson] = useState<LessonItem | null>(null);
@@ -246,7 +247,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
         <button
           type="button"
           onClick={() => navigate(`/learn/${slug}`)}
-          className="mt-5 rounded-lg bg-[#176BFF] px-5 py-2.5 text-sm font-semibold text-white"
+          className="mt-5 min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2.5 text-sm font-semibold text-white"
         >
           View Course &amp; Enrol
         </button>
@@ -261,7 +262,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
         <button
           type="button"
           onClick={() => navigate('/learner')}
-          className="mt-4 text-sm text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+          className="mt-4 min-h-[44px] inline-flex items-center text-sm text-[#176BFF] dark:text-[#00D4FF] hover:underline"
         >
           Return to Dashboard
         </button>
@@ -280,36 +281,36 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
       />
 
       <div
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6"
         onContextMenu={(e) => {
           if ((e.target as HTMLElement)?.closest('[data-protected-stage="true"]')) {
             e.preventDefault();
           }
         }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-[#DCE3F2] dark:border-[#1A2550]">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-5 border-b border-[#DCE3F2] dark:border-[#1A2550]">
+          <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
               onClick={() => navigate('/learner')}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#176BFF] shrink-0"
+              className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#176BFF] shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
               Dashboard
             </button>
             <span className="text-[#4A5578] dark:text-[#AEB8D4]">/</span>
-            <h1 className="text-lg font-bold text-[#070B24] dark:text-[#F7F8FF] truncate">
+            <h1 className="text-base sm:text-lg font-bold text-[#070B24] dark:text-[#F7F8FF] truncate">
               {course.title}
             </h1>
           </div>
-          <div className="flex items-center gap-4 text-xs tabular-nums">
+          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 text-xs tabular-nums">
             <span className="font-mono">
               {stats.completedCount}/{stats.totalLessons} videos ({stats.percent}%)
             </span>
             <button
               type="button"
               onClick={() => navigate('/learner?tab=support')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 font-medium hover:border-[#176BFF]"
+              className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3.5 py-2 font-medium hover:border-[#176BFF] whitespace-nowrap"
             >
               <MessageSquare className="w-3.5 h-3.5 text-[#00D4FF]" />
               Ask a Question
@@ -319,7 +320,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Protected Video Stage + Course Overview */}
-          <div className="lg:col-span-8 space-y-5" data-protected-stage="true">
+          <div className="lg:col-span-8 space-y-5 min-w-0" data-protected-stage="true">
             {activeLesson ? (
               <>
                 <ProtectedVideoPlayer
@@ -341,14 +342,14 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                 />
 
                 {/* Active Sub-Video Controls & Notes */}
-                <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
+                <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="min-w-0">
                       <p className="text-[11px] font-mono uppercase tracking-wider text-[#176BFF] dark:text-[#00D4FF]">
                         Video {activeIndex + 1} of {flatLessons.length}
                         {activeLesson.duration ? ` · ${activeLesson.duration}` : ''}
                       </p>
-                      <h2 className="mt-0.5 text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
+                      <h2 className="mt-0.5 text-lg sm:text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                         {activeLesson.title}
                       </h2>
                     </div>
@@ -357,7 +358,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                         <button
                           type="button"
                           onClick={() => selectLesson(prevLesson)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-2 text-xs font-medium hover:border-[#176BFF]"
+                          className="min-h-[44px] inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3.5 py-2 text-xs font-medium hover:border-[#176BFF] whitespace-nowrap"
                         >
                           <ChevronLeft className="w-4 h-4" />
                           Previous
@@ -367,7 +368,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                         <button
                           type="button"
                           onClick={() => selectLesson(nextLesson)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-2 text-xs font-medium hover:border-[#176BFF]"
+                          className="min-h-[44px] inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3.5 py-2 text-xs font-medium hover:border-[#176BFF] whitespace-nowrap"
                         >
                           Next Video
                           <ChevronRight className="w-4 h-4" />
@@ -376,7 +377,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                       <button
                         type="button"
                         onClick={() => toggleLessonComplete(activeLesson)}
-                        className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${
+                        className={`min-h-[44px] flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-colors whitespace-nowrap ${
                           activeLesson.completed
                             ? 'bg-emerald-600 text-white'
                             : 'bg-[#176BFF] hover:bg-[#0F56D6] text-white'
@@ -409,7 +410,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
             )}
 
             {/* One Big Main Course Description */}
-            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4">
+            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4">
               <div>
                 <p className="text-[11px] font-mono uppercase tracking-wider text-[#00D4FF]">
                   Course Overview
@@ -468,7 +469,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
             </div>
 
             {/* Course Star Rating & Learner Review */}
-            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4">
+            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4">
               {stats.percent === 100 && (
                 <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 flex items-start gap-2.5 text-xs text-emerald-700 dark:text-emerald-300">
                   <Award className="w-4 h-4 shrink-0 mt-0.5" />
@@ -498,9 +499,9 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
 
               <form onSubmit={handleSubmitReview} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                  <span className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
                     Star Rating *
-                  </label>
+                  </span>
                   <StarRatingPicker
                     value={reviewRating}
                     onChange={setReviewRating}
@@ -509,23 +510,31 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                  <label
+                    htmlFor={`${uid}-rtitle`}
+                    className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                  >
                     Review Headline (Optional)
                   </label>
                   <input
+                    id={`${uid}-rtitle`}
                     value={reviewTitle}
                     onChange={(e) => setReviewTitle(e.target.value)}
                     maxLength={140}
                     placeholder="e.g., Clear practical walkthrough of automation pipelines"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                  <label
+                    htmlFor={`${uid}-rcomment`}
+                    className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                  >
                     Your Review *
                   </label>
                   <textarea
+                    id={`${uid}-rcomment`}
                     required
                     minLength={3}
                     maxLength={2000}
@@ -537,7 +546,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                   />
                 </div>
 
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <span className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
                     {savedReview
                       ? `Last submitted on ${new Date(savedReview.createdAt).toLocaleDateString()}`
@@ -546,7 +555,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                   <button
                     type="submit"
                     disabled={reviewSubmitting}
-                    className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white transition-colors"
+                    className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-50 px-5 py-2 text-xs font-semibold text-white transition-colors whitespace-nowrap"
                   >
                     {reviewSubmitting
                       ? 'Submitting...'
@@ -593,7 +602,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                         <button
                           type="button"
                           onClick={() => selectLesson(lesson)}
-                          className={`w-full text-left px-4 py-3 flex items-start gap-2.5 text-sm transition-colors ${
+                          className={`w-full min-h-[52px] text-left px-4 py-3 flex items-start gap-2.5 text-sm transition-colors ${
                             isActive
                               ? 'bg-[#176BFF]/10 text-[#176BFF] dark:text-[#00D4FF] font-medium'
                               : 'hover:bg-[#EEF2FA] dark:hover:bg-[#10183A]'
