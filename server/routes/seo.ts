@@ -1,22 +1,16 @@
 import { Router } from 'express';
 import { connectDB, isDBConfigured } from '../db.js';
 import { DEFAULT_PRODUCTS, DEFAULT_SERVICES } from '../defaults.js';
+import { getBaseUrl as resolveRequestBaseUrl } from '../middleware/auth.js';
 import { Article, Course, Product, SEOSettings, Service, SiteSettings } from '../models.js';
 
 const router = Router();
 
-function getBaseUrl(
-  req: { protocol: string; headers: { host?: string; 'x-forwarded-proto'?: string } },
-  canonicalOverride?: string
-) {
+function getBaseUrl(req: Parameters<typeof resolveRequestBaseUrl>[0], canonicalOverride?: string) {
   if (canonicalOverride?.trim()) {
     return canonicalOverride.trim().replace(/\/$/, '');
   }
-  if (process.env.APP_URL?.trim()) {
-    return process.env.APP_URL.trim().replace(/\/$/, '');
-  }
-  const proto = req.headers['x-forwarded-proto'] === 'https' ? 'https' : req.protocol || 'https';
-  return `${proto}://${req.headers.host || 'localhost:3000'}`;
+  return resolveRequestBaseUrl(req);
 }
 
 router.get('/robots.txt', async (req, res) => {

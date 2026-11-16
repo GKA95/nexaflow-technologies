@@ -491,6 +491,19 @@ const CourseReviewSchema = new Schema(
 );
 CourseReviewSchema.index({ courseId: 1, userId: 1 }, { unique: true });
 
+const OAuthPollResultSchema = new Schema(
+  {
+    nonce: { type: String, required: true, unique: true, index: true },
+    ok: { type: Boolean, required: true },
+    exchangeToken: { type: String, default: '' },
+    portal: { type: String, enum: ['admin', 'learner'], default: 'learner' },
+    error: { type: String, default: '' },
+    expiresAt: { type: Date, required: true },
+  },
+  { timestamps: true }
+);
+OAuthPollResultSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 export const User = mongoose.models.User || mongoose.model('User', UserSchema);
 export const PasswordResetToken =
   mongoose.models.PasswordResetToken ||
@@ -530,3 +543,5 @@ export const Testimonial =
   mongoose.models.Testimonial || mongoose.model('Testimonial', TestimonialSchema);
 export const CourseReview =
   mongoose.models.CourseReview || mongoose.model('CourseReview', CourseReviewSchema);
+export const OAuthPollResult =
+  mongoose.models.OAuthPollResult || mongoose.model('OAuthPollResult', OAuthPollResultSchema);

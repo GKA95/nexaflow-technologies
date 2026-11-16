@@ -71,7 +71,7 @@ export function AdminGatePage() {
     setLoading(true);
     setStatusError('');
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), 15000);
     try {
       const url = forceRetry ? '/api/admin/setup-status?retry=1' : '/api/admin/setup-status';
       const res = await apiFetch(url, {
@@ -81,6 +81,10 @@ export function AdminGatePage() {
       if (!res.ok) {
         throw new Error(`Server returned HTTP ${res.status}`);
       }
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Backend API returned HTML instead of JSON. Ensure serverless /api routes are deployed.');
+      }
       const data = (await res.json()) as SetupStatus;
       setStatus(data);
     } catch (err) {
@@ -88,7 +92,9 @@ export function AdminGatePage() {
       setStatusError(
         err instanceof Error && err.name === 'AbortError'
           ? 'Connection check timed out. Verify your MongoDB Atlas network access and server status.'
-          : 'Could not reach the NexaFlow backend server.'
+          : err instanceof Error && err.message
+            ? `Could not reach the NexaFlow backend server (${err.message}).`
+            : 'Could not reach the NexaFlow backend server.'
       );
     } finally {
       clearTimeout(timer);

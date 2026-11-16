@@ -8,6 +8,7 @@ import {
   clearSessionCookie,
   getBaseUrl,
   isGoogleOAuthConfigured,
+  isJwtSecretConfigured,
   optionalAuth,
   requireAuth,
   requireDatabase,
@@ -17,7 +18,7 @@ import {
   stripHtmlTags,
   verifyScopedToken,
 } from '../middleware/auth.js';
-import { AdminActivity, PasswordResetToken, User } from '../models.js';
+import { AdminActivity, OAuthPollResult, PasswordResetToken, User } from '../models.js';
 import { isEmailConfigured, sendTransactionalEmail } from '../utils/email.js';
 
 const router = Router();
@@ -41,19 +42,42 @@ interface OAuthPollEntry {
 
 const googleOAuthResults = new Map<string, OAuthPollEntry>();
 
-function recordOAuthPollResult(
+async function recordOAuthPollResult(
   nonce: string | undefined,
   entry: Omit<OAuthPollEntry, 'expiresAt'>
 ) {
   if (!nonce) return;
   const now = Date.now();
+  const expiresAtMs = now + 5 * 60 * 1000;
   for (const [k, v] of googleOAuthResults.entries()) {
     if (v.expiresAt <= now) googleOAuthResults.delete(k);
   }
-  googleOAuthResults.set(nonce, { ...entry, expiresAt: now + 5 * 60 * 1000 });
+  googleOAuthResults.set(nonce, { ...entry, expiresAt: expiresAtMs });
+
+  if (isDBConfigured()) {
+    try {
+      const conn = await connectDB();
+      if (conn) {
+        await OAuthPollResult.findOneAndUpdate(
+          { nonce },
+          {
+            nonce,
+            ok: entry.ok,
+            exchangeToken: entry.exchangeToken || '',
+            portal: entry.portal || 'learner',
+            error: entry.error || '',
+            expiresAt: new Date(expiresAtMs),
+          },
+          { upsert: true, new: true }
+        );
+      }
+    } catch (err) {
+      console.warn('[Auth] Could not persist OAuth poll result in MongoDB:', err);
+    }
+  }
 }
 
-function renderPopupResultHtml(params: {
+async function renderPopupResultHtml(params: {
   ok: boolean;
   nonce?: string;
   exchangeToken?: string;
@@ -61,7 +85,7 @@ function renderPopupResultHtml(params: {
   error?: string;
   fallbackPath: string;
 }) {
-  recordOAuthPollResult(params.nonce, {
+  await recordOAuthPollResult(params.nonce, {
     ok: params.ok,
     exchangeToken: params.exchangeToken,
     portal: params.portal,
@@ -152,6 +176,11 @@ const registerSchema = z.object({
 
 // Public registration strictly creates learner accounts only
 router.post('/register', authLimiter, requireDatabase, async (req, res) => {
+  if (process.env.NODE_ENV === 'production' && !isJwtSecretConfigured()) {
+    return res.status(503).json({
+      error: 'JWT_SECRET (at least 16 characters) must be configured in server environment variables.',
+    });
+  }
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     return res
@@ -200,6 +229,11 @@ const loginSchema = z.object({
 });
 
 router.post('/login', authLimiter, requireDatabase, async (req, res) => {
+  if (process.env.NODE_ENV === 'production' && !isJwtSecretConfigured()) {
+    return res.status(503).json({
+      error: 'JWT_SECRET (at least 16 characters) must be configured in server environment variables.',
+    });
+  }
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'Valid email and password are required.' });
@@ -254,6 +288,14 @@ router.post('/login', authLimiter, requireDatabase, async (req, res) => {
 
 // Google Sign-In Step 1: Generate Google OAuth 2.0 Authorization URL
 router.get('/google/url', async (req, res) => {
+  if (process.env.NODE_ENV === 'production' && !isJwtSecretConfigured()) {
+    return res.status(503).json({
+      error:
+        'JWT_SECRET (at least 16 characters) must be configured in server environment variables before using Google Sign-In.',
+      code: 'JWT_NOT_CONFIGURED',
+    });
+  }
+
   if (!isGoogleOAuthConfigured()) {
     return res.status(503).json({
       error:
@@ -320,7 +362,7 @@ router.get('/google/url', async (req, res) => {
 });
 
 // Poll OAuth completion status as fallback if COOP/cross-origin severs window.opener
-router.get('/google/poll', (req, res) => {
+router.get('/google/poll', async (req, res) => {
   const pollToken = String(req.query.pollToken || '');
   const decoded = pollToken
     ? verifyScopedToken<{ purpose?: string; nonce?: string }>(pollToken)
@@ -330,20 +372,50 @@ router.get('/google/poll', (req, res) => {
     return res.status(400).json({ error: 'Invalid poll token.' });
   }
 
-  const entry = googleOAuthResults.get(decoded.nonce);
-  if (!entry || entry.expiresAt <= Date.now()) {
-    if (entry) googleOAuthResults.delete(decoded.nonce);
-    return res.json({ ready: false });
+  const memEntry = googleOAuthResults.get(decoded.nonce);
+  if (memEntry) {
+    googleOAuthResults.delete(decoded.nonce);
+    if (memEntry.expiresAt > Date.now()) {
+      return res.json({
+        ready: true,
+        ok: memEntry.ok,
+        exchangeToken: memEntry.exchangeToken || '',
+        portal: memEntry.portal || 'learner',
+        error: memEntry.error || '',
+      });
+    }
   }
 
-  googleOAuthResults.delete(decoded.nonce);
-  return res.json({
-    ready: true,
-    ok: entry.ok,
-    exchangeToken: entry.exchangeToken || '',
-    portal: entry.portal || 'learner',
-    error: entry.error || '',
-  });
+  if (isDBConfigured()) {
+    try {
+      const conn = await connectDB();
+      if (conn) {
+        const dbEntry = (await OAuthPollResult.findOneAndDelete({
+          nonce: decoded.nonce,
+        }).lean()) as {
+          ok: boolean;
+          exchangeToken?: string;
+          portal?: 'admin' | 'learner';
+          error?: string;
+          expiresAt: Date;
+        } | null;
+
+        if (dbEntry && new Date(dbEntry.expiresAt).getTime() > Date.now()) {
+          return res.json({
+            ready: true,
+            ok: dbEntry.ok,
+            exchangeToken: dbEntry.exchangeToken || '',
+            portal: dbEntry.portal || 'learner',
+            error: dbEntry.error || '',
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[Auth] OAuth poll DB lookup failed:', err);
+    }
+  }
+
+  return res.json({ ready: false });
 });
 
 // Google Sign-In Step 2: Callback from Google (popup window)
@@ -368,7 +440,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
 
   if (oauthError) {
     return res.status(400).send(
-      renderPopupResultHtml({
+      await renderPopupResultHtml({
         ok: false,
         nonce,
         portal,
@@ -380,7 +452,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
 
   if (!code || !decodedState || decodedState.purpose !== 'google_oauth_state') {
     return res.status(400).send(
-      renderPopupResultHtml({
+      await renderPopupResultHtml({
         ok: false,
         nonce,
         portal,
@@ -392,7 +464,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
 
   if (!isGoogleOAuthConfigured()) {
     return res.status(503).send(
-      renderPopupResultHtml({
+      await renderPopupResultHtml({
         ok: false,
         nonce,
         portal,
@@ -405,7 +477,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
   const conn = await connectDB();
   if (!conn) {
     return res.status(503).send(
-      renderPopupResultHtml({
+      await renderPopupResultHtml({
         ok: false,
         nonce,
         portal,
@@ -439,7 +511,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
 
     if (!tokenRes.ok || !tokenData.access_token) {
       return res.status(400).send(
-        renderPopupResultHtml({
+        await renderPopupResultHtml({
           ok: false,
           nonce,
           portal,
@@ -465,7 +537,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
 
     if (!userInfoRes.ok || !profile.sub || !profile.email || profile.email_verified !== true) {
       return res.status(400).send(
-        renderPopupResultHtml({
+        await renderPopupResultHtml({
           ok: false,
           nonce,
           portal,
@@ -491,7 +563,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
       });
       if (adminCount === 0) {
         return res.status(403).send(
-          renderPopupResultHtml({
+          await renderPopupResultHtml({
             ok: false,
             nonce,
             portal,
@@ -503,7 +575,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
       }
       if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
         return res.status(403).send(
-          renderPopupResultHtml({
+          await renderPopupResultHtml({
             ok: false,
             nonce,
             portal,
@@ -514,7 +586,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
       }
       if (!user.active) {
         return res.status(403).send(
-          renderPopupResultHtml({
+          await renderPopupResultHtml({
             ok: false,
             nonce,
             portal,
@@ -540,7 +612,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
       if (user) {
         if (!user.active) {
           return res.status(403).send(
-            renderPopupResultHtml({
+            await renderPopupResultHtml({
               ok: false,
               nonce,
               portal,
@@ -586,7 +658,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
     );
 
     return res.send(
-      renderPopupResultHtml({
+      await renderPopupResultHtml({
         ok: true,
         nonce,
         exchangeToken,
@@ -597,7 +669,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
   } catch (err) {
     console.error('[Auth] Google OAuth callback error:', err);
     return res.status(500).send(
-      renderPopupResultHtml({
+      await renderPopupResultHtml({
         ok: false,
         nonce,
         portal,

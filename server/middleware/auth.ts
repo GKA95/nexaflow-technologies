@@ -41,16 +41,27 @@ declare global {
 }
 
 export function getBaseUrl(req: Request): string {
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '')
+    .split(',')[0]
+    .trim();
+  const host = forwardedHost || req.get('host') || '';
+  const proto =
+    (typeof req.headers['x-forwarded-proto'] === 'string'
+      ? req.headers['x-forwarded-proto'].split(',')[0].trim()
+      : '') ||
+    req.protocol ||
+    'https';
+
+  if (host && !host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+    return `${proto}://${host}`;
+  }
+
   const configured = process.env.APP_URL?.trim().replace(/\/+$/, '');
   if (configured && /^https?:\/\//i.test(configured) && !configured.includes('MY_APP_URL')) {
     return configured;
   }
-  const proto =
-    (typeof req.headers['x-forwarded-proto'] === 'string'
-      ? req.headers['x-forwarded-proto'].split(',')[0].trim()
-      : '') || req.protocol || 'http';
-  const host = req.get('host') || 'localhost:3000';
-  return `${proto}://${host}`;
+
+  return host ? `${proto}://${host}` : 'http://localhost:3000';
 }
 
 export function isGoogleOAuthConfigured(): boolean {

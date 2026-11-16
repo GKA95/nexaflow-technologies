@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Request, Router } from 'express';
 import { connectDB, isDBConfigured } from '../db.js';
-import { requireAuth, requireDatabase } from '../middleware/auth.js';
+import { getBaseUrl, requireAuth, requireDatabase } from '../middleware/auth.js';
 import { Course, Enrolment, Notification, Payment, User } from '../models.js';
 import { sendTransactionalEmail } from '../utils/email.js';
 import {
@@ -144,9 +144,7 @@ router.post('/initialize', requireDatabase, requireAuth, async (req, res) => {
     mode: getPaystackMode(),
   });
 
-  const origin =
-    process.env.APP_URL?.trim() ||
-    `${req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${req.headers.host}`;
+  const origin = getBaseUrl(req);
   const callbackUrl = `${origin.replace(/\/$/, '')}/learner/payment/verify?reference=${encodeURIComponent(reference)}`;
 
   const initResult = await initializePaystackTransaction({
