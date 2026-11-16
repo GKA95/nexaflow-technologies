@@ -1,0 +1,967 @@
+# NEXAFLOW TECHNOLOGIES — FINAL MASTER BUILD PROMPT
+
+## Complete Business Website, Lead Generation, CRM, Learning Platform and Admin Portal
+
+### ROLE
+
+Act as a senior full-stack software engineer, solution architect, UI/UX designer, database architect, cybersecurity engineer, SEO specialist and quality-assurance engineer.
+
+Build the complete NexaFlow Technologies platform described below. I do not write code, so implement the application rather than giving me code snippets to assemble manually.
+
+### IMPORTANT INPUT ASSET
+
+I am attaching the approved NexaFlow Technologies logo.
+
+Treat that exact image as the source of truth for the brand identity.
+
+Do not invent a different logo, redesign the symbol, change the spelling, or substitute a generic technology icon.
+
+Use the supplied full logo lockup in the website header, footer, login screens and suitable branded areas.
+
+Create a separate square icon asset based on the N symbol in the supplied logo for the favicon and app icons.
+
+If the attached asset cannot be processed automatically, tell me exactly which asset is missing; do not silently substitute a different logo.
+
+---
+
+## 1. PROJECT PURPOSE
+
+Build one integrated digital platform for NexaFlow Technologies, a technology business offering AI, data, digital solutions and training.
+
+The platform must combine:
+
+1. A professional public business website.
+2. Service and product marketing pages.
+3. Lead-generation forms and a central CRM.
+4. An online learning management system (LMS).
+5. Individual learner accounts and dashboards.
+6. YouTube-hosted course lessons.
+7. Online payments and enrolment management.
+8. A protected administrator portal.
+9. A content-managed blog/resources section.
+10. Search-engine optimisation (SEO), analytics and conversion tracking.
+
+This must be a functional, database-connected application, not a static mockup.
+
+Do not create fake users, leads, courses, payment transactions, reviews, testimonials, client logos, business addresses or statistics.
+
+Use meaningful empty states until real content is added.
+
+## 2. BRAND IDENTITY AND VISUAL DESIGN
+
+Brand name: **NexaFlow Technologies**
+
+Brand descriptor: **AI, Data & Digital Solutions**
+
+Brand tagline from the approved logo:
+
+**Innovate • Automate • Transform**
+
+Use the attached logo exactly as the reference for the brand.
+
+Keep the logo's proportions and do not stretch it.
+
+Use the full horizontal logo in the desktop header and footer. On smaller screens, use a compact version that remains legible.
+
+The logo artwork has a deep navy background; design the site's main header and branded areas to integrate naturally with it.
+
+If a transparent variant is needed, create it carefully without changing the mark or wordmark.
+
+### Official visual palette
+
+Use the following palette sampled and interpreted from the approved logo. Treat these as the primary design tokens:
+
+| Colour | Hex code |
+|---|---|
+| Midnight navy background | #03051B |
+| Deep navy surface | #080D2B |
+| Elevated navy surface | #10183A |
+| Electric blue | #176BFF |
+| Bright cyan | #00D4FF |
+| Vivid violet | #A42BFF |
+| White | #F7F8FF |
+| Muted lavender-grey | #AEB8D4 |
+| Subtle border | #1A2550 |
+
+Use electric blue, cyan and violet for controlled gradients, highlights, buttons, active states and visual accents.
+
+The main experience should feel premium, modern, intelligent and trustworthy.
+
+Avoid excessive neon, over-glow, clutter, random gradients or a gaming-style interface.
+
+Maintain high contrast and accessibility.
+
+Support both dark and light modes. Dark mode should be the primary brand experience, while light mode must remain polished and readable.
+
+Use a clean modern sans-serif type system. Suitable choices include Inter or a similar highly legible typeface for body text and a complementary geometric sans-serif for headings.
+
+Use a consistent spacing scale, responsive typography, clear visual hierarchy, restrained motion and polished interactions.
+
+The complete brand system must be consistent across the public website, course pages, learner dashboard, administrator portal, emails where configured, social previews and favicon/app icons.
+
+## 3. BROWSER TAB, FAVICON AND BRAND METADATA
+
+**This requirement is essential.**
+
+When someone opens the website in a browser, the browser tab must display:
+
+- The NexaFlow icon/favicon beside the tab name.
+- The browser tab title "NexaFlow Technologies" or a relevant page title followed by "| NexaFlow Technologies".
+
+Do not try to put the entire horizontal wordmark into the tiny browser favicon.
+
+Use the N symbol from the approved logo as the favicon.
+
+The full logo remains visible in the website header.
+
+Create and configure the appropriate icon assets, including:
+
+- favicon.ico where supported.
+- 16x16 and 32x32 PNG favicons.
+- A 180x180 Apple touch icon.
+- 192x192 and 512x512 app icons.
+- A web app manifest with the correct app name and theme colours.
+
+Use the exact attached N symbol as the basis of the icon.
+
+Preserve its electric blue, cyan and violet look against a suitable deep navy background.
+
+Do not replace it with a generic N.
+
+Set the default document title to:
+
+"NexaFlow Technologies | AI, Data & Digital Solutions"
+
+Use unique, descriptive, page-specific title tags for public pages, with the brand name included naturally.
+
+Set an appropriate theme colour matching the navy brand palette.
+
+Configure metadata so the correct favicon appears in supported browsers and the correct title appears in the browser tab, bookmarks and search results where applicable.
+
+Also configure Open Graph and social sharing metadata using the full logo or a suitable branded social preview image.
+
+Do not use the favicon as the main social-sharing image.
+
+## 4. WEBSITE ARCHITECTURE AND PUBLIC PAGES
+
+Create these public-facing pages.
+
+### A. Homepage
+
+- Hero section explaining what NexaFlow Technologies does.
+- Strong but honest headline and concise supporting copy.
+- Primary calls to action: Explore Solutions, Explore Products, Explore Courses and Request a Consultation.
+- Featured services.
+- Featured products.
+- Featured courses.
+- Reasons to work with NexaFlow, without invented claims.
+- How the business works.
+- Selected insights/articles.
+- Lead-generation section.
+- Contact section and professional footer.
+
+### B. About
+
+- Company introduction.
+- Mission, vision and values.
+- What the business does.
+- Areas of expertise.
+- Editable content through the admin portal.
+
+Do not invent a founding date, team size, awards, clients or company history.
+
+### C. Solutions / Services
+
+Create individual public landing pages for:
+
+**1. AI Automation**
+
+AI agents, workflow automation and business process automation.
+
+**2. Web Development**
+
+Business websites, web applications, portals and custom digital platforms.
+
+**3. Data Analytics**
+
+Data cleaning, data processing, reporting, dashboards, business intelligence and predictive analytics.
+
+**4. AI and Machine Learning**
+
+Predictive modelling, forecasting and other appropriate machine-learning applications.
+
+Each service page must contain a clear overview, problems addressed, service details, a relevant call to action and a service-specific enquiry form.
+
+The administrator must be able to add, edit, reorder, publish and unpublish service pages without modifying code.
+
+### D. Products
+
+Create a product catalogue.
+
+Include GridMind AI as an initial product entry, but do not invent its capabilities, pricing or availability.
+
+Make all product information editable by the administrator.
+
+Each product page should support name, description, category, features, benefits, images, demo link, pricing status, enquiry button and SEO metadata.
+
+### E. Learn
+
+Create a public course catalogue for NexaFlow's training programmes.
+
+This is the entry point to the LMS described later.
+
+### F. Insights / Resources
+
+Create an SEO-focused blog and resource library.
+
+The administrator must be able to create and publish articles without returning to Google AI Studio.
+
+### G. Contact
+
+Include editable business email, telephone, WhatsApp, general service location, operating hours, social links, a contact form and a consultation request form.
+
+Never publish a private street or residential address by default.
+
+### H. Legal / Policy Pages
+
+Create editable Privacy Policy, Terms of Service, Cookie/Analytics Notice and Course/Refund Policy pages.
+
+Provide sensible editable templates, but do not claim that generated legal wording is legal advice or invent a policy that I have not approved.
+
+## 5. LEAD GENERATION AND CONVERSION SYSTEM
+
+Lead generation is a major purpose of this platform.
+
+Do not limit lead capture to one contact page.
+
+Create suitable conversion opportunities throughout the website.
+
+Create separate enquiry flows for:
+
+- AI Automation.
+- Web Development.
+- Data Analytics.
+- AI and Machine Learning.
+- Individual products.
+- Training programmes.
+- General business enquiries.
+- Consultation requests.
+
+Forms should collect only relevant information. Depending on the form, fields may include:
+
+- Full name.
+- Email address.
+- Phone or WhatsApp number.
+- Company or organisation name, where relevant.
+- Product/service of interest.
+- A description of the user's problem or requirements.
+- Budget range, only where appropriate.
+- Preferred contact method.
+- Consent to be contacted and any required privacy acknowledgement.
+
+Add WhatsApp contact links with a configurable number and pre-filled enquiry text.
+
+Provide clear contact and consultation calls to action without forcing visitors to create learner accounts.
+
+For every lead, record:
+
+- Name and contact details.
+- Product/service of interest.
+- Date and time received.
+- Lead source, where available.
+- Landing page and referring URL, where available.
+- UTM source, medium, campaign, term and content values, where available.
+- Enquiry description.
+- Consent record.
+- Current lead status.
+
+Store leads in MongoDB.
+
+Add server-side validation, spam protection, rate limiting, honeypot or equivalent bot protection, safe output handling and duplicate-submission protection.
+
+Never expose lead information publicly.
+
+## 6. CENTRAL CRM AND LEAD MANAGEMENT
+
+Build a functional CRM inside the administrator portal.
+
+Lead statuses:
+
+- New
+- Contacted
+- Interested
+- Qualified
+- Proposal Sent
+- Negotiation
+- Converted
+- Lost
+
+Admin capabilities:
+
+- View and search leads.
+- Filter by service/product, status, date and source.
+- Open a lead record and view its complete enquiry.
+- Add private internal notes.
+- Record calls, emails and other contact history.
+- Change lead status.
+- Set follow-up dates.
+- Mark converted or lost leads and record a reason where applicable.
+- Export selected leads to CSV.
+
+CRM dashboard metrics must be calculated from real records only:
+
+- Total leads.
+- New leads.
+- Qualified leads.
+- Converted leads.
+- Conversion rate.
+- Leads by source.
+- Leads by service/product.
+- Recent enquiries.
+- Follow-ups due.
+
+Do not create fake analytics or sample lead records in production.
+
+## 7. NEXAFLOW LEARN — LEARNING MANAGEMENT SYSTEM
+
+Build a complete LMS with multiple courses.
+
+Do not use the word "student"; use "learner" throughout the interface.
+
+### Public course catalogue
+
+Each course must support:
+
+- Course title and slug.
+- Short and detailed descriptions.
+- Course cover image.
+- Price and currency.
+- Course objectives and expected learning outcomes.
+- Curriculum, modules and lessons.
+- Number of modules and lessons, calculated from actual records.
+- Course publication status.
+- Enrolment button.
+- SEO title and description.
+
+### Course structure
+
+A course contains multiple modules. Each module contains multiple lessons.
+
+Each lesson supports:
+
+- Lesson title.
+- Description or notes.
+- YouTube video URL.
+- Lesson order.
+- Estimated duration, where known.
+- Published/unpublished state.
+- Learner completion tracking.
+
+The administrator must be able to create, edit, delete, reorder, publish and unpublish courses, modules and lessons.
+
+Support adding new courses in the future without changing code.
+
+### YouTube video hosting
+
+YouTube is the video-hosting service.
+
+The administrator will paste the relevant YouTube URL into each lesson.
+
+Do not store video files in MongoDB.
+
+Use YouTube's supported embedded player.
+
+Course videos will be switched to Unlisted before being added to the platform.
+
+Do not assume YouTube Private videos can be embedded and watched by every learner.
+
+Only show lesson pages and their embedded video within the authenticated course experience for learners who have an active enrolment.
+
+Be transparent: an Unlisted YouTube URL can still be shared by someone who obtains it.
+
+Do not claim that embedding makes the video impossible to share, download or record.
+
+Do not build unauthorised YouTube downloading functionality.
+
+### Enrolment workflow
+
+1. A visitor opens a course page.
+2. The visitor reviews the course information and curriculum.
+3. The visitor selects Enrol.
+4. The visitor creates an account or signs in.
+5. The visitor proceeds to payment.
+6. The payment is processed by the configured payment gateway.
+7. The server verifies the transaction using the provider's trusted verification mechanism.
+8. Only after confirmed payment, create/activate the enrolment.
+9. The course appears in the learner dashboard.
+10. The learner can access the published lessons for that course.
+
+Never activate access solely because the browser is redirected to a success page.
+
+Recheck payment server-side and prevent duplicate processing.
+
+### Learner dashboard
+
+Every learner has a private dashboard containing:
+
+- Overview.
+- My Courses.
+- Continue Learning.
+- Course Progress.
+- Completed Lessons.
+- My Questions.
+- My Complaints.
+- My Messages.
+- Payment History.
+- Account Settings.
+
+Learners must only access their own account, enrolments, messages, payment records and progress.
+
+Enforce this on the server, not only in the frontend.
+
+### Learning progress
+
+Allow a learner to mark a lesson as completed.
+
+Store progress in MongoDB.
+
+Display completed lessons, remaining lessons, progress percentage, last lesson accessed and a Continue Learning link.
+
+Calculate progress from actual lesson completion records.
+
+### Questions, complaints and support
+
+Build a ticket-based support system.
+
+Learners can ask questions, explain topics they do not understand, report technical issues, submit complaints and provide feedback.
+
+Each ticket must have a unique reference number, subject, category, description, date, status and conversation history.
+
+Statuses:
+
+- Open
+- In Progress
+- Answered
+- Closed
+
+Learners can view and reply to their own tickets.
+
+Administrators can respond from the admin portal.
+
+Do not allow one learner to see another learner's tickets.
+
+## 8. PAYMENTS AND ENROLMENT RECORDS
+
+Use Paystack as the initial payment gateway, subject to the merchant account's eligibility and enabled payment channels.
+
+Set GHS as the default course currency, with currency and price configurable per course where appropriate.
+
+Use Paystack's official integration and current API documentation.
+
+Implement:
+
+- Server-side transaction initialisation.
+- Secret keys stored only in server-side environment variables.
+- Server-side transaction verification.
+- Webhook signature verification.
+- Validation of amount, currency, transaction reference and intended course.
+- Idempotency or equivalent duplicate-event protection.
+- Payment records in MongoDB.
+- Handling of successful, pending, failed, abandoned and refunded transactions where supported.
+- Course access activated only after trusted verification.
+
+Provide test and live modes.
+
+Never simulate successful payment.
+
+If credentials are missing, show a clear configuration-required state and document the necessary settings.
+
+Learners should see their own payment history.
+
+Administrators should be able to view payment records, status, references and related enrolments.
+
+Do not store card details.
+
+## 9. PROTECTED ADMINISTRATOR PORTAL
+
+Create a separate administrator portal on a dedicated route.
+
+Do not display an admin login link in the public navigation or public footer.
+
+Hiding a route is not a security measure: require secure authentication, server-side role checks and protected APIs for every administrator action.
+
+Create a secure initial administrator setup process.
+
+Do not hardcode credentials, passwords or secrets.
+
+Disable public administrator registration.
+
+Support role-based access if additional administrators are added later.
+
+### Admin dashboard
+
+Display real metrics:
+
+- Total learners.
+- Published courses.
+- Enrolments.
+- Verified revenue.
+- Recent payments.
+- Total leads.
+- New leads.
+- Converted leads.
+- Open support tickets.
+- Recent admin activity.
+
+### Admin modules
+
+1. Course Management: manage courses, modules, lessons and YouTube URLs.
+2. Learner Management: view learner accounts, enrolments and progress.
+3. Payments: review verified transactions and payment statuses.
+4. Lead CRM: manage enquiries, notes, contact history and follow-ups.
+5. Product Management: create and manage products.
+6. Service Management: create and manage service pages.
+7. Blog Management: write, edit, draft, publish and delete articles.
+8. Support Management: view and respond to learner tickets.
+9. Website Management: edit public content, navigation, calls to action and footer details.
+10. Business Settings: manage business name, descriptor, contact details, social links and service areas.
+11. SEO Management: edit metadata for pages, products, services, courses and articles.
+12. Analytics: view real traffic events, leads, enrolments and payments.
+13. Notification Management: view and manage system notifications.
+14. Activity/Audit Log: record sensitive administrator actions.
+
+## 10. BUSINESS DETAILS, CONTACTS AND LOCATION PRIVACY
+
+Create a central Business Information section in the admin portal.
+
+All public contact details should be editable without changing application code.
+
+Editable fields:
+
+- Business display name.
+- Business descriptor/tagline.
+- Business email.
+- Business phone number.
+- WhatsApp number.
+- General location (for example, city and country, once supplied).
+- Service areas, if applicable.
+- Business hours, if supplied.
+- LinkedIn, Facebook, Instagram, YouTube and other social profiles.
+- Google Business Profile URL, if one is validly established.
+
+The business operates primarily online.
+
+I have a private physical workspace, but I do not want customers visiting it.
+
+Do not publish or expose the private street address anywhere on the public site, in schema, metadata, page source or public API responses.
+
+Do not invent a business address or map pin.
+
+Do not automatically create or claim a Google Business Profile.
+
+Google Business Profile eligibility must be checked separately.
+
+A service-area profile may be appropriate only if the business genuinely travels to customers and provides eligible in-person services.
+
+If the business is remote-only, do not represent it as an eligible Maps listing.
+
+The website can still display the general city/country location if I choose to publish it.
+
+## 11. NEXAFLOW INSIGHTS — BLOG AND CONTENT MANAGEMENT
+
+Build a full CMS-style blog.
+
+I must be able to publish articles from the admin dashboard without returning to Google AI Studio.
+
+Features:
+
+- Create, edit, preview, draft, publish, unpublish and delete articles.
+- Add featured images.
+- Add categories and tags.
+- Edit author display name.
+- Add a publication date.
+- Add internal links to relevant courses, services and products.
+- Add calls to action.
+- Set SEO title, meta description, canonical URL and social preview image.
+- Generate readable article slugs.
+- Show related articles where relevant.
+- Provide a readable article layout and estimated reading time.
+
+Do not invent author credentials or publish date details.
+
+Articles must be publicly accessible and indexable when published and must have unique, descriptive URLs.
+
+## 12. SEO AND GOOGLE SEARCH
+
+SEO is a core feature, not a later add-on.
+
+Implement technical SEO, on-page SEO and content SEO for public pages.
+
+### Technical SEO
+
+- Render public pages in a way that search engines can reliably discover and understand.
+- Generate XML sitemap dynamically from published public pages, products, services, courses and articles.
+- Provide a correct robots.txt.
+- Use canonical URLs.
+- Use clean, readable URL slugs.
+- Provide correct HTTP status codes and redirects.
+- Avoid indexing private dashboards, admin routes, login pages, private learner pages, internal search results and other private content.
+- Optimise images and loading performance.
+- Use semantic HTML and accessible heading structure.
+- Ensure mobile responsiveness.
+- Avoid duplicate pages and duplicate metadata.
+
+### Page-level SEO
+
+For each public page, allow editing:
+
+- SEO title.
+- Meta description.
+- Slug.
+- Canonical URL.
+- Social/Open Graph title and description.
+- Social sharing image.
+- Index/noindex setting.
+- Relevant focus keyword or search topic for editorial guidance.
+
+Use natural language and avoid keyword stuffing.
+
+Do not guarantee first-page rankings.
+
+### Structured data
+
+Use valid Schema.org structured data where appropriate, such as:
+
+- Organization.
+- WebSite.
+- Service.
+- Course.
+- Article.
+- BreadcrumbList.
+
+Only publish details supported by actual content.
+
+Do not fabricate ratings, reviews, addresses, opening hours, prices or course claims.
+
+### Google Search Console
+
+Prepare the site for Google Search Console verification.
+
+Allow configuration of the verification meta tag or other suitable verification method.
+
+Generate an accurate sitemap and document how to submit it.
+
+Do not claim Google has indexed a page unless that has actually been verified.
+
+### Google Analytics
+
+Prepare Google Analytics 4 integration using a configurable Measurement ID.
+
+Track meaningful events such as:
+
+- Page views.
+- Course views.
+- Enrolment CTA clicks.
+- Enrolment completion.
+- Product views.
+- Lead form submissions.
+- Consultation requests.
+- WhatsApp/contact clicks.
+
+Respect privacy and consent requirements for analytics and non-essential tracking.
+
+Do not load analytics before the required consent where applicable.
+
+Clearly document configuration.
+
+## 13. NOTIFICATIONS AND EMAIL
+
+Create in-app notifications.
+
+Notify learners of enrolment activation, confirmed payments, new administrator responses and important course announcements.
+
+Notify administrators of new leads, new enrolments, verified payments, new questions and complaints.
+
+Prepare optional transactional email integration using a configurable email provider.
+
+Do not hardcode provider credentials.
+
+Do not claim an email was sent unless the configured provider confirms successful submission.
+
+Provide clear setup instructions for sender address, API key and templates.
+
+## 14. DATABASE AND STORAGE
+
+Use MongoDB Atlas as the database.
+
+Do not use Firebase, Firestore or Supabase.
+
+Create a well-structured MongoDB data model with validation and indexes.
+
+Collections or equivalent models should include:
+
+- Users.
+- Roles/permissions, if needed.
+- Courses.
+- Modules.
+- Lessons.
+- Enrolments.
+- Payments.
+- LessonProgress.
+- SupportTickets.
+- SupportMessages.
+- Leads.
+- LeadActivities.
+- Products.
+- Services.
+- Articles.
+- Categories.
+- Tags.
+- SiteSettings.
+- SEOSettings.
+- Notifications.
+- AdminActivities.
+
+Use server-side database access.
+
+Keep MongoDB credentials out of frontend bundles.
+
+Do not store large video or image files directly in MongoDB.
+
+Use appropriate image/file storage if media uploads are required; keep storage configurable and document free-tier limits.
+
+YouTube hosts course videos.
+
+Build reusable database connection handling suitable for serverless deployment.
+
+Add necessary indexes for user lookup, course lookup, lead filters, payment references and enrolments.
+
+## 15. SECURITY, PRIVACY AND ACCESS CONTROL
+
+Security is essential.
+
+Implement:
+
+- Secure authentication and password hashing.
+- Secure session handling and HTTP-only cookies where appropriate.
+- Role-based access control.
+- Server-side authorisation for all protected API endpoints.
+- Learner ownership checks for accounts, tickets, progress and payments.
+- Secure administrator access and no public admin signup.
+- Server-side input validation and output sanitisation.
+- Rate limiting for login, enquiry and support endpoints.
+- CSRF protection where applicable.
+- Protection against injection and common web vulnerabilities.
+- Secure payment callback and webhook verification.
+- Safe error handling without revealing secrets or internal stack traces.
+- Environment variables for secrets.
+- Audit logging for important administrator actions.
+- Privacy-conscious data collection and retention settings.
+
+Never expose MongoDB credentials, Paystack secret keys, email API keys, authentication secrets, admin credentials or private learner information in frontend code, public logs or public APIs.
+
+Never depend on frontend-only checks to protect data.
+
+## 16. APPLICATION ARCHITECTURE AND DEPLOYMENT
+
+Build a maintainable full-stack application using the capabilities supported by Google AI Studio Build Mode.
+
+Use TypeScript where supported and a clear separation between UI, server routes, business logic and database access.
+
+The application must be exportable to GitHub and designed to be deployable outside Google AI Studio.
+
+Keep the architecture portable and compatible with a modern hosting provider that supports the chosen frontend and server-side runtime.
+
+If Vercel is selected, use its supported deployment model; however, do not assume that a free hosting plan is suitable for a commercial paid-course and lead-generation business.
+
+Explain hosting-plan restrictions and identify a compliant deployment option before production launch.
+
+Do not make the application dependent on a proprietary feature that prevents migration.
+
+Prepare:
+
+- Environment variable documentation.
+- A safe example environment file with placeholders only.
+- MongoDB setup instructions.
+- Paystack test/live setup instructions.
+- Email provider setup instructions, if configured.
+- Google Analytics and Search Console setup instructions.
+- GitHub export/sync instructions.
+- Domain and DNS setup instructions.
+- Build and deployment instructions.
+- Backup and recovery recommendations.
+
+Do not ask me to paste secrets into public frontend code or commit secrets to GitHub.
+
+## 17. RESPONSIVE DESIGN AND ACCESSIBILITY
+
+Every public page, learner page and admin page must work on desktop, tablet and mobile.
+
+Include:
+
+- Responsive navigation.
+- Accessible buttons and forms.
+- Keyboard-friendly interactions.
+- Sufficient colour contrast.
+- Labels and useful validation messages.
+- Loading states and clear error states.
+- Empty states for sections with no data.
+- Confirmation dialogs for destructive actions.
+- Toast or inline success messages.
+- Search, filters and pagination for large tables.
+- Smooth but restrained animations.
+
+Do not make the public homepage the only polished page.
+
+The learner and administrator dashboards must receive the same design attention.
+
+## 18. ADMIN-MANAGED CONTENT AND NO FAKE DATA
+
+All business content that may change should be manageable from the administrator portal:
+
+- Contact details.
+- Services.
+- Products.
+- Courses.
+- Modules.
+- Lessons.
+- YouTube URLs.
+- Articles.
+- Categories.
+- Calls to action.
+- SEO fields.
+- Relevant site sections.
+
+Do not create fake content to fill empty screens.
+
+Use clear empty states such as "No courses published yet" or "No enquiries received yet."
+
+Do not invent a phone number, email address, street address, customer testimonial, rating, client logo, revenue figure or course price.
+
+Do not publish sample transactions or leads in the live database.
+
+## 19. IMPLEMENTATION PHASES
+
+Build in a controlled sequence while maintaining one integrated application.
+
+**Phase 1:** Brand system, logo integration, favicon/browser metadata, responsive public website and navigation.
+
+**Phase 2:** MongoDB connection, authentication, roles and account management.
+
+**Phase 3:** Course catalogue, course/module/lesson management, learner dashboard and progress tracking.
+
+**Phase 4:** Paystack integration, payment verification, enrolment activation and payment history.
+
+**Phase 5:** Lead capture forms, source attribution and CRM.
+
+**Phase 6:** Product/service management and public landing pages.
+
+**Phase 7:** Blog CMS and resource pages.
+
+**Phase 8:** Administrator dashboard, support tickets, business settings and notifications.
+
+**Phase 9:** SEO, Google Analytics, Search Console readiness, security and performance.
+
+**Phase 10:** End-to-end testing, deployment documentation and handover.
+
+Do not stop after Phase 1 or after producing a homepage.
+
+Continue implementing the integrated application.
+
+If the tool cannot finish the entire application in one generation, clearly report the completed phase and continue from the remaining phases without removing existing working features.
+
+## 20. ACCEPTANCE TESTS
+
+Before declaring the application complete, verify the following.
+
+### Brand and browser
+
+1. The exact supplied NexaFlow logo is used in the website header and footer.
+2. The logo is not distorted or replaced with another mark.
+3. The N symbol is used for the favicon and app icons.
+4. The browser tab displays a NexaFlow favicon beside the title "NexaFlow Technologies" or a relevant page title with the brand name.
+5. Page titles and social metadata are unique and correctly configured.
+6. The brand palette is consistent across public pages, learner dashboard and admin portal.
+
+### Public website and leads
+
+7. Visitors can browse all public pages.
+8. Visitors can submit valid service and product enquiries.
+9. Enquiries are saved to MongoDB.
+10. Lead source and UTM information are saved when available.
+11. Spam protection and server-side validation work.
+12. New leads appear in the administrator CRM.
+13. Administrators can search, filter, update and export leads.
+14. Private lead data is not accessible to unauthorised users.
+
+### Learning and payments
+
+15. Visitors can browse published courses.
+16. Users can create accounts and sign in.
+17. Learners can only see their own dashboard and records.
+18. Administrators can create courses, modules and lessons.
+19. Administrators can add and update YouTube links.
+20. Course access is restricted to learners with active enrolments.
+21. Payment success is verified server-side.
+22. Course access is activated only after verified payment.
+23. Duplicate webhook events do not create duplicate payments or enrolments.
+24. Learners can watch the appropriate embedded lessons.
+25. Learners can track lesson progress.
+26. Learners can submit questions and complaints.
+27. Administrators can respond to learner tickets.
+
+### Admin and content
+
+28. Admin routes and APIs are protected server-side.
+29. Administrators can manage products, services, courses, learners and payments.
+30. Administrators can publish and edit blog articles.
+31. Administrators can edit business contacts and website content.
+32. Administrators can edit SEO metadata.
+33. Private addresses and secrets are not exposed publicly.
+
+### SEO, security and deployment
+
+34. The sitemap includes published public pages only.
+35. Robots and canonical URLs are configured correctly.
+36. Private dashboards and admin pages are not indexed.
+37. Structured data contains only verified information.
+38. Analytics events work after the required configuration and consent.
+39. The application is responsive and has no broken navigation.
+40. No critical secrets are exposed in frontend code or GitHub.
+41. Build and deployment instructions are documented.
+42. Hosting-plan suitability for commercial production is clearly stated.
+
+## 21. FINAL HANDOVER
+
+When the application is ready, provide a clear handover that states:
+
+1. What has been implemented.
+2. Which features have been tested and are working.
+3. Which integrations are connected.
+4. Which integrations still require credentials.
+5. The exact environment variables I must configure and where to configure them.
+6. How to set up MongoDB Atlas.
+7. How to configure Paystack test mode and later live mode.
+8. How to configure email notifications if enabled.
+9. How to verify the domain in Google Search Console and submit the sitemap.
+10. How to connect Google Analytics.
+11. How to export or sync the project to GitHub.
+12. Which hosting plan/provider is suitable for commercial production and why.
+13. How to create the first administrator account securely.
+14. Any known limitations or unfinished work.
+
+### FINAL COMMAND
+
+Start building the NexaFlow Technologies platform now.
+
+Use the attached approved logo as the source of truth for the visual identity.
+
+Implement the complete integrated application with real database-backed functionality.
+
+Do not substitute requested features with non-functional placeholders.
+
+Do not invent company information.
+
+Do not ask me to write code manually.
+
+Where external credentials are missing, build the integration and clearly explain what I must configure.
