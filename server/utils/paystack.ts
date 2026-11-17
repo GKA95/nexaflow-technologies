@@ -1,6 +1,8 @@
 import crypto from 'crypto';
+import { PAYSTACK_REF_RE } from '../shared/validation.js';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
+const PAYSTACK_TIMEOUT_MS = 15000;
 
 export function isPaystackConfigured(): boolean {
   const secret = process.env.PAYSTACK_SECRET_KEY?.trim();
@@ -40,6 +42,7 @@ export async function initializePaystackTransaction(params: {
   try {
     const res = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
       method: 'POST',
+      signal: AbortSignal.timeout(PAYSTACK_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY!.trim()}`,
         'Content-Type': 'application/json',
@@ -76,7 +79,7 @@ export async function initializePaystackTransaction(params: {
       reference: data.data.reference,
     };
   } catch (err) {
-    console.error('[Paystack] Init error:', err);
+    console.error('[Paystack] Init error:', err instanceof Error ? err.message : err);
     return {
       ok: false,
       configured: true,
@@ -96,6 +99,9 @@ export async function verifyPaystackTransaction(reference: string): Promise<{
   metadata?: Record<string, unknown>;
   error?: string;
 }> {
+  if (!PAYSTACK_REF_RE.test(reference)) {
+    return { ok: false, configured: isPaystackConfigured(), error: 'Invalid payment reference format.' };
+  }
   if (!isPaystackConfigured()) {
     return {
       ok: false,
@@ -107,6 +113,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<{
   try {
     const res = await fetch(`${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(reference)}`, {
       method: 'GET',
+      signal: AbortSignal.timeout(PAYSTACK_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY!.trim()}`,
       },
@@ -150,11 +157,88 @@ export async function verifyPaystackTransaction(reference: string): Promise<{
       metadata: json.data.metadata || {},
     };
   } catch (err) {
-    console.error('[Paystack] Verify error:', err);
+    console.error('[Paystack] Verify error:', err instanceof Error ? err.message : err);
     return {
       ok: false,
       configured: true,
       error: 'Network error verifying Paystack transaction.',
+    };
+  }
+}
+
+export async function refundPaystackTransaction(params: {
+  reference: string;
+  amountMinor?: number;
+  merchantNote?: string;
+}): Promise<{
+  ok: boolean;
+  configured: boolean;
+  refundReference?: string;
+  status?: string;
+  error?: string;
+}> {
+  if (!PAYSTACK_REF_RE.test(params.reference)) {
+    return { ok: false, configured: isPaystackConfigured(), error: 'Invalid payment reference.' };
+  }
+  if (!isPaystackConfigured()) {
+    return {
+      ok: false,
+      configured: false,
+      error: 'Paystack credentials are not configured.',
+    };
+  }
+
+  try {
+    const payload: Record<string, unknown> = {
+      transaction: params.reference,
+    };
+    if (params.amountMinor !== undefined && Number.isFinite(params.amountMinor) && params.amountMinor > 0) {
+      payload.amount = Math.round(params.amountMinor);
+    }
+    if (params.merchantNote) {
+      payload.merchant_note = params.merchantNote.slice(0, 500);
+    }
+
+    const res = await fetch(`${PAYSTACK_BASE}/refund`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(PAYSTACK_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY!.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const json = (await res.json()) as {
+      status?: boolean;
+      message?: string;
+      data?: {
+        id?: number | string;
+        transaction?: { reference?: string };
+        status?: string;
+      };
+    };
+
+    if (!res.ok || !json.status) {
+      return {
+        ok: false,
+        configured: true,
+        error: json.message || 'Paystack refused the refund request.',
+      };
+    }
+
+    return {
+      ok: true,
+      configured: true,
+      refundReference: json.data?.id ? `RF-${json.data.id}` : `RF-${params.reference}`,
+      status: json.data?.status || 'processed',
+    };
+  } catch (err) {
+    console.error('[Paystack] Refund error:', err instanceof Error ? err.message : err);
+    return {
+      ok: false,
+      configured: true,
+      error: 'Network error communicating with Paystack refund API.',
     };
   }
 }

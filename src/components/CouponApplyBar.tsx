@@ -1,6 +1,11 @@
 import React, { useId, useState } from 'react';
 import { CheckCircle2, Tag, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import {
+  couponValidateSchema,
+  fieldBorderClass,
+  validateWithSchema,
+} from '../utils/formValidation';
 
 export function CouponApplyBar({
   courseId,
@@ -23,14 +28,18 @@ export function CouponApplyBar({
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg('');
-    if (!codeInput.trim()) {
-      setErrorMsg('Enter a coupon code to apply a discount.');
+    const check = validateWithSchema(couponValidateSchema.pick({ code: true }), {
+      code: codeInput,
+    });
+    if (!check.ok) {
+      setErrorMsg(check.fieldErrors.code || check.message);
       return;
     }
     setSubmitting(true);
     try {
-      const result = await applyCouponCode(codeInput, courseId);
+      const result = await applyCouponCode(check.data.code.toUpperCase(), courseId);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -91,10 +100,11 @@ export function CouponApplyBar({
           </p>
         </div>
 
-        <form onSubmit={handleApply} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+        <form onSubmit={handleApply} noValidate className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
           <input
             id={inputId}
             type="text"
+            aria-invalid={Boolean(errorMsg)}
             value={codeInput}
             onChange={(e) => {
               setCodeInput(e.target.value.toUpperCase());
@@ -103,7 +113,10 @@ export function CouponApplyBar({
             placeholder="e.g. NEXA25"
             autoCapitalize="characters"
             autoComplete="off"
-            className={`min-h-[44px] w-full sm:w-44 rounded-lg border px-3.5 py-2 text-sm font-mono uppercase focus:outline-none focus:border-[#176BFF] ${inputCls}`}
+            className={fieldBorderClass(
+              `min-h-[44px] w-full sm:w-44 rounded-lg border px-3.5 py-2 text-sm font-mono uppercase focus:outline-none focus:border-[#176BFF] ${inputCls}`,
+              errorMsg
+            )}
           />
           <button
             type="submit"

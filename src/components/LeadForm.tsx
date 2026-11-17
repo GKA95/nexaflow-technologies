@@ -1,7 +1,14 @@
-import React, { useId, useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { CheckCircle2, MessageSquare, Send } from 'lucide-react';
+import { FieldError } from './FieldError';
 import { useApp } from '../context/AppContext';
 import { getLeadAttribution, trackEvent } from '../utils/analytics';
+import {
+  fieldBorderClass,
+  type FieldErrors,
+  leadFormSchema,
+  validateWithSchema,
+} from '../utils/formValidation';
 
 interface LeadFormProps {
   interestType: 'service' | 'product' | 'course' | 'consultation' | 'general';
@@ -39,6 +46,18 @@ export function LeadForm({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const formStartedAtRef = useRef<number>(Date.now());
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    if (errorMsg) setErrorMsg('');
+  };
 
   const cleanWhatsapp = (settings?.whatsapp || '').replace(/[^0-9]/g, '');
   const whatsappLink = cleanWhatsapp
@@ -49,37 +68,47 @@ export function LeadForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg('');
+    setFieldErrors({});
 
-    if (!consentGiven) {
-      setErrorMsg('Please confirm your consent so we can respond to your enquiry.');
+    const attr = getLeadAttribution();
+    const payload = {
+      fullName,
+      email,
+      phone,
+      company,
+      interestType,
+      interestSlug,
+      interestName,
+      description,
+      budgetRange,
+      preferredContact,
+      consentGiven: consentGiven === true,
+      website_hp: honeypot,
+      formStartedAt: formStartedAtRef.current,
+      ...attr,
+    };
+
+    const validated = validateWithSchema(leadFormSchema, payload);
+    if (!validated.ok) {
+      setFieldErrors(validated.fieldErrors);
+      setErrorMsg(validated.message);
       return;
     }
 
     setSubmitting(true);
     try {
-      const attr = getLeadAttribution();
       const res = await fetch('/api/public/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName,
-          email,
-          phone,
-          company,
-          interestType,
-          interestSlug,
-          interestName,
-          description,
-          budgetRange,
-          preferredContact,
-          consentGiven,
-          website_hp: honeypot,
-          ...attr,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setFieldErrors(data.fieldErrors as FieldErrors);
+        }
         setErrorMsg(data.error || 'Could not submit enquiry.');
         return;
       }
@@ -119,6 +148,7 @@ export function LeadForm({
               onClick={() => {
                 setSubmitted(false);
                 setDescription('');
+                formStartedAtRef.current = Date.now();
               }}
               className="mt-4 min-h-[44px] inline-flex items-center text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
             >
@@ -139,7 +169,7 @@ export function LeadForm({
         <p className="mt-1.5 text-sm text-[#4A5578] dark:text-[#AEB8D4]">{subheading}</p>
       )}
 
-      <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-4">
         {/* Honeypot anti-bot field */}
         <div className="hidden" aria-hidden="true">
           <label htmlFor={`${uid}-hp`}>Website</label>
@@ -166,11 +196,19 @@ export function LeadForm({
               type="text"
               required
               autoComplete="name"
+              aria-invalid={Boolean(fieldErrors.fullName)}
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                clearFieldError('fullName');
+              }}
               placeholder="Your full name"
-              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+              className={fieldBorderClass(
+                'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]',
+                fieldErrors.fullName
+              )}
             />
+            <FieldError error={fieldErrors.fullName} />
           </div>
 
           <div>
@@ -185,11 +223,19 @@ export function LeadForm({
               type="email"
               required
               autoComplete="email"
+              aria-invalid={Boolean(fieldErrors.email)}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearFieldError('email');
+              }}
               placeholder="you@organisation.com"
-              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+              className={fieldBorderClass(
+                'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]',
+                fieldErrors.email
+              )}
             />
+            <FieldError error={fieldErrors.email} />
           </div>
         </div>
 
@@ -206,11 +252,19 @@ export function LeadForm({
               type="tel"
               inputMode="tel"
               autoComplete="tel"
+              aria-invalid={Boolean(fieldErrors.phone)}
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                clearFieldError('phone');
+              }}
               placeholder="Include country code"
-              className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+              className={fieldBorderClass(
+                'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]',
+                fieldErrors.phone
+              )}
             />
+            <FieldError error={fieldErrors.phone} />
           </div>
 
           {showCompany && (
@@ -225,11 +279,19 @@ export function LeadForm({
                 id={`${uid}-company`}
                 type="text"
                 autoComplete="organization"
+                aria-invalid={Boolean(fieldErrors.company)}
                 value={company}
-                onChange={(e) => setCompany(e.target.value)}
+                onChange={(e) => {
+                  setCompany(e.target.value);
+                  clearFieldError('company');
+                }}
                 placeholder="Organisation name (optional)"
-                className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+                className={fieldBorderClass(
+                  'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]',
+                  fieldErrors.company
+                )}
               />
+              <FieldError error={fieldErrors.company} />
             </div>
           )}
         </div>
@@ -291,37 +353,52 @@ export function LeadForm({
             id={`${uid}-desc`}
             required
             rows={4}
+            aria-invalid={Boolean(fieldErrors.description)}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              clearFieldError('description');
+            }}
             placeholder={`Tell us what you want to achieve with ${interestName}...`}
-            className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]"
+            className={fieldBorderClass(
+              'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] placeholder:text-[#4A5578]/60 dark:placeholder:text-[#AEB8D4]/50 focus:outline-none focus:border-[#176BFF]',
+              fieldErrors.description
+            )}
           />
+          <FieldError error={fieldErrors.description} />
         </div>
 
-        <label
-          htmlFor={`${uid}-consent`}
-          className="flex items-start gap-2.5 py-1 text-xs text-[#4A5578] dark:text-[#AEB8D4] cursor-pointer"
-        >
-          <input
-            id={`${uid}-consent`}
-            type="checkbox"
-            checked={consentGiven}
-            onChange={(e) => setConsentGiven(e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-[#DCE3F2] dark:border-[#1A2550] text-[#176BFF] focus:ring-[#176BFF] shrink-0"
-          />
-          <span>
-            I consent to NexaFlow Technologies storing and processing this enquiry to contact me
-            in accordance with the{' '}
-            <button
-              type="button"
-              onClick={() => navigate('/legal/privacy')}
-              className="text-[#176BFF] dark:text-[#00D4FF] underline"
-            >
-              Privacy Policy
-            </button>
-            .
-          </span>
-        </label>
+        <div>
+          <label
+            htmlFor={`${uid}-consent`}
+            className="flex items-start gap-2.5 py-1 text-xs text-[#4A5578] dark:text-[#AEB8D4] cursor-pointer"
+          >
+            <input
+              id={`${uid}-consent`}
+              type="checkbox"
+              aria-invalid={Boolean(fieldErrors.consentGiven)}
+              checked={consentGiven}
+              onChange={(e) => {
+                setConsentGiven(e.target.checked);
+                clearFieldError('consentGiven');
+              }}
+              className="mt-0.5 h-4 w-4 rounded border-[#DCE3F2] dark:border-[#1A2550] text-[#176BFF] focus:ring-[#176BFF] shrink-0"
+            />
+            <span>
+              I consent to NexaFlow Technologies storing and processing this enquiry to contact me
+              in accordance with the{' '}
+              <button
+                type="button"
+                onClick={() => navigate('/legal/privacy')}
+                className="text-[#176BFF] dark:text-[#00D4FF] underline"
+              >
+                Privacy Policy
+              </button>
+              .
+            </span>
+          </label>
+          <FieldError error={fieldErrors.consentGiven} />
+        </div>
 
         {errorMsg && (
           <div

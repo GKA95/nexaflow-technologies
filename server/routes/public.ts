@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import { z } from 'zod';
 import { connectDB, getLastDBError, isDBConfigured } from '../db.js';
 import {
   DEFAULT_PRODUCTS,
@@ -8,7 +7,13 @@ import {
   DEFAULT_SERVICES,
   DEFAULT_SITE_SETTINGS,
 } from '../defaults.js';
-import { leadLimiter, requireDatabase, stripHtmlTags } from '../middleware/auth.js';
+import {
+  couponLimiter,
+  isValidObjectId,
+  leadLimiter,
+  requireDatabase,
+  stripHtmlTags,
+} from '../middleware/auth.js';
 import {
   AnalyticsEvent,
   Article,
@@ -25,9 +30,10 @@ import {
   Testimonial,
   WorkShowcase,
 } from '../models.js';
-import { sendTransactionalEmail } from '../utils/email.js';
+import { couponValidateSchema, leadFormSchema, zodToFieldErrors } from '../shared/validation.js';
 import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
-import { isPaystackConfigured, getPaystackMode } from '../utils/paystack.js';
+import { sendTransactionalEmail } from '../utils/email.js';
+import { getPaystackMode, isPaystackConfigured } from '../utils/paystack.js';
 
 const router = Router();
 
@@ -93,13 +99,14 @@ router.get('/health', async (_req, res) => {
     dbConnected = Boolean(conn);
   }
   const lastErr = getLastDBError();
+  const isProd = process.env.NODE_ENV === 'production';
   res.json({
     status: 'ok',
     database: {
       configured: dbConfigured,
       connected: dbConnected,
       errorCode: dbConnected ? null : lastErr.code,
-      error: dbConnected ? null : lastErr.message,
+      error: dbConnected ? null : isProd && lastErr.code === 'UNKNOWN' ? 'Database unavailable' : lastErr.message,
     },
     paystack: { configured: isPaystackConfigured(), mode: getPaystackMode() },
   });
@@ -190,7 +197,7 @@ router.get('/services', async (_req, res) => {
 });
 
 router.get('/services/:slug', async (req, res) => {
-  const { slug } = req.params;
+  const slug = String(req.params.slug || '').trim().toLowerCase();
   if (!isDBConfigured() || !(await connectDB())) {
     const found = DEFAULT_SERVICES.find((s) => s.slug === slug);
     if (!found) return res.status(404).json({ error: 'Service not found.' });
@@ -210,7 +217,7 @@ router.get('/products', async (_req, res) => {
 });
 
 router.get('/products/:slug', async (req, res) => {
-  const { slug } = req.params;
+  const slug = String(req.params.slug || '').trim().toLowerCase();
   if (!isDBConfigured() || !(await connectDB())) {
     const found = DEFAULT_PRODUCTS.find((p) => p.slug === slug);
     if (!found) return res.status(404).json({ error: 'Product not found.' });
@@ -394,7 +401,8 @@ router.get('/courses/:slug', async (req, res) => {
   if (!isDBConfigured() || !(await connectDB())) {
     return res.status(404).json({ error: 'Course not found.' });
   }
-  const course = await Course.findOne({ slug: req.params.slug, published: true }).lean();
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  const course = await Course.findOne({ slug, published: true }).lean();
   if (!course) return res.status(404).json({ error: 'Course not found.' });
 
   const courseObj = course as Record<string, unknown>;
@@ -439,19 +447,35 @@ router.get('/courses/:slug', async (req, res) => {
   });
 });
 
-router.post('/coupons/validate', requireDatabase, async (req, res) => {
+router.post('/coupons/validate', couponLimiter, requireDatabase, async (req, res) => {
   try {
-    const code = String(req.body?.code || '').trim();
-    const courseId = req.body?.courseId ? String(req.body.courseId).trim() : undefined;
+    const rawCourseId = req.body?.courseId ? String(req.body.courseId).trim() : undefined;
+    if (rawCourseId !== undefined && !isValidObjectId(rawCourseId)) {
+      return res.status(400).json({ error: 'Invalid course identifier.' });
+    }
 
-    const result = await validateCouponForPricing({ code, courseId });
+    const parsed = couponValidateSchema.safeParse({
+      code: String(req.body?.code || '').trim(),
+      courseId: rawCourseId,
+    });
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: parsed.error.issues[0]?.message || 'Enter a valid coupon code.',
+        fieldErrors: zodToFieldErrors(parsed.error),
+      });
+    }
+
+    const result = await validateCouponForPricing({
+      code: parsed.data.code,
+      courseId: parsed.data.courseId,
+    });
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error });
     }
 
     let pricing: ReturnType<typeof calculateCouponDiscount> | null = null;
-    if (courseId) {
-      const course = await Course.findOne({ _id: courseId, published: true })
+    if (parsed.data.courseId) {
+      const course = await Course.findOne({ _id: parsed.data.courseId, published: true })
         .select('price currency title')
         .lean();
       if (course) {
@@ -493,7 +517,7 @@ router.get('/articles', async (req, res) => {
   if (!isDBConfigured() || !(await connectDB())) {
     return res.json({ articles: [], categories: [] });
   }
-  const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
+  const category = typeof req.query.category === 'string' ? stripHtmlTags(req.query.category.trim()).slice(0, 80) : '';
   const filter: Record<string, unknown> = { status: 'published' };
   if (category && category !== 'All') {
     filter.category = category;
@@ -514,7 +538,8 @@ router.get('/articles/:slug', async (req, res) => {
   if (!isDBConfigured() || !(await connectDB())) {
     return res.status(404).json({ error: 'Article not found.' });
   }
-  const article = await Article.findOne({ slug: req.params.slug, status: 'published' }).lean();
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  const article = await Article.findOne({ slug, status: 'published' }).lean();
   if (!article) return res.status(404).json({ error: 'Article not found.' });
 
   const artObj = article as Record<string, unknown>;
@@ -531,40 +556,22 @@ router.get('/articles/:slug', async (req, res) => {
   res.json({ article, related });
 });
 
-const leadSchema = z.object({
-  fullName: z.string().trim().min(2, 'Please provide your full name.').max(140),
-  email: z.string().trim().email('Please provide a valid email address.').max(180),
-  phone: z.string().trim().max(50).optional().default(''),
-  company: z.string().trim().max(160).optional().default(''),
-  interestType: z.enum(['service', 'product', 'course', 'consultation', 'general']),
-  interestSlug: z.string().trim().max(120).optional().default(''),
-  interestName: z.string().trim().min(2).max(180),
-  description: z.string().trim().min(10, 'Please describe your requirements (min 10 chars).').max(4000),
-  budgetRange: z.string().trim().max(100).optional().default(''),
-  preferredContact: z.enum(['Email', 'Phone', 'WhatsApp']).default('Email'),
-  consentGiven: z.literal(true, { message: 'Consent is required to submit.' }),
-  source: z.string().trim().max(120).optional().default('website'),
-  landingPage: z.string().trim().max(500).optional().default(''),
-  referringUrl: z.string().trim().max(500).optional().default(''),
-  utmSource: z.string().trim().max(120).optional().default(''),
-  utmMedium: z.string().trim().max(120).optional().default(''),
-  utmCampaign: z.string().trim().max(120).optional().default(''),
-  utmTerm: z.string().trim().max(120).optional().default(''),
-  utmContent: z.string().trim().max(120).optional().default(''),
-  website_hp: z.string().optional().default(''), // honeypot
-});
-
 router.post('/leads', leadLimiter, requireDatabase, async (req, res) => {
-  const parsed = leadSchema.safeParse(req.body);
+  const parsed = leadFormSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({
       error: parsed.error.issues[0]?.message || 'Invalid enquiry data.',
+      fieldErrors: zodToFieldErrors(parsed.error),
     });
   }
 
   const data = parsed.data;
-  // Honeypot triggered: silently accept without saving
-  if (data.website_hp && data.website_hp.trim().length > 0) {
+  // Honeypot or inhuman fast bot submission (< 1200ms) -> silently accept without saving
+  const elapsedMs =
+    typeof data.formStartedAt === 'number' && data.formStartedAt > 0
+      ? Date.now() - data.formStartedAt
+      : 5000;
+  if ((data.website_hp && data.website_hp.trim().length > 0) || elapsedMs < 1200) {
     return res.status(201).json({ ok: true, message: 'Thank you. Your enquiry has been received.' });
   }
 
@@ -588,24 +595,24 @@ router.post('/leads', leadLimiter, requireDatabase, async (req, res) => {
   const lead = await Lead.create({
     fullName: stripHtmlTags(data.fullName),
     email: data.email.toLowerCase(),
-    phone: stripHtmlTags(data.phone),
-    company: stripHtmlTags(data.company),
+    phone: stripHtmlTags(data.phone || ''),
+    company: stripHtmlTags(data.company || ''),
     interestType: data.interestType,
-    interestSlug: stripHtmlTags(data.interestSlug),
+    interestSlug: stripHtmlTags(data.interestSlug || ''),
     interestName: stripHtmlTags(data.interestName),
     description: stripHtmlTags(data.description),
-    budgetRange: stripHtmlTags(data.budgetRange),
+    budgetRange: stripHtmlTags(data.budgetRange || ''),
     preferredContact: data.preferredContact,
     consentGiven: true,
     consentTimestamp: new Date(),
     source: stripHtmlTags(data.source || (data.utmSource ? data.utmSource : 'direct')),
-    landingPage: stripHtmlTags(data.landingPage),
-    referringUrl: stripHtmlTags(data.referringUrl),
-    utmSource: stripHtmlTags(data.utmSource),
-    utmMedium: stripHtmlTags(data.utmMedium),
-    utmCampaign: stripHtmlTags(data.utmCampaign),
-    utmTerm: stripHtmlTags(data.utmTerm),
-    utmContent: stripHtmlTags(data.utmContent),
+    landingPage: stripHtmlTags(data.landingPage || ''),
+    referringUrl: stripHtmlTags(data.referringUrl || ''),
+    utmSource: stripHtmlTags(data.utmSource || ''),
+    utmMedium: stripHtmlTags(data.utmMedium || ''),
+    utmCampaign: stripHtmlTags(data.utmCampaign || ''),
+    utmTerm: stripHtmlTags(data.utmTerm || ''),
+    utmContent: stripHtmlTags(data.utmContent || ''),
     status: 'New',
     fingerprint,
   });
@@ -638,7 +645,7 @@ router.post('/analytics', async (req, res) => {
     return res.json({ ok: true });
   }
   const { eventType, path, entitySlug, referrer, utmSource } = req.body || {};
-  if (typeof eventType !== 'string' || eventType.length > 80) {
+  if (typeof eventType !== 'string' || !eventType.trim() || eventType.length > 80) {
     return res.status(400).json({ error: 'Invalid event' });
   }
   await AnalyticsEvent.create({

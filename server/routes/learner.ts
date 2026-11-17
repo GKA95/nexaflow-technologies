@@ -1,9 +1,9 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import { z } from 'zod';
 import {
   blockDownloadManagers,
   extractYouTubeId,
+  isValidObjectId,
   requireAuth,
   requireDatabase,
   stripHtmlTags,
@@ -22,6 +22,13 @@ import {
   SupportMessage,
   SupportTicket,
 } from '../models.js';
+import {
+  courseReviewFormSchema,
+  lessonProgressSchema,
+  supportReplySchema,
+  supportTicketCreateSchema,
+  zodToFieldErrors,
+} from '../shared/validation.js';
 import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
 
 const router = Router();
@@ -38,7 +45,11 @@ router.get('/dashboard', async (req, res) => {
     LessonProgress.find({ userId }).sort({ lastAccessedAt: -1 }).lean(),
     SupportTicket.find({ userId }).sort({ updatedAt: -1 }).lean(),
     Notification.find({ userId, targetRole: 'learner' }).sort({ createdAt: -1 }).limit(30).lean(),
-    Payment.find({ userId }).populate('courseId', 'title slug').sort({ createdAt: -1 }).lean(),
+    Payment.find({ userId })
+      .select('-processedEvents')
+      .populate('courseId', 'title slug')
+      .sort({ createdAt: -1 })
+      .lean(),
   ]);
 
   const coursesSummary = await Promise.all(
@@ -100,8 +111,12 @@ router.get('/dashboard', async (req, res) => {
 // Enrolment for explicitly free courses OR 100%-off validated coupon codes
 router.post('/enrol-free', async (req, res) => {
   try {
-    const { courseId, couponCode } = req.body || {};
-    if (!courseId) return res.status(400).json({ error: 'Course ID required.' });
+    const courseId = String(req.body?.courseId || '').trim();
+    const couponCode = req.body?.couponCode ? String(req.body.couponCode).trim() : '';
+
+    if (!isValidObjectId(courseId)) {
+      return res.status(400).json({ error: 'Valid Course ID required.' });
+    }
 
     const course = await Course.findOne({ _id: courseId, published: true }).lean();
     if (!course) return res.status(404).json({ error: 'Course not found.' });
@@ -111,11 +126,11 @@ router.post('/enrol-free', async (req, res) => {
     let redeemedCouponCode = '';
 
     if (coursePrice > 0) {
-      if (!couponCode || !String(couponCode).trim()) {
+      if (!couponCode) {
         return res.status(400).json({ error: 'Paid courses require verified Paystack payment.' });
       }
       const check = await validateCouponForPricing({
-        code: String(couponCode),
+        code: couponCode,
         courseId: String(c._id),
       });
       if (!check.ok) {
@@ -145,7 +160,7 @@ router.post('/enrol-free', async (req, res) => {
 
     let paymentId: unknown = undefined;
     if (redeemedCouponCode) {
-      const ref = `NF-CPN-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+      const ref = `NF-CPN-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
       const zeroPay = await Payment.create({
         userId: req.user!.id,
         courseId: c._id,
@@ -204,7 +219,8 @@ router.post('/enrol-free', async (req, res) => {
 
 // Protected course classroom player — checks active enrolment strictly server-side
 router.get('/courses/:slug/learn', async (req, res) => {
-  const course = await Course.findOne({ slug: req.params.slug }).lean();
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  const course = await Course.findOne({ slug }).lean();
   if (!course) return res.status(404).json({ error: 'Course not found.' });
 
   const courseObj = course as Record<string, unknown>;
@@ -271,20 +287,20 @@ router.get('/courses/:slug/learn', async (req, res) => {
 
 // Submit or update course rating & review (enrolled learners)
 router.post('/courses/:slug/review', async (req, res) => {
-  const schema = z.object({
-    rating: z.number().int().min(1, 'Select between 1 and 5 stars.').max(5),
-    title: z.string().trim().max(140).optional().default(''),
-    comment: z.string().trim().min(3, 'Please share a brief review (at least 3 characters).').max(2000),
-  });
-  const parsed = schema.safeParse({
-    ...req.body,
+  const parsed = courseReviewFormSchema.safeParse({
     rating: Number(req.body?.rating),
+    title: req.body?.title,
+    comment: req.body?.comment,
   });
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid review data.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid review data.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
-  const course = await Course.findOne({ slug: req.params.slug }).lean();
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  const course = await Course.findOne({ slug }).lean();
   if (!course) return res.status(404).json({ error: 'Course not found.' });
 
   const courseObj = course as { _id: unknown; title: string; slug: string };
@@ -338,7 +354,12 @@ router.post('/courses/:slug/lessons/:lessonId/stream-session', async (req, res) 
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
 
-  const course = await Course.findOne({ slug: req.params.slug }).lean();
+  if (!isValidObjectId(req.params.lessonId)) {
+    return res.status(400).json({ error: 'Invalid lesson identifier.' });
+  }
+
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  const course = await Course.findOne({ slug }).lean();
   if (!course) return res.status(404).json({ error: 'Course not found.' });
 
   const courseObj = course as Record<string, unknown>;
@@ -372,7 +393,6 @@ router.post('/courses/:slug/lessons/:lessonId/stream-session', async (req, res) 
     return res.json({ hasVideo: false, payload: null });
   }
 
-  // Encode ephemeral payload in-memory for the authenticated player (never expose raw URL)
   const rawPayload = JSON.stringify({
     v: videoId,
     uid: req.user!.id,
@@ -388,13 +408,10 @@ router.post('/courses/:slug/lessons/:lessonId/stream-session', async (req, res) 
 });
 
 router.post('/progress', async (req, res) => {
-  const schema = z.object({
-    courseId: z.string().min(1),
-    lessonId: z.string().min(1),
-    completed: z.boolean().optional(),
-  });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid progress payload.' });
+  const parsed = lessonProgressSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid progress payload.' });
+  }
 
   const { courseId, lessonId, completed } = parsed.data;
   const isAdmin = req.user!.role === 'admin' || req.user!.role === 'super_admin';
@@ -408,6 +425,11 @@ router.post('/progress', async (req, res) => {
     if (!enrolment) {
       return res.status(403).json({ error: 'Active enrolment required.' });
     }
+  }
+
+  const lessonExists = await Lesson.exists({ _id: lessonId, courseId });
+  if (!lessonExists) {
+    return res.status(404).json({ error: 'Lesson not found in this course.' });
   }
 
   const update: Record<string, unknown> = {
@@ -433,6 +455,7 @@ router.post('/progress', async (req, res) => {
 
 router.get('/payments', async (req, res) => {
   const payments = await Payment.find({ userId: req.user!.id })
+    .select('-processedEvents')
     .populate('courseId', 'title slug currency price')
     .sort({ createdAt: -1 })
     .lean();
@@ -448,21 +471,12 @@ router.get('/tickets', async (req, res) => {
 });
 
 router.post('/tickets', supportLimiter, async (req, res) => {
-  const schema = z.object({
-    subject: z.string().trim().min(3, 'Subject is required.').max(200),
-    category: z.enum([
-      'Course Question',
-      'Topic Clarification',
-      'Technical Issue',
-      'Complaint',
-      'Feedback',
-    ]),
-    description: z.string().trim().min(10, 'Please provide more detail.').max(4000),
-    courseId: z.string().optional(),
-  });
-  const parsed = schema.safeParse(req.body);
+  const parsed = supportTicketCreateSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid ticket.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid ticket.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const ref = `NF-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
@@ -495,6 +509,9 @@ router.post('/tickets', supportLimiter, async (req, res) => {
 });
 
 router.get('/tickets/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid ticket identifier.' });
+  }
   const ticket = await SupportTicket.findOne({ _id: req.params.id, userId: req.user!.id })
     .populate('courseId', 'title slug')
     .lean();
@@ -505,10 +522,21 @@ router.get('/tickets/:id', async (req, res) => {
 });
 
 router.post('/tickets/:id/messages', supportLimiter, async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid ticket identifier.' });
+  }
+  const parsed = supportReplySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Message cannot be empty.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
   const ticket = await SupportTicket.findOne({ _id: req.params.id, userId: req.user!.id });
   if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
 
-  const messageText = stripHtmlTags(String(req.body?.message || ''));
+  const messageText = stripHtmlTags(parsed.data.message);
   if (messageText.length < 2) {
     return res.status(400).json({ error: 'Message cannot be empty.' });
   }
@@ -545,6 +573,9 @@ router.get('/notifications', async (req, res) => {
 });
 
 router.patch('/notifications/:id/read', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid notification identifier.' });
+  }
   await Notification.updateOne(
     { _id: req.params.id, userId: req.user!.id },
     { $set: { read: true } }

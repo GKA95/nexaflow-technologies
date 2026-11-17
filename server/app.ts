@@ -1,8 +1,14 @@
 import 'dotenv/config';
 import cookieParser from 'cookie-parser';
+import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
-import { csrfOriginCheck } from './middleware/auth.js';
+import {
+  csrfOriginCheck,
+  enforceHttpsInProduction,
+  generalApiLimiter,
+  sanitizeRequestInputs,
+} from './middleware/auth.js';
 import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
 import learnerRoutes from './routes/learner.js';
@@ -10,21 +16,116 @@ import paymentRoutes from './routes/payments.js';
 import publicRoutes from './routes/public.js';
 import seoRoutes from './routes/seo.js';
 
+function getConfiguredOrigins(): Set<string> {
+  const allowed = new Set<string>();
+  const appUrl = process.env.APP_URL?.trim();
+  if (appUrl && /^https?:\/\//i.test(appUrl)) {
+    try {
+      allowed.add(new URL(appUrl).origin);
+    } catch {
+      // ignore invalid URL
+    }
+  }
+  const extra = process.env.ALLOWED_ORIGINS?.trim();
+  if (extra) {
+    for (const raw of extra.split(',')) {
+      const s = raw.trim();
+      if (!s) continue;
+      try {
+        allowed.add(new URL(s).origin);
+      } catch {
+        // ignore invalid origin
+      }
+    }
+  }
+  return allowed;
+}
+
 export function createExpressApp() {
   const app = express();
 
   app.set('trust proxy', 1);
+  app.disable('x-powered-by');
 
-  // Security headers (allow iframe preview, OAuth popups, YouTube embeds, and GA4)
+  app.use(enforceHttpsInProduction);
+
+  // Security headers (CSP, HSTS, Referrer-Policy, nosniff, Permissions-Policy; keep iframe preview & OAuth popups functional)
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'self'"],
+          baseUri: ["'self'"],
+          objectSrc: ["'none'"],
+          scriptSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            'https://www.googletagmanager.com',
+            'https://js.paystack.co',
+          ],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          fontSrc: ["'self'", 'data:'],
+          imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+          connectSrc: [
+            "'self'",
+            'https://api.paystack.co',
+            'https://www.google-analytics.com',
+            'https://region1.google-analytics.com',
+            'https://www.googletagmanager.com',
+          ],
+          frameSrc: [
+            "'self'",
+            'https://www.youtube.com',
+            'https://www.youtube-nocookie.com',
+            'https://checkout.paystack.com',
+            'https://accounts.google.com',
+          ],
+          formAction: ["'self'", 'https://checkout.paystack.com'],
+        },
+      },
+      hsts: { maxAge: 31536000, includeSubDomains: true },
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
       crossOriginEmbedderPolicy: false,
       crossOriginOpenerPolicy: false,
       crossOriginResourcePolicy: { policy: 'cross-origin' },
       frameguard: false,
     })
   );
+
+  app.use((_req, res, next) => {
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+  });
+
+  // Strict request-aware CORS policy
+  app.use((req, res, next) => {
+    const reqHost = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+      .split(',')[0]
+      .trim();
+    const configuredOrigins = getConfiguredOrigins();
+
+    return cors({
+      credentials: true,
+      methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        try {
+          const parsed = new URL(origin);
+          if (reqHost && parsed.host === reqHost) {
+            return callback(null, true);
+          }
+          if (configuredOrigins.has(parsed.origin)) {
+            return callback(null, true);
+          }
+        } catch {
+          return callback(new Error('CORS origin rejected'));
+        }
+        return callback(new Error('CORS origin rejected'));
+      },
+    })(req, res, next);
+  });
 
   app.use(cookieParser());
 
@@ -37,9 +138,13 @@ export function createExpressApp() {
       },
     })
   );
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
+  app.use(sanitizeRequestInputs);
   app.use(csrfOriginCheck);
+
+  // Global API rate limiter (excludes authenticated webhook path which uses HMAC-SHA512)
+  app.use('/api', generalApiLimiter);
 
   // SEO XML Sitemap & Robots.txt
   app.use('/', seoRoutes);
@@ -56,7 +161,7 @@ export function createExpressApp() {
     res.status(404).json({ error: 'API endpoint not found.' });
   });
 
-  // Global JSON error handler for Express API routes
+  // Global JSON error handler for Express API routes (no stack traces or internal leaks in production)
   app.use(
     (
       err: unknown,
@@ -65,9 +170,14 @@ export function createExpressApp() {
       next: express.NextFunction
     ) => {
       if (res.headersSent) return next(err);
-      console.error('[Server] Unhandled request error:', err);
+      const isProd = process.env.NODE_ENV === 'production';
+      if (err instanceof Error && err.message === 'CORS origin rejected') {
+        return res.status(403).json({ error: 'Cross-origin request rejected.' });
+      }
+      console.error('[Server] Unhandled request error:', isProd ? (err instanceof Error ? err.message : 'Error') : err);
       if (req.path.startsWith('/api')) {
-        const message = err instanceof Error ? err.message : 'Internal server error.';
+        const message =
+          !isProd && err instanceof Error ? err.message : 'Internal server error.';
         return res.status(500).json({ error: message });
       }
       next(err);

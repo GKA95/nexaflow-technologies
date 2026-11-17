@@ -1,12 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Check, KeyRound, Mail, Plus, ShieldAlert, Trash2 } from 'lucide-react';
+import { z } from 'zod';
+import { FieldError } from '../../components/FieldError';
 import { useApp } from '../../context/AppContext';
 import type { SEOPageItem, SiteSettings } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  accountEmailsSchema,
+  buildChangePasswordSchema,
+  fieldBorderClass,
+  type FieldErrors,
+  seoPageUpdateSchema,
+  siteSettingsWriteSchema,
+  validateWithSchema,
+} from '../../utils/formValidation';
 
 export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | 'legal' }) {
   const { showToast, refreshBootstrap } = useApp();
   const [form, setForm] = useState<SiteSettings | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     apiFetch('/api/admin/settings', { credentials: 'include' })
@@ -16,25 +29,39 @@ export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | '
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form) return;
-    const res = await apiFetch('/api/admin/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(form),
-    });
-    if (res.ok) {
-      showToast('Settings saved.', 'success');
-      refreshBootstrap();
-    } else {
-      showToast('Failed to update settings.', 'error');
+    if (!form || saving) return;
+    const check = validateWithSchema(siteSettingsWriteSchema, form);
+    if (!check.ok) {
+      setErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+    setErrors({});
+    setSaving(true);
+    try {
+      const res = await apiFetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(check.data),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Settings saved.', 'success');
+        refreshBootstrap();
+      } else {
+        if (d.fieldErrors) setErrors(d.fieldErrors);
+        showToast(d.error || 'Failed to update settings.', 'error');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
   if (!form) return <div className="text-sm">Loading settings...</div>;
 
   return (
-    <form onSubmit={save} className="space-y-6 max-w-4xl">
+    <form onSubmit={save} noValidate className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold">
           {mode === 'business'
@@ -59,43 +86,83 @@ export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | '
               <label className="block text-xs font-medium mb-1">Business Display Name</label>
               <input
                 value={form.businessName}
-                onChange={(e) => setForm({ ...form, businessName: e.target.value })}
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                onChange={(e) => {
+                  setForm({ ...form, businessName: e.target.value });
+                  setErrors((p) => ({ ...p, businessName: '' }));
+                }}
+                aria-invalid={Boolean(errors.businessName)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  errors.businessName
+                )}
               />
+              <FieldError message={errors.businessName} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">Descriptor</label>
               <input
                 value={form.descriptor}
-                onChange={(e) => setForm({ ...form, descriptor: e.target.value })}
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                onChange={(e) => {
+                  setForm({ ...form, descriptor: e.target.value });
+                  setErrors((p) => ({ ...p, descriptor: '' }));
+                }}
+                aria-invalid={Boolean(errors.descriptor)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  errors.descriptor
+                )}
               />
+              <FieldError message={errors.descriptor} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">Business Email</label>
               <input
                 type="email"
                 value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                onChange={(e) => {
+                  setForm({ ...form, email: e.target.value });
+                  setErrors((p) => ({ ...p, email: '' }));
+                }}
+                aria-invalid={Boolean(errors.email)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  errors.email
+                )}
               />
+              <FieldError message={errors.email} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">Business Phone</label>
               <input
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                onChange={(e) => {
+                  setForm({ ...form, phone: e.target.value });
+                  setErrors((p) => ({ ...p, phone: '' }));
+                }}
+                aria-invalid={Boolean(errors.phone)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  errors.phone
+                )}
               />
+              <FieldError message={errors.phone} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">WhatsApp Number (with country code)</label>
               <input
                 value={form.whatsapp}
-                onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, whatsapp: e.target.value });
+                  setErrors((p) => ({ ...p, whatsapp: '' }));
+                }}
                 placeholder="e.g. 233..."
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                aria-invalid={Boolean(errors.whatsapp)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  errors.whatsapp
+                )}
               />
+              <FieldError message={errors.whatsapp} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">General Location (City / Country only)</label>
@@ -124,28 +191,45 @@ export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | '
           </div>
 
           <div className="pt-2 border-t border-[#DCE3F2] dark:border-[#1A2550] grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {(['linkedin', 'youtube', 'facebook', 'instagram', 'x'] as const).map((net) => (
-              <div key={net}>
-                <label className="block text-xs font-medium mb-1 capitalize">{net} URL</label>
-                <input
-                  value={form.socialLinks?.[net] || ''}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      socialLinks: { ...form.socialLinks, [net]: e.target.value },
-                    })
-                  }
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-                />
-              </div>
-            ))}
+            {(['linkedin', 'youtube', 'facebook', 'instagram', 'x'] as const).map((net) => {
+              const errKey = `socialLinks.${net}`;
+              return (
+                <div key={net}>
+                  <label className="block text-xs font-medium mb-1 capitalize">{net} URL</label>
+                  <input
+                    value={form.socialLinks?.[net] || ''}
+                    onChange={(e) => {
+                      setForm({
+                        ...form,
+                        socialLinks: { ...form.socialLinks, [net]: e.target.value },
+                      });
+                      setErrors((p) => ({ ...p, [errKey]: '' }));
+                    }}
+                    aria-invalid={Boolean(errors[errKey])}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors[errKey]
+                    )}
+                  />
+                  <FieldError message={errors[errKey]} />
+                </div>
+              );
+            })}
             <div>
               <label className="block text-xs font-medium mb-1">Google Business Profile URL (if eligible)</label>
               <input
                 value={form.googleBusinessProfileUrl || ''}
-                onChange={(e) => setForm({ ...form, googleBusinessProfileUrl: e.target.value })}
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                onChange={(e) => {
+                  setForm({ ...form, googleBusinessProfileUrl: e.target.value });
+                  setErrors((p) => ({ ...p, googleBusinessProfileUrl: '' }));
+                }}
+                aria-invalid={Boolean(errors.googleBusinessProfileUrl)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  errors.googleBusinessProfileUrl
+                )}
               />
+              <FieldError message={errors.googleBusinessProfileUrl} />
             </div>
           </div>
         </div>
@@ -256,9 +340,10 @@ export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | '
 
       <button
         type="submit"
-        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-2.5 text-sm font-semibold text-white"
+        disabled={saving}
+        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white"
       >
-        Save Changes
+        {saving ? 'Saving...' : 'Save Changes'}
       </button>
     </form>
   );
@@ -269,6 +354,10 @@ export function AdminSeoModule() {
   const [seoPages, setSeoPages] = useState<SEOPageItem[]>([]);
   const [gaId, setGaId] = useState('');
   const [gscTag, setGscTag] = useState('');
+  const [analyticsErrors, setAnalyticsErrors] = useState<FieldErrors>({});
+  const [savingAnalytics, setSavingAnalytics] = useState(false);
+  const [pageErrors, setPageErrors] = useState<Record<string, FieldErrors>>({});
+  const [savingPageKey, setSavingPageKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [seoRes, setRes] = await Promise.all([
@@ -290,29 +379,75 @@ export function AdminSeoModule() {
   }, [load]);
 
   const savePage = async (page: SEOPageItem) => {
-    const res = await apiFetch(`/api/admin/seo/${encodeURIComponent(page.pageKey)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(page),
+    if (savingPageKey === page.pageKey) return;
+    const check = validateWithSchema(seoPageUpdateSchema, {
+      title: page.title || '',
+      description: page.description || '',
+      canonicalUrl: page.canonicalUrl || '',
+      ogTitle: page.ogTitle || '',
+      ogDescription: page.ogDescription || '',
+      ogImage: page.ogImage || '',
+      focusKeyword: page.focusKeyword || '',
+      noIndex: Boolean(page.noIndex),
     });
-    if (res.ok) {
-      showToast(`SEO updated for ${page.pageKey}.`, 'success');
-      refreshBootstrap();
+    if (!check.ok) {
+      setPageErrors((p) => ({ ...p, [page.pageKey]: check.fieldErrors }));
+      showToast(check.message, 'error');
+      return;
+    }
+    setPageErrors((p) => ({ ...p, [page.pageKey]: {} }));
+    setSavingPageKey(page.pageKey);
+    try {
+      const res = await apiFetch(`/api/admin/seo/${encodeURIComponent(page.pageKey)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(check.data),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast(`SEO updated for ${page.pageKey}.`, 'success');
+        refreshBootstrap();
+      } else {
+        if (d.fieldErrors) setPageErrors((p) => ({ ...p, [page.pageKey]: d.fieldErrors }));
+        showToast(d.error || 'Failed to update page SEO.', 'error');
+      }
+    } finally {
+      setSavingPageKey(null);
     }
   };
 
   const saveAnalyticsTags = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await apiFetch('/api/admin/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ gaMeasurementId: gaId, gscVerificationTag: gscTag }),
+    if (savingAnalytics) return;
+    const check = validateWithSchema(siteSettingsWriteSchema, {
+      gaMeasurementId: gaId,
+      gscVerificationTag: gscTag,
     });
-    if (res.ok) {
-      showToast('Analytics & Search Console configuration saved.', 'success');
-      refreshBootstrap();
+    if (!check.ok) {
+      setAnalyticsErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+    setAnalyticsErrors({});
+    setSavingAnalytics(true);
+    try {
+      const res = await apiFetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(check.data),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Analytics & Search Console configuration saved.', 'success');
+        refreshBootstrap();
+      } else {
+        if (d.fieldErrors) setAnalyticsErrors(d.fieldErrors);
+        showToast(d.error || 'Failed to save analytics configuration.', 'error');
+      }
+    } finally {
+      setSavingAnalytics(false);
     }
   };
 
@@ -327,6 +462,7 @@ export function AdminSeoModule() {
 
       <form
         onSubmit={saveAnalyticsTags}
+        noValidate
         className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
       >
         <h2 className="text-base font-bold">Google Analytics 4 &amp; Search Console</h2>
@@ -335,10 +471,18 @@ export function AdminSeoModule() {
             <label className="block text-xs font-medium mb-1">GA4 Measurement ID (e.g. G-XXXXXXXXXX)</label>
             <input
               value={gaId}
-              onChange={(e) => setGaId(e.target.value)}
+              onChange={(e) => {
+                setGaId(e.target.value);
+                setAnalyticsErrors((p) => ({ ...p, gaMeasurementId: '' }));
+              }}
               placeholder="G-..."
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+              aria-invalid={Boolean(analyticsErrors.gaMeasurementId)}
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                analyticsErrors.gaMeasurementId
+              )}
             />
+            <FieldError message={analyticsErrors.gaMeasurementId} />
           </div>
           <div>
             <label className="block text-xs font-medium mb-1">
@@ -346,15 +490,27 @@ export function AdminSeoModule() {
             </label>
             <input
               value={gscTag}
-              onChange={(e) => setGscTag(e.target.value)}
+              onChange={(e) => {
+                setGscTag(e.target.value);
+                setAnalyticsErrors((p) => ({ ...p, gscVerificationTag: '' }));
+              }}
               placeholder="Meta tag content token"
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+              aria-invalid={Boolean(analyticsErrors.gscVerificationTag)}
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                analyticsErrors.gscVerificationTag
+              )}
             />
+            <FieldError message={analyticsErrors.gscVerificationTag} />
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <button type="submit" className="rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white">
-            Save Tracking &amp; Verification
+          <button
+            type="submit"
+            disabled={savingAnalytics}
+            className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-4 py-2 text-xs font-semibold text-white"
+          >
+            {savingAnalytics ? 'Saving...' : 'Save Tracking & Verification'}
           </button>
           <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] space-x-4">
             <a href="/sitemap.xml" target="_blank" rel="noopener noreferrer" className="text-[#00D4FF] underline">
@@ -368,60 +524,94 @@ export function AdminSeoModule() {
       </form>
 
       <div className="space-y-4">
-        {seoPages.map((p, idx) => (
-          <div
-            key={p.pageKey}
-            className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 space-y-3"
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold uppercase text-xs font-mono text-[#00D4FF]">Page: {p.pageKey}</h3>
-              <button
-                type="button"
-                onClick={() => savePage(p)}
-                className="rounded-lg bg-[#176BFF] px-3 py-1.5 text-xs font-semibold text-white"
-              >
-                Save Page SEO
-              </button>
+        {seoPages.map((p, idx) => {
+          const pErr = pageErrors[p.pageKey] || {};
+          return (
+            <div
+              key={p.pageKey}
+              className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold uppercase text-xs font-mono text-[#00D4FF]">Page: {p.pageKey}</h3>
+                <button
+                  type="button"
+                  disabled={savingPageKey === p.pageKey}
+                  onClick={() => savePage(p)}
+                  className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  {savingPageKey === p.pageKey ? 'Saving...' : 'Save Page SEO'}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <input
+                    placeholder="SEO Title"
+                    value={p.title || ''}
+                    onChange={(e) => {
+                      setSeoPages((prev) =>
+                        prev.map((item, i) => (i === idx ? { ...item, title: e.target.value } : item))
+                      );
+                      setPageErrors((prev) => ({ ...prev, [p.pageKey]: { ...pErr, title: '' } }));
+                    }}
+                    aria-invalid={Boolean(pErr.title)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      pErr.title
+                    )}
+                  />
+                  <FieldError message={pErr.title} />
+                </div>
+                <div>
+                  <input
+                    placeholder="Focus Keyword"
+                    value={p.focusKeyword || ''}
+                    onChange={(e) => {
+                      setSeoPages((prev) =>
+                        prev.map((item, i) =>
+                          i === idx ? { ...item, focusKeyword: e.target.value } : item
+                        )
+                      );
+                      setPageErrors((prev) => ({
+                        ...prev,
+                        [p.pageKey]: { ...pErr, focusKeyword: '' },
+                      }));
+                    }}
+                    aria-invalid={Boolean(pErr.focusKeyword)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      pErr.focusKeyword
+                    )}
+                  />
+                  <FieldError message={pErr.focusKeyword} />
+                </div>
+              </div>
+              <div>
+                <textarea
+                  rows={2}
+                  placeholder="Meta Description"
+                  value={p.description || ''}
+                  onChange={(e) => {
+                    setSeoPages((prev) =>
+                      prev.map((item, i) =>
+                        i === idx ? { ...item, description: e.target.value } : item
+                      )
+                    );
+                    setPageErrors((prev) => ({
+                      ...prev,
+                      [p.pageKey]: { ...pErr, description: '' },
+                    }));
+                  }}
+                  aria-invalid={Boolean(pErr.description)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    pErr.description
+                  )}
+                />
+                <FieldError message={pErr.description} />
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input
-                placeholder="SEO Title"
-                value={p.title || ''}
-                onChange={(e) =>
-                  setSeoPages((prev) =>
-                    prev.map((item, i) => (i === idx ? { ...item, title: e.target.value } : item))
-                  )
-                }
-                className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="Focus Keyword"
-                value={p.focusKeyword || ''}
-                onChange={(e) =>
-                  setSeoPages((prev) =>
-                    prev.map((item, i) =>
-                      i === idx ? { ...item, focusKeyword: e.target.value } : item
-                    )
-                  )
-                }
-                className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-              />
-            </div>
-            <textarea
-              rows={2}
-              placeholder="Meta Description"
-              value={p.description || ''}
-              onChange={(e) =>
-                setSeoPages((prev) =>
-                  prev.map((item, i) =>
-                    i === idx ? { ...item, description: e.target.value } : item
-                  )
-                )
-              }
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -442,6 +632,9 @@ export function AdminAccountSecurityModule() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingEmails, setSavingEmails] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [emailErrors, setEmailErrors] = useState<FieldErrors>({});
+  const [newEmailError, setNewEmailError] = useState('');
+  const [passwordErrors, setPasswordErrors] = useState<FieldErrors>({});
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -466,30 +659,44 @@ export function AdminAccountSecurityModule() {
 
   const addSecondaryEmail = () => {
     const cleaned = newSecondaryEmail.trim().toLowerCase();
-    if (!cleaned || !cleaned.includes('@')) {
-      showToast('Enter a valid email address.', 'error');
+    const parsedEmail = z.string().email('Enter a valid email address.').safeParse(cleaned);
+    if (!cleaned || !parsedEmail.success) {
+      setNewEmailError(
+        parsedEmail.success ? 'Enter a valid email address.' : parsedEmail.error.issues[0].message
+      );
       return;
     }
     if (cleaned === email.trim().toLowerCase() || secondaryEmails.includes(cleaned)) {
-      showToast('That email is already listed.', 'info');
+      setNewEmailError('That email address is already listed.');
       return;
     }
+    setNewEmailError('');
+    setEmailErrors((p) => ({ ...p, secondaryEmails: '' }));
     setSecondaryEmails((prev) => [...prev, cleaned]);
     setNewSecondaryEmail('');
   };
 
   const handleSaveEmails = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingEmails) return;
+    const check = validateWithSchema(accountEmailsSchema, { name, email, secondaryEmails });
+    if (!check.ok) {
+      setEmailErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+    setEmailErrors({});
     setSavingEmails(true);
     try {
       const res = await apiFetch('/api/auth/account-emails', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, email, secondaryEmails }),
+        body: JSON.stringify(check.data),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (data.fieldErrors) setEmailErrors(data.fieldErrors);
         showToast(data.error || 'Could not update account emails.', 'error');
         return;
       }
@@ -509,14 +716,19 @@ export function AdminAccountSecurityModule() {
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword.length < 10) {
-      showToast('Administrator password must be at least 10 characters.', 'error');
+    if (savingPassword) return;
+    const schema = buildChangePasswordSchema(true);
+    const check = validateWithSchema(schema, { currentPassword, newPassword, confirmPassword });
+    const errs: FieldErrors = check.ok ? {} : { ...check.fieldErrors };
+    if (hasPassword && !currentPassword.trim()) {
+      errs.currentPassword = 'Enter your current password.';
+    }
+    if (Object.keys(errs).length > 0) {
+      setPasswordErrors(errs);
+      showToast(Object.values(errs)[0], 'error');
       return;
     }
-    if (newPassword !== confirmPassword) {
-      showToast('New passwords do not match.', 'error');
-      return;
-    }
+    setPasswordErrors({});
     setSavingPassword(true);
     try {
       const res = await apiFetch('/api/auth/change-password', {
@@ -525,8 +737,9 @@ export function AdminAccountSecurityModule() {
         credentials: 'include',
         body: JSON.stringify({ currentPassword, newPassword }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (data.fieldErrors) setPasswordErrors(data.fieldErrors);
         showToast(data.error || 'Could not update password.', 'error');
         return;
       }
@@ -556,6 +769,7 @@ export function AdminAccountSecurityModule() {
       {/* Login Emails & Profile */}
       <form
         onSubmit={handleSaveEmails}
+        noValidate
         className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-5"
       >
         <div className="flex items-center justify-between gap-4">
@@ -572,21 +786,35 @@ export function AdminAccountSecurityModule() {
           <div>
             <label className="block text-xs font-medium mb-1">Display Name *</label>
             <input
-              required
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              onChange={(e) => {
+                setName(e.target.value);
+                setEmailErrors((p) => ({ ...p, name: '' }));
+              }}
+              aria-invalid={Boolean(emailErrors.name)}
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                emailErrors.name
+              )}
             />
+            <FieldError message={emailErrors.name} />
           </div>
           <div>
             <label className="block text-xs font-medium mb-1">Primary Login Email *</label>
             <input
               type="email"
-              required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setEmailErrors((p) => ({ ...p, email: '' }));
+              }}
+              aria-invalid={Boolean(emailErrors.email)}
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                emailErrors.email
+              )}
             />
+            <FieldError message={emailErrors.email} />
           </div>
         </div>
 
@@ -598,9 +826,16 @@ export function AdminAccountSecurityModule() {
             <input
               type="email"
               value={newSecondaryEmail}
-              onChange={(e) => setNewSecondaryEmail(e.target.value)}
+              onChange={(e) => {
+                setNewSecondaryEmail(e.target.value);
+                setNewEmailError('');
+              }}
               placeholder="Add another email address (e.g. your personal Gmail)"
-              className="flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              aria-invalid={Boolean(newEmailError)}
+              className={fieldBorderClass(
+                'flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                newEmailError
+              )}
             />
             <button
               type="button"
@@ -611,6 +846,7 @@ export function AdminAccountSecurityModule() {
               Add Email
             </button>
           </div>
+          <FieldError message={newEmailError || emailErrors.secondaryEmails} />
 
           {secondaryEmails.length > 0 && (
             <ul className="mt-3 divide-y divide-[#DCE3F2] dark:divide-[#1A2550] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B]">
@@ -643,6 +879,7 @@ export function AdminAccountSecurityModule() {
       {/* Set / Change Password */}
       <form
         onSubmit={handleUpdatePassword}
+        noValidate
         className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
       >
         <div className="flex items-center gap-2">
@@ -657,11 +894,18 @@ export function AdminAccountSecurityModule() {
             <label className="block text-xs font-medium mb-1">Current Password *</label>
             <input
               type="password"
-              required
               value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              onChange={(e) => {
+                setCurrentPassword(e.target.value);
+                setPasswordErrors((p) => ({ ...p, currentPassword: '' }));
+              }}
+              aria-invalid={Boolean(passwordErrors.currentPassword)}
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                passwordErrors.currentPassword
+              )}
             />
+            <FieldError message={passwordErrors.currentPassword} />
           </div>
         )}
 
@@ -670,23 +914,35 @@ export function AdminAccountSecurityModule() {
             <label className="block text-xs font-medium mb-1">New Password (min 10 chars) *</label>
             <input
               type="password"
-              required
-              minLength={10}
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              onChange={(e) => {
+                setNewPassword(e.target.value);
+                setPasswordErrors((p) => ({ ...p, newPassword: '' }));
+              }}
+              aria-invalid={Boolean(passwordErrors.newPassword)}
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                passwordErrors.newPassword
+              )}
             />
+            <FieldError message={passwordErrors.newPassword} />
           </div>
           <div>
             <label className="block text-xs font-medium mb-1">Confirm New Password *</label>
             <input
               type="password"
-              required
-              minLength={10}
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                setPasswordErrors((p) => ({ ...p, confirmPassword: '' }));
+              }}
+              aria-invalid={Boolean(passwordErrors.confirmPassword)}
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                passwordErrors.confirmPassword
+              )}
             />
+            <FieldError message={passwordErrors.confirmPassword} />
           </div>
         </div>
 

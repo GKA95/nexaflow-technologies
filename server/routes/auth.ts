@@ -1,7 +1,6 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { Router } from 'express';
-import { z } from 'zod';
 import { connectDB, getLastDBError, isDBConfigured } from '../db.js';
 import {
   authLimiter,
@@ -9,6 +8,7 @@ import {
   getBaseUrl,
   isGoogleOAuthConfigured,
   isJwtSecretConfigured,
+  isValidObjectId,
   optionalAuth,
   requireAuth,
   requireDatabase,
@@ -19,6 +19,17 @@ import {
   verifyScopedToken,
 } from '../middleware/auth.js';
 import { AdminActivity, OAuthPollResult, PasswordResetToken, User } from '../models.js';
+import {
+  accountEmailsSchema,
+  adminRecoveryFormSchema,
+  buildChangePasswordSchema,
+  forgotPasswordFormSchema,
+  learnerProfileSchema,
+  loginFormSchema,
+  registerFormSchema,
+  resetPasswordFormSchema,
+  zodToFieldErrors,
+} from '../shared/validation.js';
 import { isEmailConfigured, sendTransactionalEmail } from '../utils/email.js';
 
 const router = Router();
@@ -84,6 +95,7 @@ async function renderPopupResultHtml(params: {
   portal?: 'admin' | 'learner';
   error?: string;
   fallbackPath: string;
+  targetOrigin: string;
 }) {
   await recordOAuthPollResult(params.nonce, {
     ok: params.ok,
@@ -131,6 +143,7 @@ async function renderPopupResultHtml(params: {
   <script>
     (function() {
       var payload = ${payloadJson};
+      var targetOrigin = ${JSON.stringify(params.targetOrigin)};
       var delivered = false;
       try {
         if (typeof BroadcastChannel !== 'undefined') {
@@ -142,7 +155,7 @@ async function renderPopupResultHtml(params: {
       } catch (e) {}
       try {
         if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(payload, '*');
+          window.opener.postMessage(payload, targetOrigin);
           delivered = true;
         }
       } catch (e) {}
@@ -166,14 +179,6 @@ router.get('/providers', (_req, res) => {
   });
 });
 
-const registerSchema = z.object({
-  name: z.string().trim().min(2, 'Full name is required.').max(120),
-  email: z.string().trim().email('Valid email address is required.').max(180),
-  password: z.string().min(8, 'Password must be at least 8 characters.').max(128),
-  phone: z.string().trim().max(40).optional().default(''),
-  organization: z.string().trim().max(150).optional().default(''),
-});
-
 // Public registration strictly creates learner accounts only
 router.post('/register', authLimiter, requireDatabase, async (req, res) => {
   if (process.env.NODE_ENV === 'production' && !isJwtSecretConfigured()) {
@@ -181,11 +186,12 @@ router.post('/register', authLimiter, requireDatabase, async (req, res) => {
       error: 'JWT_SECRET (at least 16 characters) must be configured in server environment variables.',
     });
   }
-  const parsed = registerSchema.safeParse(req.body);
+  const parsed = registerFormSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Invalid registration data.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid registration data.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const { name, email, password, phone, organization } = parsed.data;
@@ -223,20 +229,18 @@ router.post('/register', authLimiter, requireDatabase, async (req, res) => {
   res.status(201).json({ user: authUser, sessionToken: token });
 });
 
-const loginSchema = z.object({
-  email: z.string().trim().email(),
-  password: z.string().min(1),
-});
-
 router.post('/login', authLimiter, requireDatabase, async (req, res) => {
   if (process.env.NODE_ENV === 'production' && !isJwtSecretConfigured()) {
     return res.status(503).json({
       error: 'JWT_SECRET (at least 16 characters) must be configured in server environment variables.',
     });
   }
-  const parsed = loginSchema.safeParse(req.body);
+  const parsed = loginFormSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: 'Valid email and password are required.' });
+    return res.status(400).json({
+      error: 'Valid email and password are required.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const { email, password } = parsed.data;
@@ -437,6 +441,13 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
     decodedState?.portal === 'admin' ? 'admin' : 'learner';
   const fallbackPath = portal === 'admin' ? '/portal-admin' : '/auth/login';
   const nonce = decodedState?.nonce;
+  const targetOrigin = (() => {
+    try {
+      return new URL(getBaseUrl(req)).origin;
+    } catch {
+      return '';
+    }
+  })();
 
   if (oauthError) {
     return res.status(400).send(
@@ -445,6 +456,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
         nonce,
         portal,
         fallbackPath,
+        targetOrigin,
         error: `Google authorization cancelled or denied (${oauthError}).`,
       })
     );
@@ -457,6 +469,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
         nonce,
         portal,
         fallbackPath,
+        targetOrigin,
         error: 'Invalid or expired Google Sign-In state. Please try again.',
       })
     );
@@ -469,6 +482,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
         nonce,
         portal,
         fallbackPath,
+        targetOrigin,
         error: 'Google OAuth credentials are missing on the server.',
       })
     );
@@ -482,6 +496,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
         nonce,
         portal,
         fallbackPath,
+        targetOrigin,
         error: 'MongoDB Atlas is not connected.',
       })
     );
@@ -493,6 +508,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
 
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
+      signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         code,
@@ -516,6 +532,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
           nonce,
           portal,
           fallbackPath,
+          targetOrigin,
           error:
             tokenData.error_description ||
             tokenData.error ||
@@ -525,6 +542,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
     }
 
     const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      signal: AbortSignal.timeout(15000),
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
     const profile = (await userInfoRes.json()) as {
@@ -542,6 +560,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
           nonce,
           portal,
           fallbackPath,
+          targetOrigin,
           error: 'Google account email must be verified before signing in.',
         })
       );
@@ -568,6 +587,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
             nonce,
             portal,
             fallbackPath,
+            targetOrigin,
             error:
               'No administrator exists yet. Complete initial administrator setup first, then you can sign in with Google.',
           })
@@ -580,6 +600,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
             nonce,
             portal,
             fallbackPath,
+            targetOrigin,
             error: `Google account (${normalizedEmail}) is not authorized as a NexaFlow administrator. Add this email in Admin Portal -> My Account & Emails or Admin Access first.`,
           })
         );
@@ -591,6 +612,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
             nonce,
             portal,
             fallbackPath,
+            targetOrigin,
             error: 'This administrator account has been deactivated.',
           })
         );
@@ -617,6 +639,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
               nonce,
               portal,
               fallbackPath,
+              targetOrigin,
               error: 'This account has been deactivated.',
             })
           );
@@ -664,6 +687,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
         exchangeToken,
         portal,
         fallbackPath,
+        targetOrigin,
       })
     );
   } catch (err) {
@@ -674,6 +698,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
         nonce,
         portal,
         fallbackPath,
+        targetOrigin,
         error: 'Unexpected error verifying Google Sign-In. Please try again.',
       })
     );
@@ -687,7 +712,12 @@ router.post('/google/complete', authLimiter, requireDatabase, async (req, res) =
     ? verifyScopedToken<{ purpose?: string; userId?: string; portal?: string }>(token)
     : null;
 
-  if (!decoded || decoded.purpose !== 'google_exchange' || !decoded.userId) {
+  if (
+    !decoded ||
+    decoded.purpose !== 'google_exchange' ||
+    !decoded.userId ||
+    !isValidObjectId(decoded.userId)
+  ) {
     return res.status(400).json({ error: 'Invalid or expired Google authentication token.' });
   }
 
@@ -719,15 +749,12 @@ router.post('/google/complete', authLimiter, requireDatabase, async (req, res) =
 
 // Forgot Password — creates hashed MongoDB token & delivers reset link via configured email provider
 router.post('/forgot-password', authLimiter, requireDatabase, async (req, res) => {
-  const schema = z.object({
-    email: z.string().trim().email('Valid email address is required.'),
-    portal: z.enum(['admin', 'learner']).optional().default('learner'),
-  });
-  const parsed = schema.safeParse(req.body);
+  const parsed = forgotPasswordFormSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Valid email is required.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Valid email is required.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   if (!isEmailConfigured()) {
@@ -800,15 +827,12 @@ router.post('/forgot-password', authLimiter, requireDatabase, async (req, res) =
 
 // Reset Password using MongoDB PasswordResetToken
 router.post('/reset-password', authLimiter, requireDatabase, async (req, res) => {
-  const schema = z.object({
-    token: z.string().trim().min(16, 'Invalid reset token.'),
-    newPassword: z.string().min(8, 'Password must be at least 8 characters.').max(128),
-  });
-  const parsed = schema.safeParse(req.body);
+  const parsed = resetPasswordFormSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Invalid reset request.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid reset request.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const tokenHash = crypto.createHash('sha256').update(parsed.data.token).digest('hex');
@@ -872,16 +896,12 @@ router.post('/admin-recovery-reset', authLimiter, requireDatabase, async (req, r
     });
   }
 
-  const schema = z.object({
-    setupToken: z.string().min(1, 'Setup token is required.'),
-    email: z.string().trim().email('Administrator email is required.'),
-    newPassword: z.string().min(10, 'Administrator password must be at least 10 characters.').max(128),
-  });
-  const parsed = schema.safeParse(req.body);
+  const parsed = adminRecoveryFormSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Invalid recovery payload.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid recovery payload.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const a = Buffer.from(parsed.data.setupToken);
@@ -976,16 +996,12 @@ router.get('/profile', requireDatabase, requireAuth, async (req, res) => {
 });
 
 router.patch('/profile', requireDatabase, requireAuth, async (req, res) => {
-  const schema = z.object({
-    name: z.string().trim().min(2).max(120),
-    phone: z.string().trim().max(40).optional().default(''),
-    organization: z.string().trim().max(150).optional().default(''),
-  });
-  const parsed = schema.safeParse(req.body);
+  const parsed = learnerProfileSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Invalid profile data.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid profile data.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const updated = await User.findByIdAndUpdate(
@@ -1005,20 +1021,12 @@ router.patch('/profile', requireDatabase, requireAuth, async (req, res) => {
 
 // Update primary login email, secondary emails (for Google/password sign-in), and display name
 router.patch('/account-emails', requireDatabase, requireAuth, async (req, res) => {
-  const schema = z.object({
-    name: z.string().trim().min(2, 'Name is required.').max(120),
-    email: z.string().trim().email('Valid primary email is required.').max(180),
-    secondaryEmails: z
-      .array(z.string().trim().email('All additional emails must be valid email addresses.').max(180))
-      .max(10)
-      .optional()
-      .default([]),
-  });
-  const parsed = schema.safeParse(req.body);
+  const parsed = accountEmailsSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Invalid email settings.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid email settings.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const primaryEmail = parsed.data.email.toLowerCase();
@@ -1092,24 +1100,16 @@ router.patch('/account-emails', requireDatabase, requireAuth, async (req, res) =
 });
 
 router.post('/change-password', requireDatabase, requireAuth, async (req, res) => {
-  const schema = z.object({
-    currentPassword: z.string().optional().default(''),
-    newPassword: z.string().min(8, 'New password must be at least 8 characters.').max(128),
-  });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Invalid password input.' });
-  }
-
   const user = await User.findById(req.user!.id);
   if (!user) return res.status(404).json({ error: 'User not found.' });
 
-  if ((user.role === 'admin' || user.role === 'super_admin') && parsed.data.newPassword.length < 10) {
-    return res
-      .status(400)
-      .json({ error: 'Administrator passwords must be at least 10 characters.' });
+  const isAdminRole = user.role === 'admin' || user.role === 'super_admin';
+  const parsed = buildChangePasswordSchema(isAdminRole).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid password input.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   // If user already has a password, verify currentPassword; if Google-only, allow setting first password

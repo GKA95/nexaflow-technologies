@@ -10,11 +10,23 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
+import { FieldError } from '../../components/FieldError';
 import { GoogleIcon } from '../../components/GoogleIcon';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import type { AuthUser } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  adminPasswordSchema,
+  adminRecoveryFormSchema,
+  adminSetupFormSchema,
+  fieldBorderClass,
+  type FieldErrors,
+  forgotPasswordFormSchema,
+  loginFormSchema,
+  resetPasswordFormSchema,
+  validateWithSchema,
+} from '../../utils/formValidation';
 import { completeGoogleExchangeToken, startGoogleSignInPopup } from '../../utils/googleAuth';
 import { AdminPortalShell } from './AdminPortalShell';
 
@@ -66,6 +78,24 @@ export function AdminGatePage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    if (errorMsg) setErrorMsg('');
+  };
+
+  const switchView = (nextView: GateView) => {
+    setErrorMsg('');
+    setInfoMsg('');
+    setFieldErrors({});
+    setView(nextView);
+  };
 
   const loadStatus = useCallback(async (forceRetry = false) => {
     setLoading(true);
@@ -151,17 +181,35 @@ export function AdminGatePage() {
 
   const handleInitialSetup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg('');
     setInfoMsg('');
-    if (password !== confirmPassword) {
-      setErrorMsg('Passwords do not match.');
-      return;
-    }
+    setFieldErrors({});
 
     const secondaryEmails = secondaryEmailsInput
       .split(',')
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
+
+    const check = validateWithSchema(adminSetupFormSchema, {
+      setupToken,
+      name,
+      email,
+      secondaryEmails,
+      password,
+    });
+    const nextErrors: FieldErrors = check.ok ? {} : { ...check.fieldErrors };
+    if (status?.setupTokenConfigured && !setupToken.trim()) {
+      nextErrors.setupToken = 'Server setup token is required.';
+    }
+    if (password !== confirmPassword) {
+      nextErrors.confirmPassword = 'Passwords do not match.';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setErrorMsg(Object.values(nextErrors)[0] || 'Please fix the highlighted fields.');
+      return;
+    }
 
     setSubmitting(true);
     const controller = new AbortController();
@@ -182,6 +230,9 @@ export function AdminGatePage() {
       });
       const data = await readApiResponse(res);
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setFieldErrors(data.fieldErrors as FieldErrors);
+        }
         setErrorMsg(String(data.error || `Setup failed (HTTP ${res.status}).`));
         return;
       }
@@ -209,18 +260,29 @@ export function AdminGatePage() {
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg('');
     setInfoMsg('');
+    setFieldErrors({});
+    const check = validateWithSchema(loginFormSchema, { email, password });
+    if (!check.ok) {
+      setFieldErrors(check.fieldErrors);
+      setErrorMsg(check.message);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(check.data),
       });
       const data = await readApiResponse(res);
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setFieldErrors(data.fieldErrors as FieldErrors);
+        }
         setErrorMsg(String(data.error || `Sign in failed (HTTP ${res.status}).`));
         return;
       }
@@ -274,17 +336,28 @@ export function AdminGatePage() {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg('');
     setInfoMsg('');
+    setFieldErrors({});
+    const check = validateWithSchema(forgotPasswordFormSchema, { email, portal: 'admin' });
+    if (!check.ok) {
+      setFieldErrors(check.fieldErrors);
+      setErrorMsg(check.message);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await apiFetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, portal: 'admin' }),
+        body: JSON.stringify(check.data),
       });
       const data = await readApiResponse(res);
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setFieldErrors(data.fieldErrors as FieldErrors);
+        }
         setErrorMsg(String(data.error || 'Could not process password reset request.'));
         return;
       }
@@ -302,14 +375,23 @@ export function AdminGatePage() {
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg('');
     setInfoMsg('');
-    if (password.length < 10) {
-      setErrorMsg('Administrator password must be at least 10 characters.');
-      return;
+    setFieldErrors({});
+    const check = validateWithSchema(resetPasswordFormSchema, {
+      token: resetToken,
+      newPassword: password,
+      confirmPassword,
+    });
+    const pwCheck = validateWithSchema(adminPasswordSchema, password);
+    const nextErrors: FieldErrors = check.ok ? {} : { ...check.fieldErrors };
+    if (!pwCheck.ok && !nextErrors.newPassword) {
+      nextErrors.newPassword = pwCheck.message;
     }
-    if (password !== confirmPassword) {
-      setErrorMsg('Passwords do not match.');
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setErrorMsg(Object.values(nextErrors)[0] || 'Check highlighted fields.');
       return;
     }
     setSubmitting(true);
@@ -317,10 +399,13 @@ export function AdminGatePage() {
       const res = await apiFetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: resetToken, newPassword: password }),
+        body: JSON.stringify({ token: resetToken.trim(), newPassword: password, confirmPassword }),
       });
       const data = await readApiResponse(res);
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setFieldErrors(data.fieldErrors as FieldErrors);
+        }
         setErrorMsg(String(data.error || 'Password reset failed.'));
         return;
       }
@@ -338,14 +423,22 @@ export function AdminGatePage() {
 
   const handleTokenRecoveryReset = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg('');
     setInfoMsg('');
-    if (password.length < 10) {
-      setErrorMsg('Administrator password must be at least 10 characters.');
-      return;
-    }
+    setFieldErrors({});
+    const check = validateWithSchema(adminRecoveryFormSchema, {
+      setupToken,
+      email,
+      newPassword: password,
+    });
+    const nextErrors: FieldErrors = check.ok ? {} : { ...check.fieldErrors };
     if (password !== confirmPassword) {
-      setErrorMsg('Passwords do not match.');
+      nextErrors.confirmPassword = 'Passwords do not match.';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setErrorMsg(Object.values(nextErrors)[0] || 'Check highlighted fields.');
       return;
     }
     setSubmitting(true);
@@ -357,6 +450,9 @@ export function AdminGatePage() {
       });
       const data = await readApiResponse(res);
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setFieldErrors(data.fieldErrors as FieldErrors);
+        }
         setErrorMsg(String(data.error || 'Recovery reset failed.'));
         return;
       }
@@ -552,7 +648,7 @@ export function AdminGatePage() {
                     </div>
                   )}
 
-                  <form onSubmit={handleInitialSetup} className="mt-5 space-y-4">
+                  <form onSubmit={handleInitialSetup} noValidate className="mt-5 space-y-4">
                     {status?.setupTokenConfigured && (
                       <div>
                         <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
@@ -561,11 +657,19 @@ export function AdminGatePage() {
                         <input
                           type="password"
                           required
+                          aria-invalid={Boolean(fieldErrors.setupToken)}
                           value={setupToken}
-                          onChange={(e) => setSetupToken(e.target.value)}
+                          onChange={(e) => {
+                            setSetupToken(e.target.value);
+                            clearFieldError('setupToken');
+                          }}
                           placeholder="Enter your configured ADMIN_SETUP_TOKEN"
-                          className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                            fieldErrors.setupToken
+                          )}
                         />
+                        <FieldError error={fieldErrors.setupToken} />
                       </div>
                     )}
 
@@ -576,11 +680,19 @@ export function AdminGatePage() {
                       <input
                         type="text"
                         required
+                        aria-invalid={Boolean(fieldErrors.name)}
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => {
+                          setName(e.target.value);
+                          clearFieldError('name');
+                        }}
                         placeholder="Owner / Administrator Name"
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.name
+                        )}
                       />
+                      <FieldError error={fieldErrors.name} />
                     </div>
 
                     <div>
@@ -590,11 +702,19 @@ export function AdminGatePage() {
                       <input
                         type="email"
                         required
+                        aria-invalid={Boolean(fieldErrors.email)}
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          clearFieldError('email');
+                        }}
                         placeholder="you@yourdomain.com"
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.email
+                        )}
                       />
+                      <FieldError error={fieldErrors.email} />
                     </div>
 
                     <div>
@@ -603,11 +723,19 @@ export function AdminGatePage() {
                       </label>
                       <input
                         type="text"
+                        aria-invalid={Boolean(fieldErrors.secondaryEmails)}
                         value={secondaryEmailsInput}
-                        onChange={(e) => setSecondaryEmailsInput(e.target.value)}
+                        onChange={(e) => {
+                          setSecondaryEmailsInput(e.target.value);
+                          clearFieldError('secondaryEmails');
+                        }}
                         placeholder="e.g. your.gmail@gmail.com, founder@company.com"
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.secondaryEmails
+                        )}
                       />
+                      <FieldError error={fieldErrors.secondaryEmails} />
                       <p className="mt-1 text-[11px] text-[#AEB8D4]/80">
                         Comma-separated. Any email listed here works for Google Sign-In, Password Login,
                         and Password Resets.
@@ -617,16 +745,25 @@ export function AdminGatePage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
-                          Password (min 10 chars) *
+                          Password (10+ chars) *
                         </label>
                         <input
                           type="password"
                           required
                           minLength={10}
+                          aria-invalid={Boolean(fieldErrors.password)}
                           value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            clearFieldError('password');
+                          }}
+                          placeholder="Upper, lower & number"
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                            fieldErrors.password
+                          )}
                         />
+                        <FieldError error={fieldErrors.password} />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
@@ -636,10 +773,18 @@ export function AdminGatePage() {
                           type="password"
                           required
                           minLength={10}
+                          aria-invalid={Boolean(fieldErrors.confirmPassword)}
                           value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                          onChange={(e) => {
+                            setConfirmPassword(e.target.value);
+                            clearFieldError('confirmPassword');
+                          }}
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                            fieldErrors.confirmPassword
+                          )}
                         />
+                        <FieldError error={fieldErrors.confirmPassword} />
                       </div>
                     </div>
 
@@ -664,11 +809,7 @@ export function AdminGatePage() {
                 <div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setErrorMsg('');
-                      setInfoMsg('');
-                      setView('login');
-                    }}
+                    onClick={() => switchView('login')}
                     className="inline-flex items-center gap-1.5 text-xs text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
@@ -681,7 +822,7 @@ export function AdminGatePage() {
                     link stored securely in MongoDB.
                   </p>
 
-                  <form onSubmit={handleForgotPassword} className="mt-5 space-y-4">
+                  <form onSubmit={handleForgotPassword} noValidate className="mt-5 space-y-4">
                     <div>
                       <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
                         Administrator Email *
@@ -689,11 +830,19 @@ export function AdminGatePage() {
                       <input
                         type="email"
                         required
+                        aria-invalid={Boolean(fieldErrors.email)}
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          clearFieldError('email');
+                        }}
                         placeholder="you@yourdomain.com"
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.email
+                        )}
                       />
+                      <FieldError error={fieldErrors.email} />
                     </div>
 
                     {errorMsg && (
@@ -723,11 +872,7 @@ export function AdminGatePage() {
                     <div className="flex gap-3">
                       <button
                         type="button"
-                        onClick={() => {
-                          setErrorMsg('');
-                          setInfoMsg('');
-                          setView('reset');
-                        }}
+                        onClick={() => switchView('reset')}
                         className="text-[#00D4FF] hover:underline"
                       >
                         Enter Reset Token
@@ -735,11 +880,7 @@ export function AdminGatePage() {
                       {status?.setupTokenConfigured && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setErrorMsg('');
-                            setInfoMsg('');
-                            setView('recovery');
-                          }}
+                          onClick={() => switchView('recovery')}
                           className="text-[#00D4FF] hover:underline"
                         >
                           Server Token Recovery
@@ -753,11 +894,7 @@ export function AdminGatePage() {
                 <div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setErrorMsg('');
-                      setInfoMsg('');
-                      setView('login');
-                    }}
+                    onClick={() => switchView('login')}
                     className="inline-flex items-center gap-1.5 text-xs text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
@@ -766,10 +903,10 @@ export function AdminGatePage() {
 
                   <h1 className="text-xl font-bold">Reset Administrator Password</h1>
                   <p className="mt-1.5 text-sm text-[#AEB8D4]">
-                    Set a new administrator password (minimum 10 characters).
+                    Set a new administrator password (minimum 10 characters with uppercase, lowercase, and a number).
                   </p>
 
-                  <form onSubmit={handleResetPassword} className="mt-5 space-y-4">
+                  <form onSubmit={handleResetPassword} noValidate className="mt-5 space-y-4">
                     <div>
                       <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
                         Reset Token *
@@ -777,11 +914,19 @@ export function AdminGatePage() {
                       <input
                         type="text"
                         required
+                        aria-invalid={Boolean(fieldErrors.token)}
                         value={resetToken}
-                        onChange={(e) => setResetToken(e.target.value)}
+                        onChange={(e) => {
+                          setResetToken(e.target.value);
+                          clearFieldError('token');
+                        }}
                         placeholder="Paste token from your reset link"
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm font-mono text-[#F7F8FF]"
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm font-mono text-[#F7F8FF]',
+                          fieldErrors.token
+                        )}
                       />
+                      <FieldError error={fieldErrors.token} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
@@ -791,10 +936,18 @@ export function AdminGatePage() {
                         type="password"
                         required
                         minLength={10}
+                        aria-invalid={Boolean(fieldErrors.newPassword)}
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          clearFieldError('newPassword');
+                        }}
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.newPassword
+                        )}
                       />
+                      <FieldError error={fieldErrors.newPassword} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
@@ -804,10 +957,18 @@ export function AdminGatePage() {
                         type="password"
                         required
                         minLength={10}
+                        aria-invalid={Boolean(fieldErrors.confirmPassword)}
                         value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        onChange={(e) => {
+                          setConfirmPassword(e.target.value);
+                          clearFieldError('confirmPassword');
+                        }}
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.confirmPassword
+                        )}
                       />
+                      <FieldError error={fieldErrors.confirmPassword} />
                     </div>
 
                     {errorMsg && (
@@ -831,11 +992,7 @@ export function AdminGatePage() {
                 <div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setErrorMsg('');
-                      setInfoMsg('');
-                      setView('login');
-                    }}
+                    onClick={() => switchView('login')}
                     className="inline-flex items-center gap-1.5 text-xs text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
@@ -848,7 +1005,7 @@ export function AdminGatePage() {
                     <code className="font-mono text-[#00D4FF]">ADMIN_SETUP_TOKEN</code>.
                   </p>
 
-                  <form onSubmit={handleTokenRecoveryReset} className="mt-5 space-y-4">
+                  <form onSubmit={handleTokenRecoveryReset} noValidate className="mt-5 space-y-4">
                     <div>
                       <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
                         ADMIN_SETUP_TOKEN *
@@ -856,10 +1013,18 @@ export function AdminGatePage() {
                       <input
                         type="password"
                         required
+                        aria-invalid={Boolean(fieldErrors.setupToken)}
                         value={setupToken}
-                        onChange={(e) => setSetupToken(e.target.value)}
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        onChange={(e) => {
+                          setSetupToken(e.target.value);
+                          clearFieldError('setupToken');
+                        }}
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.setupToken
+                        )}
                       />
+                      <FieldError error={fieldErrors.setupToken} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
@@ -868,10 +1033,18 @@ export function AdminGatePage() {
                       <input
                         type="email"
                         required
+                        aria-invalid={Boolean(fieldErrors.email)}
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          clearFieldError('email');
+                        }}
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.email
+                        )}
                       />
+                      <FieldError error={fieldErrors.email} />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
@@ -882,10 +1055,18 @@ export function AdminGatePage() {
                           type="password"
                           required
                           minLength={10}
+                          aria-invalid={Boolean(fieldErrors.newPassword)}
                           value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            clearFieldError('newPassword');
+                          }}
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                            fieldErrors.newPassword
+                          )}
                         />
+                        <FieldError error={fieldErrors.newPassword} />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
@@ -895,10 +1076,18 @@ export function AdminGatePage() {
                           type="password"
                           required
                           minLength={10}
+                          aria-invalid={Boolean(fieldErrors.confirmPassword)}
                           value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                          onChange={(e) => {
+                            setConfirmPassword(e.target.value);
+                            clearFieldError('confirmPassword');
+                          }}
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                            fieldErrors.confirmPassword
+                          )}
                         />
+                        <FieldError error={fieldErrors.confirmPassword} />
                       </div>
                     </div>
 
@@ -959,30 +1148,34 @@ export function AdminGatePage() {
                     <div className="h-px flex-1 bg-[#1A2550]" />
                   </div>
 
-                  <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <form onSubmit={handleAdminLogin} noValidate className="space-y-4">
                     <div>
                       <label className="block text-xs font-medium text-[#AEB8D4] mb-1">
-                        Administrator Email
+                        Administrator Email *
                       </label>
                       <input
                         type="email"
                         required
+                        aria-invalid={Boolean(fieldErrors.email)}
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          clearFieldError('email');
+                        }}
                         placeholder="you@yourdomain.com"
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.email
+                        )}
                       />
+                      <FieldError error={fieldErrors.email} />
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-medium text-[#AEB8D4]">Password</label>
+                        <label className="block text-xs font-medium text-[#AEB8D4]">Password *</label>
                         <button
                           type="button"
-                          onClick={() => {
-                            setErrorMsg('');
-                            setInfoMsg('');
-                            setView('forgot');
-                          }}
+                          onClick={() => switchView('forgot')}
                           className="text-xs text-[#00D4FF] hover:underline"
                         >
                           Forgot password?
@@ -991,10 +1184,18 @@ export function AdminGatePage() {
                       <input
                         type="password"
                         required
+                        aria-invalid={Boolean(fieldErrors.password)}
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]"
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          clearFieldError('password');
+                        }}
+                        className={fieldBorderClass(
+                          'w-full rounded-lg border border-[#1A2550] bg-[#03051B] px-3.5 py-2.5 text-sm text-[#F7F8FF]',
+                          fieldErrors.password
+                        )}
                       />
+                      <FieldError error={fieldErrors.password} />
                     </div>
 
                     {errorMsg && (

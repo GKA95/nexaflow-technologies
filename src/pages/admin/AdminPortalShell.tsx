@@ -16,6 +16,7 @@ import {
   Menu,
   MessageSquare,
   Package,
+  RotateCcw,
   Search,
   Shield,
   SlidersHorizontal,
@@ -25,9 +26,16 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { FieldError } from '../../components/FieldError';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import { apiFetch } from '../../utils/authSession';
+import {
+  fieldBorderClass,
+  type FieldErrors,
+  paymentRefundSchema,
+  validateWithSchema,
+} from '../../utils/formValidation';
 import {
   AdminBlogModule,
   AdminProductsModule,
@@ -74,7 +82,7 @@ type AdminTab =
   | 'admins';
 
 export function AdminPortalShell() {
-  const { user, logout, navigate, searchParams } = useApp();
+  const { user, logout, navigate, searchParams, showToast } = useApp();
   const initialTab = (searchParams.get('tab') as AdminTab) || 'overview';
   const [tab, setTab] = useState<AdminTab>(initialTab);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -94,6 +102,11 @@ export function AdminPortalShell() {
   } | null>(null);
 
   const [payments, setPayments] = useState<Array<Record<string, unknown>>>([]);
+  const [refundTarget, setRefundTarget] = useState<Record<string, unknown> | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [refundErrors, setRefundErrors] = useState<FieldErrors>({});
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
 
   const loadOverview = useCallback(async () => {
     const res = await apiFetch('/api/admin/overview', { credentials: 'include' });
@@ -104,6 +117,65 @@ export function AdminPortalShell() {
     const res = await apiFetch('/api/admin/payments', { credentials: 'include' });
     if (res.ok) setPayments((await res.json()).payments || []);
   }, []);
+
+  const openRefundModal = (payment: Record<string, unknown>) => {
+    setRefundTarget(payment);
+    setRefundAmount(String(payment.amount || ''));
+    setRefundReason('');
+    setRefundErrors({});
+  };
+
+  const handleRefundSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refundTarget || refundSubmitting) return;
+    setRefundErrors({});
+
+    const totalAmount = Number(refundTarget.amount || 0);
+    const trimmedAmount = refundAmount.trim();
+    const parsedAmount = trimmedAmount ? Number(trimmedAmount) : undefined;
+    const check = validateWithSchema(paymentRefundSchema, {
+      reason: refundReason,
+      ...(trimmedAmount ? { amount: parsedAmount } : {}),
+    });
+    const nextErrors: FieldErrors = check.ok ? {} : { ...check.fieldErrors };
+    if (trimmedAmount && Number.isFinite(parsedAmount) && parsedAmount! > totalAmount) {
+      nextErrors.amount = `Refund amount cannot exceed ${String(refundTarget.currency)} ${totalAmount}.`;
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setRefundErrors(nextErrors);
+      showToast(Object.values(nextErrors)[0] || 'Check refund fields.', 'error');
+      return;
+    }
+
+    setRefundSubmitting(true);
+    try {
+      const payload: { reason: string; amount?: number } = { reason: refundReason.trim() };
+      if (parsedAmount !== undefined && parsedAmount < totalAmount) {
+        payload.amount = parsedAmount;
+      }
+      const res = await apiFetch(`/api/admin/payments/${String(refundTarget._id)}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setRefundErrors(data.fieldErrors as FieldErrors);
+        }
+        showToast(data.error || 'Could not process Paystack refund.', 'error');
+        return;
+      }
+      showToast('Refund submitted to Paystack and enrolment updated.', 'success');
+      setRefundTarget(null);
+      await Promise.all([loadPayments(), loadOverview()]);
+    } catch {
+      showToast('Network error submitting refund.', 'error');
+    } finally {
+      setRefundSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (tab === 'overview') loadOverview();
@@ -498,6 +570,8 @@ export function AdminPortalShell() {
                         const learnerObj = p.userId as { name?: string; email?: string } | undefined;
                         const courseObj = p.courseId as { title?: string } | undefined;
                         const couponCode = p.couponCode ? String(p.couponCode) : '';
+                        const canRefund =
+                          String(p.status) === 'success' && String(p.provider || 'paystack') !== 'coupon';
                         return (
                           <div key={String(p._id)} className="p-4 space-y-1.5 text-xs">
                             <div className="flex items-start justify-between gap-2">
@@ -522,9 +596,27 @@ export function AdminPortalShell() {
                                 Coupon: {couponCode} ({String(p.discountPercent || 0)}% off)
                               </p>
                             )}
-                            <p className="font-mono text-[11px] text-[#4A5578] dark:text-[#AEB8D4]">
-                              {new Date(String(p.createdAt)).toLocaleString()} · {String(p.mode).toUpperCase()}
-                            </p>
+                            {Boolean(p.refundedAt) && (
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                                Refunded: {String(p.currency)} {String(p.refundAmount || p.amount)}
+                                {p.refundReason ? ` · ${String(p.refundReason)}` : ''}
+                              </p>
+                            )}
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <p className="font-mono text-[11px] text-[#4A5578] dark:text-[#AEB8D4]">
+                                {new Date(String(p.createdAt)).toLocaleString()} · {String(p.mode).toUpperCase()}
+                              </p>
+                              {canRefund && (
+                                <button
+                                  type="button"
+                                  onClick={() => openRefundModal(p)}
+                                  className="min-h-[36px] inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 shrink-0"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  Refund
+                                </button>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -543,6 +635,7 @@ export function AdminPortalShell() {
                             <th className="p-3 text-right">Amount</th>
                             <th className="p-3">Mode</th>
                             <th className="p-3">Status</th>
+                            <th className="p-3 text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
@@ -550,6 +643,8 @@ export function AdminPortalShell() {
                             const learnerObj = p.userId as { name?: string; email?: string } | undefined;
                             const courseObj = p.courseId as { title?: string } | undefined;
                             const couponCode = p.couponCode ? String(p.couponCode) : '';
+                            const canRefund =
+                              String(p.status) === 'success' && String(p.provider || 'paystack') !== 'coupon';
                             return (
                               <tr key={String(p._id)}>
                                 <td className="p-3 font-mono text-xs tabular-nums">
@@ -565,7 +660,28 @@ export function AdminPortalShell() {
                                   {String(p.currency)} {String(p.amount)}
                                 </td>
                                 <td className="p-3 font-mono text-xs uppercase">{String(p.mode)}</td>
-                                <td className="p-3 text-xs capitalize">{String(p.status)}</td>
+                                <td className="p-3 text-xs capitalize">
+                                  <span>{String(p.status)}</span>
+                                  {Boolean(p.refundedAt) && (
+                                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                                      {String(p.currency)} {String(p.refundAmount || p.amount)}
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="p-3 text-right">
+                                  {canRefund ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => openRefundModal(p)}
+                                      className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                      Refund
+                                    </button>
+                                  ) : (
+                                    <span className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">—</span>
+                                  )}
+                                </td>
                               </tr>
                             );
                           })}
@@ -579,6 +695,100 @@ export function AdminPortalShell() {
           )}
         </main>
       </div>
+
+      {/* Paystack Payment Refund Modal */}
+      {refundTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold">Issue Paystack Refund</h2>
+                <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4] mt-0.5 font-mono">
+                  Ref: {String(refundTarget.reference)}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close refund modal"
+                onClick={() => setRefundTarget(null)}
+                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-[#4A5578] dark:text-[#AEB8D4]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRefundSubmit} noValidate className="mt-4 space-y-4">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
+                Issuing a refund submits a reversal request directly to Paystack and revokes the
+                learner&apos;s enrolment for this course.
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">
+                  Refund Amount ({String(refundTarget.currency)})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  max={Number(refundTarget.amount || 0)}
+                  aria-invalid={Boolean(refundErrors.amount)}
+                  value={refundAmount}
+                  onChange={(e) => {
+                    setRefundAmount(e.target.value);
+                    setRefundErrors((p) => ({ ...p, amount: '' }));
+                  }}
+                  className={fieldBorderClass(
+                    'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                    refundErrors.amount
+                  )}
+                />
+                <FieldError error={refundErrors.amount} />
+                <p className="mt-1 text-[11px] text-[#4A5578] dark:text-[#AEB8D4]">
+                  Full paid amount: {String(refundTarget.currency)} {String(refundTarget.amount)}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">Refund Reason *</label>
+                <textarea
+                  rows={3}
+                  required
+                  aria-invalid={Boolean(refundErrors.reason)}
+                  value={refundReason}
+                  onChange={(e) => {
+                    setRefundReason(e.target.value);
+                    setRefundErrors((p) => ({ ...p, reason: '' }));
+                  }}
+                  placeholder="Explain why this transaction is being refunded..."
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    refundErrors.reason
+                  )}
+                />
+                <FieldError error={refundErrors.reason} />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRefundTarget(null)}
+                  className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={refundSubmitting}
+                  className="min-h-[44px] rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-white"
+                >
+                  {refundSubmitting ? 'Processing Refund...' : 'Confirm Paystack Refund'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

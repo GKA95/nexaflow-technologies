@@ -1,14 +1,13 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { Router } from 'express';
-import { z } from 'zod';
 import { connectDB, getLastDBError, isDBConfigured } from '../db.js';
 import { DEFAULT_SEO_PAGES, DEFAULT_SITE_SETTINGS } from '../defaults.js';
 import {
   authLimiter,
-  extractYouTubeId,
   isGoogleOAuthConfigured,
   isJwtSecretConfigured,
+  isValidObjectId,
   requireAdmin,
   requireAuth,
   requireDatabase,
@@ -45,10 +44,49 @@ import {
   User,
   WorkShowcase,
 } from '../models.js';
-import { isEmailConfigured } from '../utils/email.js';
-import { getPaystackMode, isPaystackConfigured } from '../utils/paystack.js';
+import {
+  adminCreateSchema,
+  adminSetupFormSchema,
+  adminUpdateSchema,
+  articleWriteSchema,
+  bulkLessonsWriteSchema,
+  couponWriteSchema,
+  courseReviewUpdateSchema,
+  courseWriteSchema,
+  leadActivityWriteSchema,
+  leadUpdateSchema,
+  learnerEnrolAssignSchema,
+  lessonWriteSchema,
+  moduleWriteSchema,
+  paymentRefundSchema,
+  productWriteSchema,
+  seoPageUpdateSchema,
+  serviceWriteSchema,
+  siteSettingsWriteSchema,
+  testimonialWriteSchema,
+  ticketStatusUpdateSchema,
+  workShowcaseWriteSchema,
+  zodToFieldErrors,
+} from '../shared/validation.js';
+import { isEmailConfigured, sendTransactionalEmail } from '../utils/email.js';
+import {
+  getPaystackMode,
+  isPaystackConfigured,
+  refundPaystackTransaction,
+} from '../utils/paystack.js';
+import { serializePayment } from './payments.js';
 
 const router = Router();
+
+const coursePatchSchema = courseWriteSchema.partial();
+const modulePatchSchema = moduleWriteSchema.partial();
+const lessonPatchSchema = lessonWriteSchema.partial();
+const productPatchSchema = productWriteSchema.partial();
+const servicePatchSchema = serviceWriteSchema.partial();
+const articlePatchSchema = articleWriteSchema.partial();
+const workShowcasePatchSchema = workShowcaseWriteSchema.partial();
+const testimonialPatchSchema = testimonialWriteSchema.partial();
+const couponPatchSchema = couponWriteSchema.partial();
 
 async function logAdminActivity(
   admin: { id: string; email: string },
@@ -84,7 +122,7 @@ router.get('/setup-status', async (req, res) => {
       dbConfigured: false,
       dbConnected: false,
       dbErrorCode: lastErr.code || 'NOT_CONFIGURED',
-      dbError: lastErr.message || null,
+      dbError: isProduction && lastErr.code === 'UNKNOWN' ? 'Database unavailable' : lastErr.message || null,
       adminExists: false,
       setupTokenConfigured,
       googleConfigured,
@@ -99,7 +137,7 @@ router.get('/setup-status', async (req, res) => {
       dbConfigured: true,
       dbConnected: false,
       dbErrorCode: lastErr.code || 'UNKNOWN',
-      dbError: lastErr.message || null,
+      dbError: isProduction && lastErr.code === 'UNKNOWN' ? 'Database unavailable' : lastErr.message || null,
       adminExists: false,
       setupTokenConfigured,
       googleConfigured,
@@ -148,16 +186,12 @@ router.post('/setup', authLimiter, requireDatabase, async (req, res) => {
       });
     }
 
-    const schema = z.object({
-      setupToken: z.string().optional().default(''),
-      name: z.string().trim().min(2, 'Full name is required.').max(120),
-      email: z.string().trim().email('Valid email is required.').max(180),
-      secondaryEmails: z.array(z.string().trim().email()).max(10).optional().default([]),
-      password: z.string().min(10, 'Administrator password must be at least 10 characters.').max(128),
-    });
-    const parsed = schema.safeParse(req.body);
+    const parsed = adminSetupFormSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid setup data.' });
+      return res.status(400).json({
+        error: parsed.error.issues[0]?.message || 'Invalid setup data.',
+        fieldErrors: zodToFieldErrors(parsed.error),
+      });
     }
 
     if (hasSetupToken && rawEnvToken) {
@@ -220,9 +254,10 @@ router.post('/setup', authLimiter, requireDatabase, async (req, res) => {
     return res.status(201).json({ user: authUser, sessionToken: token });
   } catch (err) {
     console.error('[Admin Setup] Error creating initial administrator:', err);
+    const isProd = process.env.NODE_ENV === 'production';
     return res.status(500).json({
       error:
-        err instanceof Error && err.message
+        !isProd && err instanceof Error && err.message
           ? `Administrator setup error: ${err.message}`
           : 'Unexpected server error during administrator setup.',
     });
@@ -257,6 +292,7 @@ router.get('/overview', async (_req, res) => {
       { $group: { _id: '$currency', total: { $sum: '$amount' }, count: { $sum: 1 } } },
     ]),
     Payment.find()
+      .select('-processedEvents')
       .populate('userId', 'name email')
       .populate('courseId', 'title')
       .sort({ createdAt: -1 })
@@ -322,29 +358,46 @@ router.get('/courses', async (_req, res) => {
 });
 
 router.post('/courses', async (req, res) => {
-  const body = req.body || {};
-  const title = stripHtmlTags(String(body.title || ''));
-  if (title.length < 3) return res.status(400).json({ error: 'Course title is required.' });
-  const slug = slugify(body.slug || title);
+  const raw = req.body || {};
+  const parsed = courseWriteSchema.safeParse({
+    ...raw,
+    price: Number(raw.price ?? 0),
+    order: Number(raw.order ?? 0),
+  });
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid course details.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const d = parsed.data;
+  const slug = slugify(d.slug || d.title);
+  if (!slug) return res.status(400).json({ error: 'Valid course title or slug is required.' });
+
+  const clash = await Course.findOne({ slug }).lean();
+  if (clash) {
+    return res.status(409).json({ error: `A course with slug "${slug}" already exists.` });
+  }
 
   const course = await Course.create({
-    title,
+    title: stripHtmlTags(d.title),
     slug,
-    shortDescription: stripHtmlTags(String(body.shortDescription || '')),
-    fullDescription: String(body.fullDescription || ''),
-    coverImage: String(body.coverImage || ''),
-    price: Number(body.price || 0),
-    currency: String(body.currency || 'GHS').toUpperCase(),
-    objectives: Array.isArray(body.objectives) ? body.objectives : [],
-    outcomes: Array.isArray(body.outcomes) ? body.outcomes : [],
-    published: Boolean(body.published),
-    order: Number(body.order || 0),
-    seoTitle: String(body.seoTitle || ''),
-    seoDescription: String(body.seoDescription || ''),
-    canonicalUrl: String(body.canonicalUrl || ''),
-    ogImage: String(body.ogImage || ''),
-    noIndex: Boolean(body.noIndex),
-    focusKeyword: String(body.focusKeyword || ''),
+    shortDescription: stripHtmlTags(d.shortDescription),
+    fullDescription: d.fullDescription,
+    coverImage: d.coverImage,
+    price: d.price,
+    currency: d.currency,
+    objectives: d.objectives.map(stripHtmlTags).filter(Boolean),
+    outcomes: d.outcomes.map(stripHtmlTags).filter(Boolean),
+    published: d.published,
+    order: d.order,
+    seoTitle: stripHtmlTags(d.seoTitle),
+    seoDescription: stripHtmlTags(d.seoDescription),
+    canonicalUrl: d.canonicalUrl,
+    ogImage: d.ogImage,
+    noIndex: d.noIndex,
+    focusKeyword: stripHtmlTags(d.focusKeyword),
   });
 
   await logAdminActivity(req.user!, 'create_course', 'Course', course._id.toString(), course.title);
@@ -352,13 +405,43 @@ router.post('/courses', async (req, res) => {
 });
 
 router.patch('/courses/:id', async (req, res) => {
-  const body = req.body || {};
-  const update: Record<string, unknown> = { ...body };
-  if (body.slug) update.slug = slugify(String(body.slug));
-  if (body.currency) update.currency = String(body.currency).toUpperCase();
-  if (body.price !== undefined) update.price = Number(body.price);
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid course identifier.' });
+  }
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.price !== undefined) candidate.price = Number(raw.price);
+  if (raw.order !== undefined) candidate.order = Number(raw.order);
 
-  const updated = await Course.findByIdAndUpdate(req.params.id, update, { new: true });
+  const parsed = coursePatchSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid course update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const d = parsed.data;
+  const update: Record<string, unknown> = {};
+  if (d.title !== undefined) update.title = stripHtmlTags(d.title);
+  if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
+  if (d.shortDescription !== undefined) update.shortDescription = stripHtmlTags(d.shortDescription);
+  if (d.fullDescription !== undefined) update.fullDescription = d.fullDescription;
+  if (d.coverImage !== undefined) update.coverImage = d.coverImage;
+  if (d.price !== undefined) update.price = d.price;
+  if (d.currency !== undefined) update.currency = d.currency;
+  if (d.objectives !== undefined) update.objectives = d.objectives.map(stripHtmlTags).filter(Boolean);
+  if (d.outcomes !== undefined) update.outcomes = d.outcomes.map(stripHtmlTags).filter(Boolean);
+  if (d.published !== undefined) update.published = d.published;
+  if (d.order !== undefined) update.order = d.order;
+  if (d.seoTitle !== undefined) update.seoTitle = stripHtmlTags(d.seoTitle);
+  if (d.seoDescription !== undefined) update.seoDescription = stripHtmlTags(d.seoDescription);
+  if (d.canonicalUrl !== undefined) update.canonicalUrl = d.canonicalUrl;
+  if (d.ogImage !== undefined) update.ogImage = d.ogImage;
+  if (d.noIndex !== undefined) update.noIndex = d.noIndex;
+  if (d.focusKeyword !== undefined) update.focusKeyword = stripHtmlTags(d.focusKeyword);
+
+  const updated = await Course.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
   if (!updated) return res.status(404).json({ error: 'Course not found.' });
 
   await logAdminActivity(req.user!, 'update_course', 'Course', updated._id.toString(), updated.title);
@@ -366,6 +449,9 @@ router.patch('/courses/:id', async (req, res) => {
 });
 
 router.delete('/courses/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid course identifier.' });
+  }
   const course = await Course.findById(req.params.id);
   if (!course) return res.status(404).json({ error: 'Course not found.' });
   await Promise.all([
@@ -378,26 +464,63 @@ router.delete('/courses/:id', async (req, res) => {
 });
 
 router.post('/courses/:courseId/modules', async (req, res) => {
-  const { title, description, order } = req.body || {};
-  if (!title) return res.status(400).json({ error: 'Module title is required.' });
+  if (!isValidObjectId(req.params.courseId)) {
+    return res.status(400).json({ error: 'Invalid course identifier.' });
+  }
+  const courseExists = await Course.exists({ _id: req.params.courseId });
+  if (!courseExists) return res.status(404).json({ error: 'Course not found.' });
+
+  const raw = req.body || {};
+  const parsed = moduleWriteSchema.safeParse({
+    ...raw,
+    order: raw.order !== undefined ? Number(raw.order) : undefined,
+  });
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid module details.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
   const count = await Module.countDocuments({ courseId: req.params.courseId });
   const mod = await Module.create({
     courseId: req.params.courseId,
-    title: stripHtmlTags(String(title)),
-    description: String(description || ''),
-    order: Number(order ?? count + 1),
+    title: stripHtmlTags(parsed.data.title),
+    description: stripHtmlTags(parsed.data.description),
+    order: parsed.data.order ?? count + 1,
   });
   await logAdminActivity(req.user!, 'create_module', 'Module', mod._id.toString(), mod.title);
   res.status(201).json({ module: mod });
 });
 
 router.patch('/modules/:id', async (req, res) => {
-  const updated = await Module.findByIdAndUpdate(req.params.id, req.body || {}, { new: true });
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid module identifier.' });
+  }
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.order !== undefined) candidate.order = Number(raw.order);
+  const parsed = modulePatchSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid module update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+  const update: Record<string, unknown> = {};
+  if (parsed.data.title !== undefined) update.title = stripHtmlTags(parsed.data.title);
+  if (parsed.data.description !== undefined) update.description = stripHtmlTags(parsed.data.description);
+  if (parsed.data.order !== undefined) update.order = parsed.data.order;
+
+  const updated = await Module.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
   if (!updated) return res.status(404).json({ error: 'Module not found.' });
   res.json({ module: updated });
 });
 
 router.delete('/modules/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid module identifier.' });
+  }
   await Promise.all([
     Lesson.deleteMany({ moduleId: req.params.id }),
     Module.deleteOne({ _id: req.params.id }),
@@ -406,25 +529,21 @@ router.delete('/modules/:id', async (req, res) => {
 });
 
 router.post('/courses/:courseId/lessons/bulk', async (req, res) => {
+  if (!isValidObjectId(req.params.courseId)) {
+    return res.status(400).json({ error: 'Invalid course identifier.' });
+  }
   const course = await Course.findById(req.params.courseId).lean();
   if (!course) return res.status(404).json({ error: 'Course not found.' });
 
-  const { moduleId, lessons } = (req.body || {}) as {
-    moduleId?: string;
-    lessons?: Array<{
-      title?: string;
-      youtubeUrl?: string;
-      duration?: string;
-      notes?: string;
-      published?: boolean;
-    }>;
-  };
-
-  if (!Array.isArray(lessons) || lessons.length === 0) {
-    return res.status(400).json({ error: 'Please add at least one video lesson.' });
+  const parsed = bulkLessonsWriteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid video lessons batch.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
-  let targetModuleId = moduleId ? String(moduleId).trim() : '';
+  let targetModuleId = parsed.data.moduleId;
   if (targetModuleId) {
     const existingMod = await Module.findOne({
       _id: targetModuleId,
@@ -450,30 +569,18 @@ router.post('/courses/:courseId/lessons/bulk', async (req, res) => {
     }
   }
 
-  for (let i = 0; i < lessons.length; i++) {
-    const item = lessons[i];
-    if (!item?.title || !String(item.title).trim()) {
-      return res.status(400).json({ error: `Video #${i + 1} is missing a title.` });
-    }
-    if (!item?.youtubeUrl || !extractYouTubeId(String(item.youtubeUrl))) {
-      return res.status(400).json({
-        error: `Video #${i + 1} needs a valid YouTube URL (youtube.com/watch?v=... or youtu.be/...).`,
-      });
-    }
-  }
-
   const existingCount = await Lesson.countDocuments({ moduleId: targetModuleId });
   const createdLessons = await Promise.all(
-    lessons.map((item, idx) =>
+    parsed.data.lessons.map((item, idx) =>
       Lesson.create({
         courseId: req.params.courseId,
         moduleId: targetModuleId,
-        title: stripHtmlTags(String(item.title || '')),
-        notes: String(item.notes || ''),
-        youtubeUrl: String(item.youtubeUrl || '').trim(),
-        duration: String(item.duration || '').trim(),
+        title: stripHtmlTags(item.title),
+        notes: item.notes,
+        youtubeUrl: item.youtubeUrl,
+        duration: stripHtmlTags(item.duration),
         order: existingCount + idx + 1,
-        published: item.published !== false,
+        published: item.published,
       })
     )
   );
@@ -490,14 +597,21 @@ router.post('/courses/:courseId/lessons/bulk', async (req, res) => {
 });
 
 router.post('/modules/:moduleId/lessons', async (req, res) => {
+  if (!isValidObjectId(req.params.moduleId)) {
+    return res.status(400).json({ error: 'Invalid module identifier.' });
+  }
   const mod = await Module.findById(req.params.moduleId).lean();
   if (!mod) return res.status(404).json({ error: 'Module not found.' });
 
-  const { title, notes, youtubeUrl, duration, order, published } = req.body || {};
-  if (!title) return res.status(400).json({ error: 'Lesson title is required.' });
-  if (youtubeUrl && !extractYouTubeId(String(youtubeUrl))) {
+  const raw = req.body || {};
+  const parsed = lessonWriteSchema.safeParse({
+    ...raw,
+    order: raw.order !== undefined ? Number(raw.order) : undefined,
+  });
+  if (!parsed.success) {
     return res.status(400).json({
-      error: 'Please enter a valid YouTube video URL (youtube.com/watch?v=... or youtu.be/...).',
+      error: parsed.error.issues[0]?.message || 'Invalid lesson details.',
+      fieldErrors: zodToFieldErrors(parsed.error),
     });
   }
 
@@ -505,12 +619,12 @@ router.post('/modules/:moduleId/lessons', async (req, res) => {
   const lesson = await Lesson.create({
     courseId: (mod as { courseId: unknown }).courseId,
     moduleId: req.params.moduleId,
-    title: stripHtmlTags(String(title)),
-    notes: String(notes || ''),
-    youtubeUrl: String(youtubeUrl || '').trim(),
-    duration: String(duration || '').trim(),
-    order: Number(order ?? count + 1),
-    published: published !== false,
+    title: stripHtmlTags(parsed.data.title),
+    notes: parsed.data.notes,
+    youtubeUrl: parsed.data.youtubeUrl,
+    duration: stripHtmlTags(parsed.data.duration),
+    order: parsed.data.order ?? count + 1,
+    published: parsed.data.published,
   });
 
   await logAdminActivity(req.user!, 'create_lesson', 'Lesson', lesson._id.toString(), lesson.title);
@@ -518,22 +632,38 @@ router.post('/modules/:moduleId/lessons', async (req, res) => {
 });
 
 router.patch('/lessons/:id', async (req, res) => {
-  const body = { ...(req.body || {}) };
-  if (body.youtubeUrl && !extractYouTubeId(String(body.youtubeUrl))) {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid lesson identifier.' });
+  }
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.order !== undefined) candidate.order = Number(raw.order);
+  const parsed = lessonPatchSchema.safeParse(candidate);
+  if (!parsed.success) {
     return res.status(400).json({
-      error: 'Please enter a valid YouTube video URL (youtube.com/watch?v=... or youtu.be/...).',
+      error: parsed.error.issues[0]?.message || 'Invalid lesson update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
     });
   }
-  if (typeof body.title === 'string') body.title = stripHtmlTags(body.title);
-  if (typeof body.youtubeUrl === 'string') body.youtubeUrl = body.youtubeUrl.trim();
-  if (typeof body.duration === 'string') body.duration = body.duration.trim();
-  const updated = await Lesson.findByIdAndUpdate(req.params.id, body, { new: true });
+
+  const update: Record<string, unknown> = {};
+  if (parsed.data.title !== undefined) update.title = stripHtmlTags(parsed.data.title);
+  if (parsed.data.notes !== undefined) update.notes = parsed.data.notes;
+  if (parsed.data.youtubeUrl !== undefined) update.youtubeUrl = parsed.data.youtubeUrl;
+  if (parsed.data.duration !== undefined) update.duration = stripHtmlTags(parsed.data.duration);
+  if (parsed.data.order !== undefined) update.order = parsed.data.order;
+  if (parsed.data.published !== undefined) update.published = parsed.data.published;
+
+  const updated = await Lesson.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
   if (!updated) return res.status(404).json({ error: 'Lesson not found.' });
   await logAdminActivity(req.user!, 'update_lesson', 'Lesson', updated._id.toString(), updated.title);
   res.json({ lesson: updated });
 });
 
 router.delete('/lessons/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid lesson identifier.' });
+  }
   await Promise.all([
     LessonProgress.deleteMany({ lessonId: req.params.id }),
     Lesson.deleteOne({ _id: req.params.id }),
@@ -577,10 +707,13 @@ router.get('/learners', async (req, res) => {
 });
 
 router.patch('/learners/:id/status', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid learner identifier.' });
+  }
   const active = Boolean(req.body?.active);
   const updated = await User.findOneAndUpdate(
     { _id: req.params.id, role: 'learner' },
-    { active },
+    { $set: { active } },
     { new: true }
   ).select('_id name email active');
   if (!updated) return res.status(404).json({ error: 'Learner not found.' });
@@ -595,12 +728,20 @@ router.patch('/learners/:id/status', async (req, res) => {
 });
 
 router.post('/learners/:id/enrol', async (req, res) => {
-  const courseId = String(req.body?.courseId || '').trim();
-  if (!courseId) return res.status(400).json({ error: 'Course ID is required.' });
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid learner identifier.' });
+  }
+  const parsed = learnerEnrolAssignSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Valid course ID is required.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
 
   const [learner, course] = await Promise.all([
     User.findOne({ _id: req.params.id, role: 'learner' }).select('_id name email').lean(),
-    Course.findById(courseId).select('_id title slug').lean(),
+    Course.findById(parsed.data.courseId).select('_id title slug').lean(),
   ]);
 
   if (!learner) return res.status(404).json({ error: 'Learner not found.' });
@@ -642,6 +783,9 @@ router.post('/learners/:id/enrol', async (req, res) => {
 
 router.delete('/learners/:id/enrolments/:courseId', async (req, res) => {
   const { id, courseId } = req.params;
+  if (!isValidObjectId(id) || !isValidObjectId(courseId)) {
+    return res.status(400).json({ error: 'Invalid identifier.' });
+  }
   const [learner, course] = await Promise.all([
     User.findOne({ _id: id, role: 'learner' }).select('_id name email').lean(),
     Course.findById(courseId).select('_id title').lean(),
@@ -651,7 +795,7 @@ router.delete('/learners/:id/enrolments/:courseId', async (req, res) => {
 
   const enrolment = await Enrolment.findOneAndUpdate(
     { userId: id, courseId, status: 'active' },
-    { status: 'revoked' },
+    { $set: { status: 'revoked' } },
     { new: true }
   );
 
@@ -674,6 +818,9 @@ router.delete('/learners/:id/enrolments/:courseId', async (req, res) => {
 });
 
 router.delete('/learners/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid learner identifier.' });
+  }
   const learner = await User.findOne({ _id: req.params.id, role: 'learner' })
     .select('_id name email role')
     .lean();
@@ -699,19 +846,133 @@ router.delete('/learners/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// 4. Payments Management
+// 4. Payments & Refunds Management
 router.get('/payments', async (req, res) => {
   const status = String(req.query.status || '').trim();
+  const allowedStatuses = new Set(['pending', 'success', 'failed', 'abandoned', 'refunded']);
   const filter: Record<string, unknown> = {};
-  if (status && status !== 'All') filter.status = status;
+  if (status && status !== 'All' && allowedStatuses.has(status)) {
+    filter.status = status;
+  }
 
   const payments = await Payment.find(filter)
+    .select('-processedEvents')
     .populate('userId', 'name email')
     .populate('courseId', 'title slug')
     .sort({ createdAt: -1 })
     .lean();
 
   res.json({ payments });
+});
+
+router.post('/payments/:id/refund', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid payment identifier.' });
+  }
+  const raw = req.body || {};
+  const parsed = paymentRefundSchema.safeParse({
+    reason: raw.reason,
+    amount: raw.amount !== undefined && raw.amount !== '' ? Number(raw.amount) : undefined,
+  });
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid refund details.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const payment = await Payment.findById(req.params.id);
+  if (!payment) return res.status(404).json({ error: 'Payment record not found.' });
+
+  if (payment.status === 'refunded') {
+    return res.status(400).json({ error: 'This payment has already been refunded.' });
+  }
+  if (payment.status !== 'success') {
+    return res.status(400).json({ error: 'Only verified successful payments can be refunded.' });
+  }
+  if (payment.provider === 'coupon' || payment.amount <= 0) {
+    return res.status(400).json({
+      error: 'Zero-amount coupon enrolments have no monetary charge to refund. Revoke learner access from Learner Management instead.',
+    });
+  }
+
+  const refundAmount = parsed.data.amount !== undefined ? parsed.data.amount : payment.amount;
+  if (refundAmount > payment.amount) {
+    return res.status(400).json({
+      error: `Refund amount (${payment.currency} ${refundAmount}) cannot exceed paid amount (${payment.currency} ${payment.amount}).`,
+    });
+  }
+
+  const amountMinor = Math.round(refundAmount * 100);
+  const paystackRefund = await refundPaystackTransaction({
+    reference: payment.reference,
+    amountMinor,
+    merchantNote: stripHtmlTags(parsed.data.reason),
+  });
+
+  if (!paystackRefund.ok) {
+    const status = paystackRefund.configured ? 502 : 503;
+    return res.status(status).json({
+      error: paystackRefund.error || 'Paystack could not process the refund.',
+    });
+  }
+
+  const updated = await Payment.findOneAndUpdate(
+    { _id: payment._id, status: 'success' },
+    {
+      $set: {
+        status: 'refunded',
+        refundAmount,
+        refundReference: paystackRefund.refundReference || `RF-${payment.reference}`,
+        refundReason: stripHtmlTags(parsed.data.reason),
+        refundedAt: new Date(),
+        refundedBy: req.user!.id,
+      },
+      $addToSet: { processedEvents: `admin_refund:${payment.reference}` },
+    },
+    { new: true }
+  )
+    .populate('userId', 'name email')
+    .populate('courseId', 'title slug');
+
+  if (!updated) {
+    return res.status(409).json({ error: 'Payment state changed concurrently. Refresh and try again.' });
+  }
+
+  await Enrolment.updateOne(
+    { userId: payment.userId, courseId: payment.courseId },
+    { $set: { status: 'revoked' } }
+  );
+
+  const populatedCourse = (updated.courseId as { title?: string } | null)?.title || 'Course';
+  const populatedUser = updated.userId as { _id?: unknown; name?: string; email?: string } | null;
+
+  await Promise.all([
+    Notification.create({
+      userId: payment.userId,
+      targetRole: 'learner',
+      title: `Refund Issued (${payment.currency} ${refundAmount})`,
+      message: `Your payment (${payment.reference}) for "${populatedCourse}" has been refunded and course access revoked.`,
+      link: '/learner?tab=payments',
+    }),
+    logAdminActivity(
+      req.user!,
+      'refund_payment',
+      'Payment',
+      payment._id.toString(),
+      `Refunded ${payment.currency} ${refundAmount} for ${payment.reference} — ${stripHtmlTags(parsed.data.reason)}`
+    ),
+  ]);
+
+  if (populatedUser?.email) {
+    await sendTransactionalEmail({
+      to: populatedUser.email,
+      subject: `Refund Processed: ${payment.reference} — NexaFlow Learn`,
+      text: `Hello ${populatedUser.name || 'Learner'},\n\nA refund of ${payment.currency} ${refundAmount} has been issued for your payment reference ${payment.reference} ("${populatedCourse}").\nReason: ${stripHtmlTags(parsed.data.reason)}\n\nPlease allow your bank or card issuer a few business days to post the credit.`,
+    });
+  }
+
+  res.json({ ok: true, payment: serializePayment(updated) });
 });
 
 // 5. Lead CRM
@@ -723,9 +984,15 @@ router.get('/leads', async (req, res) => {
   if (source && source !== 'All') filter.source = source;
   if (dateFrom || dateTo) {
     const createdAt: Record<string, Date> = {};
-    if (dateFrom) createdAt.$gte = new Date(dateFrom);
-    if (dateTo) createdAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
-    filter.createdAt = createdAt;
+    if (dateFrom) {
+      const df = new Date(dateFrom);
+      if (!Number.isNaN(df.getTime())) createdAt.$gte = df;
+    }
+    if (dateTo) {
+      const dt = new Date(`${dateTo}T23:59:59.999Z`);
+      if (!Number.isNaN(dt.getTime())) createdAt.$lte = dt;
+    }
+    if (Object.keys(createdAt).length > 0) filter.createdAt = createdAt;
   }
 
   let leads = await Lead.find(filter).sort({ createdAt: -1 }).lean();
@@ -783,8 +1050,17 @@ router.get('/leads', async (req, res) => {
 });
 
 router.get('/leads/export.csv', async (req, res) => {
-  const ids = typeof req.query.ids === 'string' && req.query.ids ? req.query.ids.split(',') : null;
-  const filter = ids ? { _id: { $in: ids } } : {};
+  const rawIds =
+    typeof req.query.ids === 'string' && req.query.ids
+      ? req.query.ids
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => isValidObjectId(s))
+      : null;
+  if (typeof req.query.ids === 'string' && req.query.ids && (!rawIds || rawIds.length === 0)) {
+    return res.status(400).json({ error: 'Invalid lead identifiers.' });
+  }
+  const filter = rawIds ? { _id: { $in: rawIds } } : {};
   const leads = await Lead.find(filter).sort({ createdAt: -1 }).lean();
 
   const headers = [
@@ -836,6 +1112,9 @@ router.get('/leads/export.csv', async (req, res) => {
 });
 
 router.get('/leads/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid lead identifier.' });
+  }
   const lead = await Lead.findById(req.params.id).lean();
   if (!lead) return res.status(404).json({ error: 'Lead not found.' });
   const activities = await LeadActivity.find({ leadId: req.params.id }).sort({ createdAt: -1 }).lean();
@@ -843,10 +1122,21 @@ router.get('/leads/:id', async (req, res) => {
 });
 
 router.patch('/leads/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid lead identifier.' });
+  }
+  const parsed = leadUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid lead update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
   const lead = await Lead.findById(req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead not found.' });
 
-  const { status, followUpDate, outcomeReason } = req.body || {};
+  const { status, followUpDate, outcomeReason } = parsed.data;
   const previousStatus = lead.status;
 
   if (status) lead.status = status;
@@ -854,7 +1144,7 @@ router.patch('/leads/:id', async (req, res) => {
     lead.followUpDate = followUpDate ? new Date(followUpDate) : undefined;
   }
   if (outcomeReason !== undefined) {
-    lead.outcomeReason = stripHtmlTags(String(outcomeReason));
+    lead.outcomeReason = stripHtmlTags(outcomeReason);
   }
   await lead.save();
 
@@ -875,16 +1165,26 @@ router.patch('/leads/:id', async (req, res) => {
 });
 
 router.post('/leads/:id/activities', async (req, res) => {
-  const { type, content } = req.body || {};
-  if (!content || String(content).trim().length < 2) {
-    return res.status(400).json({ error: 'Activity note is required.' });
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid lead identifier.' });
   }
+  const leadExists = await Lead.exists({ _id: req.params.id });
+  if (!leadExists) return res.status(404).json({ error: 'Lead not found.' });
+
+  const parsed = leadActivityWriteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid activity note.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
   const activity = await LeadActivity.create({
     leadId: req.params.id,
     adminId: req.user!.id,
     adminName: req.user!.name,
-    type: type || 'note',
-    content: stripHtmlTags(String(content)),
+    type: parsed.data.type,
+    content: stripHtmlTags(parsed.data.content),
   });
   res.status(201).json({ activity });
 });
@@ -896,28 +1196,82 @@ router.get('/products', async (_req, res) => {
 });
 
 router.post('/products', async (req, res) => {
-  const body = req.body || {};
-  const name = stripHtmlTags(String(body.name || ''));
-  if (!name) return res.status(400).json({ error: 'Product name required.' });
+  const raw = req.body || {};
+  const parsed = productWriteSchema.safeParse({
+    ...raw,
+    order: Number(raw.order ?? 0),
+  });
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid product data.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const d = parsed.data;
+  const name = stripHtmlTags(d.name);
+  const slug = slugify(d.slug || name);
+  const clash = await Product.findOne({ slug }).lean();
+  if (clash) return res.status(409).json({ error: `Product slug "${slug}" already exists.` });
+
   const product = await Product.create({
-    ...body,
     name,
-    slug: slugify(body.slug || name),
+    slug,
+    category: stripHtmlTags(d.category),
+    shortDescription: stripHtmlTags(d.shortDescription),
+    fullDescription: d.fullDescription,
+    features: d.features.map(stripHtmlTags).filter(Boolean),
+    benefits: d.benefits.map(stripHtmlTags).filter(Boolean),
+    images: d.images.filter(Boolean),
+    demoLink: d.demoLink,
+    pricingStatus: stripHtmlTags(d.pricingStatus),
+    published: d.published,
+    order: d.order,
   });
   await logAdminActivity(req.user!, 'create_product', 'Product', product._id.toString(), product.name);
   res.status(201).json({ product });
 });
 
 router.patch('/products/:id', async (req, res) => {
-  const body = req.body || {};
-  if (body.slug) body.slug = slugify(String(body.slug));
-  const updated = await Product.findByIdAndUpdate(req.params.id, body, { new: true });
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid product identifier.' });
+  }
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.order !== undefined) candidate.order = Number(raw.order);
+  const parsed = productPatchSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid product update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const d = parsed.data;
+  const update: Record<string, unknown> = {};
+  if (d.name !== undefined) update.name = stripHtmlTags(d.name);
+  if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
+  if (d.category !== undefined) update.category = stripHtmlTags(d.category);
+  if (d.shortDescription !== undefined) update.shortDescription = stripHtmlTags(d.shortDescription);
+  if (d.fullDescription !== undefined) update.fullDescription = d.fullDescription;
+  if (d.features !== undefined) update.features = d.features.map(stripHtmlTags).filter(Boolean);
+  if (d.benefits !== undefined) update.benefits = d.benefits.map(stripHtmlTags).filter(Boolean);
+  if (d.images !== undefined) update.images = d.images.filter(Boolean);
+  if (d.demoLink !== undefined) update.demoLink = d.demoLink;
+  if (d.pricingStatus !== undefined) update.pricingStatus = stripHtmlTags(d.pricingStatus);
+  if (d.published !== undefined) update.published = d.published;
+  if (d.order !== undefined) update.order = d.order;
+
+  const updated = await Product.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
   if (!updated) return res.status(404).json({ error: 'Product not found.' });
   await logAdminActivity(req.user!, 'update_product', 'Product', updated._id.toString(), updated.name);
   res.json({ product: updated });
 });
 
 router.delete('/products/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid product identifier.' });
+  }
   await Product.deleteOne({ _id: req.params.id });
   await logAdminActivity(req.user!, 'delete_product', 'Product', req.params.id, '');
   res.json({ ok: true });
@@ -930,28 +1284,79 @@ router.get('/services', async (_req, res) => {
 });
 
 router.post('/services', async (req, res) => {
-  const body = req.body || {};
-  const name = stripHtmlTags(String(body.name || ''));
-  if (!name) return res.status(400).json({ error: 'Service name required.' });
+  const raw = req.body || {};
+  const parsed = serviceWriteSchema.safeParse({
+    ...raw,
+    order: Number(raw.order ?? 0),
+  });
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid service data.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const d = parsed.data;
+  const name = stripHtmlTags(d.name);
+  const slug = slugify(d.slug || name);
+  const clash = await Service.findOne({ slug }).lean();
+  if (clash) return res.status(409).json({ error: `Service slug "${slug}" already exists.` });
+
   const service = await Service.create({
-    ...body,
     name,
-    slug: slugify(body.slug || name),
+    slug,
+    shortDescription: stripHtmlTags(d.shortDescription),
+    overview: d.overview,
+    problemsAddressed: d.problemsAddressed.map(stripHtmlTags).filter(Boolean),
+    deliverables: d.deliverables.map(stripHtmlTags).filter(Boolean),
+    ctaLabel: stripHtmlTags(d.ctaLabel),
+    coverImage: d.coverImage,
+    published: d.published,
+    order: d.order,
   });
   await logAdminActivity(req.user!, 'create_service', 'Service', service._id.toString(), service.name);
   res.status(201).json({ service });
 });
 
 router.patch('/services/:id', async (req, res) => {
-  const body = req.body || {};
-  if (body.slug) body.slug = slugify(String(body.slug));
-  const updated = await Service.findByIdAndUpdate(req.params.id, body, { new: true });
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid service identifier.' });
+  }
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.order !== undefined) candidate.order = Number(raw.order);
+  const parsed = servicePatchSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid service update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const d = parsed.data;
+  const update: Record<string, unknown> = {};
+  if (d.name !== undefined) update.name = stripHtmlTags(d.name);
+  if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
+  if (d.shortDescription !== undefined) update.shortDescription = stripHtmlTags(d.shortDescription);
+  if (d.overview !== undefined) update.overview = d.overview;
+  if (d.problemsAddressed !== undefined)
+    update.problemsAddressed = d.problemsAddressed.map(stripHtmlTags).filter(Boolean);
+  if (d.deliverables !== undefined) update.deliverables = d.deliverables.map(stripHtmlTags).filter(Boolean);
+  if (d.ctaLabel !== undefined) update.ctaLabel = stripHtmlTags(d.ctaLabel);
+  if (d.coverImage !== undefined) update.coverImage = d.coverImage;
+  if (d.published !== undefined) update.published = d.published;
+  if (d.order !== undefined) update.order = d.order;
+
+  const updated = await Service.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
   if (!updated) return res.status(404).json({ error: 'Service not found.' });
   await logAdminActivity(req.user!, 'update_service', 'Service', updated._id.toString(), updated.name);
   res.json({ service: updated });
 });
 
 router.delete('/services/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid service identifier.' });
+  }
   await Service.deleteOne({ _id: req.params.id });
   await logAdminActivity(req.user!, 'delete_service', 'Service', req.params.id, '');
   res.json({ ok: true });
@@ -964,26 +1369,37 @@ router.get('/articles', async (_req, res) => {
 });
 
 router.post('/articles', async (req, res) => {
-  const body = req.body || {};
-  const title = stripHtmlTags(String(body.title || ''));
-  if (!title) return res.status(400).json({ error: 'Article title required.' });
-  const content = String(body.content || '');
-  const words = content.trim().split(/\s+/).filter(Boolean).length;
+  const parsed = articleWriteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid article payload.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const d = parsed.data;
+  const title = stripHtmlTags(d.title);
+  const slug = slugify(d.slug || title);
+  const clash = await Article.findOne({ slug }).lean();
+  if (clash) return res.status(409).json({ error: `Article slug "${slug}" already exists.` });
+
+  const words = d.content.trim().split(/\s+/).filter(Boolean).length;
   const readingTimeMinutes = Math.max(1, Math.ceil(words / 200));
 
   const article = await Article.create({
-    ...body,
     title,
-    slug: slugify(body.slug || title),
+    slug,
+    excerpt: stripHtmlTags(d.excerpt),
+    content: d.content,
+    featuredImage: d.featuredImage,
+    category: stripHtmlTags(d.category),
+    tags: d.tags.map(stripHtmlTags).filter(Boolean),
+    authorName: stripHtmlTags(d.authorName),
+    status: d.status,
+    ctaLabel: stripHtmlTags(d.ctaLabel),
+    ctaHref: d.ctaHref,
     readingTimeMinutes,
-    publishedAt:
-      body.status === 'published'
-        ? body.publishedAt
-          ? new Date(body.publishedAt)
-          : new Date()
-        : body.publishedAt
-          ? new Date(body.publishedAt)
-          : undefined,
+    publishedAt: d.status === 'published' ? new Date() : undefined,
   });
 
   await logAdminActivity(req.user!, 'create_article', 'Article', article._id.toString(), article.title);
@@ -991,22 +1407,48 @@ router.post('/articles', async (req, res) => {
 });
 
 router.patch('/articles/:id', async (req, res) => {
-  const body = req.body || {};
-  if (body.slug) body.slug = slugify(String(body.slug));
-  if (typeof body.content === 'string') {
-    const words = body.content.trim().split(/\s+/).filter(Boolean).length;
-    body.readingTimeMinutes = Math.max(1, Math.ceil(words / 200));
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid article identifier.' });
   }
-  if (body.status === 'published' && !body.publishedAt) {
-    body.publishedAt = new Date();
+  const parsed = articlePatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid article update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
-  const updated = await Article.findByIdAndUpdate(req.params.id, body, { new: true });
+
+  const d = parsed.data;
+  const update: Record<string, unknown> = {};
+  if (d.title !== undefined) update.title = stripHtmlTags(d.title);
+  if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
+  if (d.excerpt !== undefined) update.excerpt = stripHtmlTags(d.excerpt);
+  if (d.content !== undefined) {
+    update.content = d.content;
+    const words = d.content.trim().split(/\s+/).filter(Boolean).length;
+    update.readingTimeMinutes = Math.max(1, Math.ceil(words / 200));
+  }
+  if (d.featuredImage !== undefined) update.featuredImage = d.featuredImage;
+  if (d.category !== undefined) update.category = stripHtmlTags(d.category);
+  if (d.tags !== undefined) update.tags = d.tags.map(stripHtmlTags).filter(Boolean);
+  if (d.authorName !== undefined) update.authorName = stripHtmlTags(d.authorName);
+  if (d.status !== undefined) {
+    update.status = d.status;
+    if (d.status === 'published') update.publishedAt = new Date();
+  }
+  if (d.ctaLabel !== undefined) update.ctaLabel = stripHtmlTags(d.ctaLabel);
+  if (d.ctaHref !== undefined) update.ctaHref = d.ctaHref;
+
+  const updated = await Article.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
   if (!updated) return res.status(404).json({ error: 'Article not found.' });
   await logAdminActivity(req.user!, 'update_article', 'Article', updated._id.toString(), updated.title);
   res.json({ article: updated });
 });
 
 router.delete('/articles/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid article identifier.' });
+  }
   await Article.deleteOne({ _id: req.params.id });
   await logAdminActivity(req.user!, 'delete_article', 'Article', req.params.id, '');
   res.json({ ok: true });
@@ -1025,6 +1467,9 @@ router.get('/tickets', async (req, res) => {
 });
 
 router.get('/tickets/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid ticket identifier.' });
+  }
   const ticket = await SupportTicket.findById(req.params.id)
     .populate('userId', 'name email')
     .populate('courseId', 'title slug')
@@ -1035,10 +1480,16 @@ router.get('/tickets/:id', async (req, res) => {
 });
 
 router.patch('/tickets/:id', async (req, res) => {
-  const { status } = req.body || {};
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid ticket identifier.' });
+  }
+  const parsed = ticketStatusUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid status.' });
+  }
   const updated = await SupportTicket.findByIdAndUpdate(
     req.params.id,
-    { status },
+    { $set: { status: parsed.data.status } },
     { new: true }
   );
   if (!updated) return res.status(404).json({ error: 'Ticket not found.' });
@@ -1047,17 +1498,22 @@ router.patch('/tickets/:id', async (req, res) => {
     'update_ticket_status',
     'SupportTicket',
     updated._id.toString(),
-    `${updated.referenceNumber} -> ${status}`
+    `${updated.referenceNumber} -> ${parsed.data.status}`
   );
   res.json({ ticket: updated });
 });
 
 router.post('/tickets/:id/messages', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid ticket identifier.' });
+  }
   const ticket = await SupportTicket.findById(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
 
   const messageText = stripHtmlTags(String(req.body?.message || ''));
-  if (messageText.length < 2) return res.status(400).json({ error: 'Reply cannot be empty.' });
+  if (messageText.length < 2 || messageText.length > 4000) {
+    return res.status(400).json({ error: 'Reply must be between 2 and 4000 characters.' });
+  }
 
   const msg = await SupportMessage.create({
     ticketId: ticket._id,
@@ -1100,20 +1556,68 @@ router.get('/settings', async (_req, res) => {
 });
 
 router.put('/settings', async (req, res) => {
-  const body = { ...(req.body || {}) };
-  delete body._id;
-  delete body.key;
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.retentionDays !== undefined) candidate.retentionDays = Number(raw.retentionDays);
+  const parsed = siteSettingsWriteSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid settings payload.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
+
+  const d = parsed.data;
+  const update: Record<string, unknown> = {};
+  if (d.businessName !== undefined) update.businessName = stripHtmlTags(d.businessName);
+  if (d.descriptor !== undefined) update.descriptor = stripHtmlTags(d.descriptor);
+  if (d.tagline !== undefined) update.tagline = stripHtmlTags(d.tagline);
+  if (d.email !== undefined) update.email = d.email;
+  if (d.phone !== undefined) update.phone = stripHtmlTags(d.phone);
+  if (d.whatsapp !== undefined) update.whatsapp = stripHtmlTags(d.whatsapp);
+  if (d.generalLocation !== undefined) update.generalLocation = stripHtmlTags(d.generalLocation);
+  if (d.serviceAreas !== undefined) update.serviceAreas = stripHtmlTags(d.serviceAreas);
+  if (d.businessHours !== undefined) update.businessHours = stripHtmlTags(d.businessHours);
+  if (d.socialLinks !== undefined) update.socialLinks = d.socialLinks;
+  if (d.googleBusinessProfileUrl !== undefined) update.googleBusinessProfileUrl = d.googleBusinessProfileUrl;
+  if (d.heroHeadline !== undefined) update.heroHeadline = stripHtmlTags(d.heroHeadline);
+  if (d.heroSubheadline !== undefined) update.heroSubheadline = stripHtmlTags(d.heroSubheadline);
+  if (d.aboutIntro !== undefined) update.aboutIntro = stripHtmlTags(d.aboutIntro);
+  if (d.mission !== undefined) update.mission = stripHtmlTags(d.mission);
+  if (d.vision !== undefined) update.vision = stripHtmlTags(d.vision);
+  if (d.values !== undefined) update.values = d.values.map(stripHtmlTags).filter(Boolean);
+  if (d.legalPrivacy !== undefined) update.legalPrivacy = d.legalPrivacy;
+  if (d.legalTerms !== undefined) update.legalTerms = d.legalTerms;
+  if (d.legalCookies !== undefined) update.legalCookies = d.legalCookies;
+  if (d.legalRefund !== undefined) update.legalRefund = d.legalRefund;
+  if (d.gaMeasurementId !== undefined) update.gaMeasurementId = d.gaMeasurementId.toUpperCase();
+  if (d.gscVerificationTag !== undefined) update.gscVerificationTag = stripHtmlTags(d.gscVerificationTag);
+  if (d.retentionDays !== undefined) update.retentionDays = d.retentionDays;
+  if (d.seoSiteTitle !== undefined) update.seoSiteTitle = stripHtmlTags(d.seoSiteTitle);
+  if (d.seoTitleSuffix !== undefined) update.seoTitleSuffix = stripHtmlTags(d.seoTitleSuffix);
+  if (d.seoDefaultDescription !== undefined) update.seoDefaultDescription = stripHtmlTags(d.seoDefaultDescription);
+  if (d.seoDefaultKeywords !== undefined) update.seoDefaultKeywords = stripHtmlTags(d.seoDefaultKeywords);
+  if (d.seoOgTitle !== undefined) update.seoOgTitle = stripHtmlTags(d.seoOgTitle);
+  if (d.seoOgDescription !== undefined) update.seoOgDescription = stripHtmlTags(d.seoOgDescription);
+  if (d.seoOgImage !== undefined) update.seoOgImage = d.seoOgImage;
+  if (d.seoTwitterCard !== undefined) update.seoTwitterCard = d.seoTwitterCard;
+  if (d.seoTwitterSite !== undefined) update.seoTwitterSite = stripHtmlTags(d.seoTwitterSite);
+  if (d.seoCanonicalBaseUrl !== undefined) update.seoCanonicalBaseUrl = d.seoCanonicalBaseUrl;
+  if (d.seoRobotsDefault !== undefined) update.seoRobotsDefault = d.seoRobotsDefault;
+  if (d.seoStructuredDataEnabled !== undefined) update.seoStructuredDataEnabled = d.seoStructuredDataEnabled;
+
   const updated = await SiteSettings.findOneAndUpdate(
     { key: 'main' },
-    { $set: body },
+    { $set: update },
     { upsert: true, new: true }
   ).lean();
+
   await logAdminActivity(
     req.user!,
     'update_site_settings',
     'SiteSettings',
     'main',
-    body.seoSiteTitle || body.seoOgImage ? 'Updated global SEO & site settings' : 'Updated site/business settings'
+    d.seoSiteTitle || d.seoOgImage ? 'Updated global SEO & site settings' : 'Updated site/business settings'
   );
   res.json({
     settings: updated ? { ...DEFAULT_SITE_SETTINGS, ...updated } : DEFAULT_SITE_SETTINGS,
@@ -1137,17 +1641,23 @@ router.get('/seo', async (_req, res) => {
 
 router.put('/seo/:pageKey', async (req, res) => {
   const pageKey = slugify(req.params.pageKey) || req.params.pageKey.trim().toLowerCase();
-  const body = req.body || {};
+  const parsed = seoPageUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid SEO settings payload.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
   const payload = {
     pageKey,
-    title: typeof body.title === 'string' ? body.title.trim() : '',
-    description: typeof body.description === 'string' ? body.description.trim() : '',
-    canonicalUrl: typeof body.canonicalUrl === 'string' ? body.canonicalUrl.trim() : '',
-    ogTitle: typeof body.ogTitle === 'string' ? body.ogTitle.trim() : '',
-    ogDescription: typeof body.ogDescription === 'string' ? body.ogDescription.trim() : '',
-    ogImage: typeof body.ogImage === 'string' ? body.ogImage.trim() : '',
-    focusKeyword: typeof body.focusKeyword === 'string' ? body.focusKeyword.trim() : '',
-    noIndex: Boolean(body.noIndex),
+    title: stripHtmlTags(parsed.data.title),
+    description: stripHtmlTags(parsed.data.description),
+    canonicalUrl: parsed.data.canonicalUrl,
+    ogTitle: stripHtmlTags(parsed.data.ogTitle),
+    ogDescription: stripHtmlTags(parsed.data.ogDescription),
+    ogImage: parsed.data.ogImage,
+    focusKeyword: stripHtmlTags(parsed.data.focusKeyword),
+    noIndex: parsed.data.noIndex,
   };
   const updated = await SEOSettings.findOneAndUpdate(
     { pageKey },
@@ -1190,6 +1700,9 @@ router.get('/notifications', async (_req, res) => {
 });
 
 router.patch('/notifications/:id/read', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid notification identifier.' });
+  }
   await Notification.updateOne({ _id: req.params.id, targetRole: 'admin' }, { $set: { read: true } });
   res.json({ ok: true });
 });
@@ -1236,23 +1749,12 @@ router.get('/admins', requireSuperAdmin, async (req, res) => {
 });
 
 router.post('/admins', requireSuperAdmin, async (req, res) => {
-  const schema = z.object({
-    name: z.string().trim().max(120).optional().default(''),
-    email: z.string().trim().email('Valid email address is required.').max(180),
-    secondaryEmails: z.array(z.string().trim().email()).max(10).optional().default([]),
-    password: z.string().max(128).optional().default(''),
-    role: z.enum(['admin', 'super_admin']).default('admin'),
-  });
-  const parsed = schema.safeParse(req.body);
+  const parsed = adminCreateSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Invalid admin payload.' });
-  }
-  if (parsed.data.password && parsed.data.password.length < 10) {
-    return res
-      .status(400)
-      .json({ error: 'Administrator password must be at least 10 characters when provided.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid admin payload.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const normalizedEmail = parsed.data.email.toLowerCase();
@@ -1276,7 +1778,6 @@ router.post('/admins', requireSuperAdmin, async (req, res) => {
       });
     }
 
-    // Existing learner user -> grant administrative access directly
     if (parsed.data.name && parsed.data.name.trim().length >= 2) {
       existing.name = stripHtmlTags(parsed.data.name);
     }
@@ -1360,19 +1861,15 @@ router.post('/admins', requireSuperAdmin, async (req, res) => {
 });
 
 router.patch('/admins/:id', requireSuperAdmin, async (req, res) => {
-  const schema = z.object({
-    name: z.string().trim().min(2).max(120).optional(),
-    email: z.string().trim().email().max(180).optional(),
-    secondaryEmails: z.array(z.string().trim().email()).max(10).optional(),
-    role: z.enum(['admin', 'super_admin']).optional(),
-    active: z.boolean().optional(),
-    newPassword: z.string().max(128).optional(),
-  });
-  const parsed = schema.safeParse(req.body);
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid administrator identifier.' });
+  }
+  const parsed = adminUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: parsed.error.issues[0]?.message || 'Invalid update payload.' });
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid update payload.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
 
   const target = await User.findOne({
@@ -1436,11 +1933,6 @@ router.patch('/admins/:id', requireSuperAdmin, async (req, res) => {
     target.active = parsed.data.active;
   }
   if (parsed.data.newPassword) {
-    if (parsed.data.newPassword.length < 10) {
-      return res
-        .status(400)
-        .json({ error: 'Administrator password must be at least 10 characters.' });
-    }
     target.passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
     if (!target.authProviders.includes('local')) target.authProviders.push('local');
   }
@@ -1472,6 +1964,9 @@ router.patch('/admins/:id', requireSuperAdmin, async (req, res) => {
 
 // Revoke administrative access for a specific user (demotes back to learner or suspends)
 router.post('/admins/:id/revoke', requireSuperAdmin, async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid administrator identifier.' });
+  }
   const mode = req.body?.mode === 'suspend' ? 'suspend' : 'demote';
   const target = await User.findOne({
     _id: req.params.id,
@@ -1527,63 +2022,78 @@ router.get('/work', async (_req, res) => {
 });
 
 router.post('/work', async (req, res) => {
-  const b = req.body || {};
-  const title = stripHtmlTags(String(b.title || '').trim());
-  const summary = stripHtmlTags(String(b.summary || '').trim());
-  if (!title || !summary) {
-    return res.status(400).json({ error: 'Project title and summary are required.' });
+  const raw = req.body || {};
+  const parsed = workShowcaseWriteSchema.safeParse({
+    ...raw,
+    order: Number(raw.order ?? 0),
+  });
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid work showcase details.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
+
+  const d = parsed.data;
   const item = await WorkShowcase.create({
-    title,
-    clientName: stripHtmlTags(String(b.clientName || '').trim()),
-    industry: stripHtmlTags(String(b.industry || '').trim()),
-    category: stripHtmlTags(String(b.category || 'AI Automation').trim()),
-    summary,
-    outcomes: Array.isArray(b.outcomes)
-      ? b.outcomes.map((o: unknown) => stripHtmlTags(String(o).trim())).filter(Boolean)
-      : [],
-    technologies: Array.isArray(b.technologies)
-      ? b.technologies.map((t: unknown) => stripHtmlTags(String(t).trim())).filter(Boolean)
-      : [],
-    imageUrl: String(b.imageUrl || '').trim(),
-    projectUrl: String(b.projectUrl || '').trim(),
-    featured: b.featured !== false,
-    published: b.published !== false,
-    order: Number(b.order || 0),
+    title: stripHtmlTags(d.title),
+    clientName: stripHtmlTags(d.clientName),
+    industry: stripHtmlTags(d.industry),
+    category: stripHtmlTags(d.category),
+    summary: stripHtmlTags(d.summary),
+    outcomes: d.outcomes.map(stripHtmlTags).filter(Boolean),
+    technologies: d.technologies.map(stripHtmlTags).filter(Boolean),
+    imageUrl: d.imageUrl,
+    projectUrl: d.projectUrl,
+    featured: d.featured,
+    published: d.published,
+    order: d.order,
   });
   await logAdminActivity(req.user!, 'create_work_item', 'WorkShowcase', item._id.toString(), item.title);
   res.status(201).json({ workItem: item });
 });
 
 router.patch('/work/:id', async (req, res) => {
-  const b = req.body || {};
-  const update: Record<string, unknown> = {};
-  if (b.title !== undefined) update.title = stripHtmlTags(String(b.title).trim());
-  if (b.clientName !== undefined) update.clientName = stripHtmlTags(String(b.clientName).trim());
-  if (b.industry !== undefined) update.industry = stripHtmlTags(String(b.industry).trim());
-  if (b.category !== undefined) update.category = stripHtmlTags(String(b.category).trim());
-  if (b.summary !== undefined) update.summary = stripHtmlTags(String(b.summary).trim());
-  if (Array.isArray(b.outcomes)) {
-    update.outcomes = b.outcomes.map((o: unknown) => stripHtmlTags(String(o).trim())).filter(Boolean);
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid showcase item identifier.' });
   }
-  if (Array.isArray(b.technologies)) {
-    update.technologies = b.technologies
-      .map((t: unknown) => stripHtmlTags(String(t).trim()))
-      .filter(Boolean);
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.order !== undefined) candidate.order = Number(raw.order);
+  const parsed = workShowcasePatchSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid showcase update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
-  if (b.imageUrl !== undefined) update.imageUrl = String(b.imageUrl).trim();
-  if (b.projectUrl !== undefined) update.projectUrl = String(b.projectUrl).trim();
-  if (b.featured !== undefined) update.featured = Boolean(b.featured);
-  if (b.published !== undefined) update.published = Boolean(b.published);
-  if (b.order !== undefined) update.order = Number(b.order || 0);
 
-  const updated = await WorkShowcase.findByIdAndUpdate(req.params.id, update, { new: true });
+  const d = parsed.data;
+  const update: Record<string, unknown> = {};
+  if (d.title !== undefined) update.title = stripHtmlTags(d.title);
+  if (d.clientName !== undefined) update.clientName = stripHtmlTags(d.clientName);
+  if (d.industry !== undefined) update.industry = stripHtmlTags(d.industry);
+  if (d.category !== undefined) update.category = stripHtmlTags(d.category);
+  if (d.summary !== undefined) update.summary = stripHtmlTags(d.summary);
+  if (d.outcomes !== undefined) update.outcomes = d.outcomes.map(stripHtmlTags).filter(Boolean);
+  if (d.technologies !== undefined)
+    update.technologies = d.technologies.map(stripHtmlTags).filter(Boolean);
+  if (d.imageUrl !== undefined) update.imageUrl = d.imageUrl;
+  if (d.projectUrl !== undefined) update.projectUrl = d.projectUrl;
+  if (d.featured !== undefined) update.featured = d.featured;
+  if (d.published !== undefined) update.published = d.published;
+  if (d.order !== undefined) update.order = d.order;
+
+  const updated = await WorkShowcase.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
   if (!updated) return res.status(404).json({ error: 'Work item not found.' });
   await logAdminActivity(req.user!, 'update_work_item', 'WorkShowcase', updated._id.toString(), updated.title);
   res.json({ workItem: updated });
 });
 
 router.delete('/work/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid showcase item identifier.' });
+  }
   const deleted = await WorkShowcase.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ error: 'Work item not found.' });
   await logAdminActivity(req.user!, 'delete_work_item', 'WorkShowcase', req.params.id, deleted.title);
@@ -1597,23 +2107,30 @@ router.get('/testimonials', async (_req, res) => {
 });
 
 router.post('/testimonials', async (req, res) => {
-  const b = req.body || {};
-  const authorName = stripHtmlTags(String(b.authorName || '').trim());
-  const quote = stripHtmlTags(String(b.quote || '').trim());
-  if (!authorName || !quote) {
-    return res.status(400).json({ error: 'Author name and testimonial quote are required.' });
+  const raw = req.body || {};
+  const parsed = testimonialWriteSchema.safeParse({
+    ...raw,
+    rating: Number(raw.rating ?? 5),
+    order: Number(raw.order ?? 0),
+  });
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid testimonial details.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
   }
-  const rating = Math.min(5, Math.max(1, Math.round(Number(b.rating || 5))));
+
+  const d = parsed.data;
   const item = await Testimonial.create({
-    authorName,
-    authorRole: stripHtmlTags(String(b.authorRole || '').trim()),
-    company: stripHtmlTags(String(b.company || '').trim()),
-    quote,
-    rating,
-    workTitle: stripHtmlTags(String(b.workTitle || '').trim()),
-    featured: b.featured !== false,
-    published: b.published !== false,
-    order: Number(b.order || 0),
+    authorName: stripHtmlTags(d.authorName),
+    authorRole: stripHtmlTags(d.authorRole),
+    company: stripHtmlTags(d.company),
+    quote: stripHtmlTags(d.quote),
+    rating: d.rating,
+    workTitle: stripHtmlTags(d.workTitle),
+    featured: d.featured,
+    published: d.published,
+    order: d.order,
   });
   await logAdminActivity(
     req.user!,
@@ -1626,19 +2143,34 @@ router.post('/testimonials', async (req, res) => {
 });
 
 router.patch('/testimonials/:id', async (req, res) => {
-  const b = req.body || {};
-  const update: Record<string, unknown> = {};
-  if (b.authorName !== undefined) update.authorName = stripHtmlTags(String(b.authorName).trim());
-  if (b.authorRole !== undefined) update.authorRole = stripHtmlTags(String(b.authorRole).trim());
-  if (b.company !== undefined) update.company = stripHtmlTags(String(b.company).trim());
-  if (b.quote !== undefined) update.quote = stripHtmlTags(String(b.quote).trim());
-  if (b.rating !== undefined) update.rating = Math.min(5, Math.max(1, Math.round(Number(b.rating))));
-  if (b.workTitle !== undefined) update.workTitle = stripHtmlTags(String(b.workTitle).trim());
-  if (b.featured !== undefined) update.featured = Boolean(b.featured);
-  if (b.published !== undefined) update.published = Boolean(b.published);
-  if (b.order !== undefined) update.order = Number(b.order || 0);
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid testimonial identifier.' });
+  }
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.rating !== undefined) candidate.rating = Number(raw.rating);
+  if (raw.order !== undefined) candidate.order = Number(raw.order);
+  const parsed = testimonialPatchSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid testimonial update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
 
-  const updated = await Testimonial.findByIdAndUpdate(req.params.id, update, { new: true });
+  const d = parsed.data;
+  const update: Record<string, unknown> = {};
+  if (d.authorName !== undefined) update.authorName = stripHtmlTags(d.authorName);
+  if (d.authorRole !== undefined) update.authorRole = stripHtmlTags(d.authorRole);
+  if (d.company !== undefined) update.company = stripHtmlTags(d.company);
+  if (d.quote !== undefined) update.quote = stripHtmlTags(d.quote);
+  if (d.rating !== undefined) update.rating = d.rating;
+  if (d.workTitle !== undefined) update.workTitle = stripHtmlTags(d.workTitle);
+  if (d.featured !== undefined) update.featured = d.featured;
+  if (d.published !== undefined) update.published = d.published;
+  if (d.order !== undefined) update.order = d.order;
+
+  const updated = await Testimonial.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
   if (!updated) return res.status(404).json({ error: 'Testimonial not found.' });
   await logAdminActivity(
     req.user!,
@@ -1651,6 +2183,9 @@ router.patch('/testimonials/:id', async (req, res) => {
 });
 
 router.delete('/testimonials/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid testimonial identifier.' });
+  }
   const deleted = await Testimonial.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ error: 'Testimonial not found.' });
   await logAdminActivity(
@@ -1667,10 +2202,15 @@ router.delete('/testimonials/:id', async (req, res) => {
 router.get('/reviews', async (req, res) => {
   const filter: Record<string, unknown> = {};
   if (req.query.courseId && req.query.courseId !== 'all') {
+    if (!isValidObjectId(req.query.courseId)) {
+      return res.status(400).json({ error: 'Invalid course filter.' });
+    }
     filter.courseId = req.query.courseId;
   }
   if (req.query.status && req.query.status !== 'all') {
-    filter.status = req.query.status;
+    if (req.query.status === 'published' || req.query.status === 'hidden') {
+      filter.status = req.query.status;
+    }
   }
 
   const [reviews, courses] = await Promise.all([
@@ -1686,14 +2226,27 @@ router.get('/reviews', async (req, res) => {
 });
 
 router.patch('/reviews/:id', async (req, res) => {
-  const b = req.body || {};
-  const update: Record<string, unknown> = {};
-  if (b.status === 'published' || b.status === 'hidden') update.status = b.status;
-  if (b.rating !== undefined) update.rating = Math.min(5, Math.max(1, Math.round(Number(b.rating))));
-  if (b.title !== undefined) update.title = stripHtmlTags(String(b.title).trim());
-  if (b.comment !== undefined) update.comment = stripHtmlTags(String(b.comment).trim());
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid review identifier.' });
+  }
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (raw.rating !== undefined) candidate.rating = Number(raw.rating);
+  const parsed = courseReviewUpdateSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues[0]?.message || 'Invalid review update.',
+      fieldErrors: zodToFieldErrors(parsed.error),
+    });
+  }
 
-  const updated = await CourseReview.findByIdAndUpdate(req.params.id, update, { new: true })
+  const update: Record<string, unknown> = {};
+  if (parsed.data.status !== undefined) update.status = parsed.data.status;
+  if (parsed.data.rating !== undefined) update.rating = parsed.data.rating;
+  if (parsed.data.title !== undefined) update.title = stripHtmlTags(parsed.data.title);
+  if (parsed.data.comment !== undefined) update.comment = stripHtmlTags(parsed.data.comment);
+
+  const updated = await CourseReview.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
     .populate('courseId', 'title slug')
     .populate('userId', 'name email');
   if (!updated) return res.status(404).json({ error: 'Course review not found.' });
@@ -1709,6 +2262,9 @@ router.patch('/reviews/:id', async (req, res) => {
 });
 
 router.delete('/reviews/:id', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid review identifier.' });
+  }
   const deleted = await CourseReview.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ error: 'Course review not found.' });
   await logAdminActivity(
@@ -1735,25 +2291,10 @@ router.get('/coupons', async (_req, res) => {
   }
 });
 
-const couponPayloadSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(2, 'Coupon code must be at least 2 characters.')
-    .max(40, 'Coupon code cannot exceed 40 characters.')
-    .regex(/^[A-Za-z0-9_-]+$/, 'Coupon code may only contain letters, numbers, hyphens, or underscores.'),
-  description: z.string().trim().max(240).optional().default(''),
-  discountPercent: z.number().min(1, 'Discount must be between 1% and 100%.').max(100),
-  courseId: z.string().trim().nullable().optional().default(null),
-  maxUses: z.number().int().min(0).optional().default(0),
-  expiresAt: z.string().trim().nullable().optional().default(null),
-  active: z.boolean().optional().default(true),
-});
-
 router.post('/coupons', async (req, res) => {
   try {
     const raw = req.body || {};
-    const parsed = couponPayloadSchema.safeParse({
+    const parsed = couponWriteSchema.safeParse({
       ...raw,
       discountPercent: Number(raw.discountPercent),
       maxUses: raw.maxUses !== undefined && raw.maxUses !== '' ? Number(raw.maxUses) : 0,
@@ -1762,7 +2303,10 @@ router.post('/coupons', async (req, res) => {
       active: raw.active !== false,
     });
     if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid coupon data.' });
+      return res.status(400).json({
+        error: parsed.error.issues[0]?.message || 'Invalid coupon data.',
+        fieldErrors: zodToFieldErrors(parsed.error),
+      });
     }
 
     const code = parsed.data.code.toUpperCase();
@@ -1777,9 +2321,6 @@ router.post('/coupons', async (req, res) => {
     }
 
     const expiresAtDate = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;
-    if (expiresAtDate && Number.isNaN(expiresAtDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid expiration date.' });
-    }
 
     const created = await Coupon.create({
       code,
@@ -1809,57 +2350,53 @@ router.post('/coupons', async (req, res) => {
 
 router.patch('/coupons/:id', async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid coupon identifier.' });
+    }
     const raw = req.body || {};
+    const candidate: Record<string, unknown> = { ...raw };
+    if (raw.discountPercent !== undefined) candidate.discountPercent = Number(raw.discountPercent);
+    if (raw.maxUses !== undefined) candidate.maxUses = raw.maxUses === '' ? 0 : Number(raw.maxUses);
+    if (raw.courseId !== undefined) {
+      candidate.courseId = raw.courseId && String(raw.courseId).trim() ? String(raw.courseId).trim() : null;
+    }
+    if (raw.expiresAt !== undefined) {
+      candidate.expiresAt = raw.expiresAt && String(raw.expiresAt).trim() ? String(raw.expiresAt).trim() : null;
+    }
+
+    const parsed = couponPatchSchema.safeParse(candidate);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: parsed.error.issues[0]?.message || 'Invalid coupon update.',
+        fieldErrors: zodToFieldErrors(parsed.error),
+      });
+    }
+
+    const d = parsed.data;
     const update: Record<string, unknown> = {};
 
-    if (raw.code !== undefined) {
-      const cleanCode = String(raw.code).trim().toUpperCase();
-      if (!/^[A-Z0-9_-]{2,40}$/.test(cleanCode)) {
-        return res.status(400).json({
-          error: 'Coupon code must be 2–40 alphanumeric, hyphen, or underscore characters.',
-        });
-      }
+    if (d.code !== undefined) {
+      const cleanCode = d.code.trim().toUpperCase();
       const clash = await Coupon.findOne({ code: cleanCode, _id: { $ne: req.params.id } }).lean();
       if (clash) {
         return res.status(409).json({ error: `Coupon code "${cleanCode}" is already used.` });
       }
       update.code = cleanCode;
     }
-    if (raw.description !== undefined) update.description = stripHtmlTags(String(raw.description).trim());
-    if (raw.discountPercent !== undefined) {
-      const pct = Number(raw.discountPercent);
-      if (Number.isNaN(pct) || pct < 1 || pct > 100) {
-        return res.status(400).json({ error: 'Discount percentage must be between 1 and 100.' });
-      }
-      update.discountPercent = Math.round(pct);
-    }
-    if (raw.courseId !== undefined) {
-      const cid = raw.courseId && String(raw.courseId).trim() ? String(raw.courseId).trim() : null;
-      if (cid) {
-        const exists = await Course.exists({ _id: cid });
+    if (d.description !== undefined) update.description = stripHtmlTags(d.description);
+    if (d.discountPercent !== undefined) update.discountPercent = Math.round(d.discountPercent);
+    if (d.courseId !== undefined) {
+      if (d.courseId) {
+        const exists = await Course.exists({ _id: d.courseId });
         if (!exists) return res.status(404).json({ error: 'Selected course does not exist.' });
       }
-      update.courseId = cid;
+      update.courseId = d.courseId;
     }
-    if (raw.maxUses !== undefined) {
-      update.maxUses = Math.max(0, Math.round(Number(raw.maxUses || 0)));
-    }
-    if (raw.expiresAt !== undefined) {
-      if (!raw.expiresAt || !String(raw.expiresAt).trim()) {
-        update.expiresAt = null;
-      } else {
-        const dt = new Date(String(raw.expiresAt));
-        if (Number.isNaN(dt.getTime())) {
-          return res.status(400).json({ error: 'Invalid expiration date.' });
-        }
-        update.expiresAt = dt;
-      }
-    }
-    if (raw.active !== undefined) {
-      update.active = Boolean(raw.active);
-    }
+    if (d.maxUses !== undefined) update.maxUses = d.maxUses;
+    if (d.expiresAt !== undefined) update.expiresAt = d.expiresAt ? new Date(d.expiresAt) : null;
+    if (d.active !== undefined) update.active = d.active;
 
-    const updated = await Coupon.findByIdAndUpdate(req.params.id, update, { new: true })
+    const updated = await Coupon.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
       .populate('courseId', 'title slug')
       .lean();
     if (!updated) return res.status(404).json({ error: 'Coupon not found.' });
@@ -1881,6 +2418,9 @@ router.patch('/coupons/:id', async (req, res) => {
 
 router.delete('/coupons/:id', async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid coupon identifier.' });
+    }
     const deleted = await Coupon.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Coupon not found.' });
     await logAdminActivity(req.user!, 'delete_coupon', 'Coupon', req.params.id, deleted.code);

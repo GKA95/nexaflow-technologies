@@ -12,10 +12,20 @@ import {
   Send,
   Settings,
 } from 'lucide-react';
+import { FieldError } from '../../components/FieldError';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import type { SupportTicketItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  buildChangePasswordSchema,
+  fieldBorderClass,
+  type FieldErrors,
+  learnerProfileSchema,
+  supportReplySchema,
+  supportTicketCreateSchema,
+  validateWithSchema,
+} from '../../utils/formValidation';
 
 type LearnerTab = 'overview' | 'courses' | 'support' | 'messages' | 'payments' | 'settings';
 
@@ -87,6 +97,17 @@ export function LearnerDashboardPage() {
   const [profileOrg, setProfileOrg] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
+  // Form submission locks and inline field validation state
+  const [submittingTicket, setSubmittingTicket] = useState(false);
+  const [submittingReply, setSubmittingReply] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [ticketErrors, setTicketErrors] = useState<FieldErrors>({});
+  const [replyError, setReplyError] = useState('');
+  const [profileErrors, setProfileErrors] = useState<FieldErrors>({});
+  const [passwordErrors, setPasswordErrors] = useState<FieldErrors>({});
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -137,80 +158,162 @@ export function LearnerDashboardPage() {
 
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await apiFetch('/api/learner/tickets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        subject: ticketSubject,
-        category: ticketCategory,
-        courseId: ticketCourseId || undefined,
-        description: ticketDesc,
-      }),
+    if (submittingTicket) return;
+    setTicketErrors({});
+    const check = validateWithSchema(supportTicketCreateSchema, {
+      subject: ticketSubject,
+      category: ticketCategory,
+      courseId: ticketCourseId || undefined,
+      description: ticketDesc,
     });
-    const data = await res.json();
-    if (!res.ok) {
-      showToast(data.error || 'Could not submit ticket.', 'error');
+    if (!check.ok) {
+      setTicketErrors(check.fieldErrors);
+      showToast(check.message, 'error');
       return;
     }
-    showToast(`Ticket ${data.ticket.referenceNumber} created.`, 'success');
-    setShowNewTicket(false);
-    setTicketSubject('');
-    setTicketDesc('');
-    loadDashboard();
+
+    setSubmittingTicket(true);
+    try {
+      const res = await apiFetch('/api/learner/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(check.data),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setTicketErrors(data.fieldErrors as FieldErrors);
+        }
+        showToast(data.error || 'Could not submit ticket.', 'error');
+        return;
+      }
+      showToast(`Ticket ${data.ticket.referenceNumber} created.`, 'success');
+      setShowNewTicket(false);
+      setTicketSubject('');
+      setTicketDesc('');
+      loadDashboard();
+    } catch {
+      showToast('Network error submitting ticket.', 'error');
+    } finally {
+      setSubmittingTicket(false);
+    }
   };
 
   const handleReplyTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeTicketId || !replyText.trim()) return;
-    const res = await apiFetch(`/api/learner/tickets/${activeTicketId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ message: replyText }),
-    });
-    if (res.ok) {
-      setReplyText('');
-      openTicketThread(activeTicketId);
-      loadDashboard();
-    } else {
-      const d = await res.json();
-      showToast(d.error || 'Failed to send reply.', 'error');
+    if (!activeTicketId || submittingReply) return;
+    setReplyError('');
+    const check = validateWithSchema(supportReplySchema, { message: replyText });
+    if (!check.ok) {
+      setReplyError(check.fieldErrors.message || check.message);
+      return;
+    }
+
+    setSubmittingReply(true);
+    try {
+      const res = await apiFetch(`/api/learner/tickets/${activeTicketId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(check.data),
+      });
+      if (res.ok) {
+        setReplyText('');
+        openTicketThread(activeTicketId);
+        loadDashboard();
+      } else {
+        const d = await res.json();
+        setReplyError(d.error || 'Failed to send reply.');
+        showToast(d.error || 'Failed to send reply.', 'error');
+      }
+    } catch {
+      showToast('Network error sending reply.', 'error');
+    } finally {
+      setSubmittingReply(false);
     }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await apiFetch('/api/auth/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ name: profileName, phone: profilePhone, organization: profileOrg }),
+    if (savingProfile) return;
+    setProfileErrors({});
+    const check = validateWithSchema(learnerProfileSchema, {
+      name: profileName,
+      phone: profilePhone,
+      organization: profileOrg,
     });
-    if (res.ok) {
-      showToast('Account profile updated.', 'success');
-      refreshAuth();
-    } else {
-      const d = await res.json();
-      showToast(d.error || 'Update failed.', 'error');
+    if (!check.ok) {
+      setProfileErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const res = await apiFetch('/api/auth/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(check.data),
+      });
+      if (res.ok) {
+        showToast('Account profile updated.', 'success');
+        refreshAuth();
+      } else {
+        const d = await res.json();
+        if (d.fieldErrors && typeof d.fieldErrors === 'object') {
+          setProfileErrors(d.fieldErrors as FieldErrors);
+        }
+        showToast(d.error || 'Update failed.', 'error');
+      }
+    } catch {
+      showToast('Network error updating profile.', 'error');
+    } finally {
+      setSavingProfile(false);
     }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await apiFetch('/api/auth/change-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ currentPassword, newPassword }),
+    if (savingPassword) return;
+    setPasswordErrors({});
+    const schema = buildChangePasswordSchema(false);
+    const check = validateWithSchema(schema, {
+      currentPassword,
+      newPassword,
+      confirmPassword: confirmNewPassword,
     });
-    const d = await res.json();
-    if (res.ok) {
-      setCurrentPassword('');
-      setNewPassword('');
-      showToast('Password updated.', 'success');
-    } else {
-      showToast(d.error || 'Password update failed.', 'error');
+    if (!check.ok) {
+      setPasswordErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const res = await apiFetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(check.data),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        showToast('Password updated.', 'success');
+      } else {
+        if (d.fieldErrors && typeof d.fieldErrors === 'object') {
+          setPasswordErrors(d.fieldErrors as FieldErrors);
+        }
+        showToast(d.error || 'Password update failed.', 'error');
+      }
+    } catch {
+      showToast('Network error updating password.', 'error');
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -477,6 +580,7 @@ export function LearnerDashboardPage() {
                     {showNewTicket && (
                       <form
                         onSubmit={handleCreateTicket}
+                        noValidate
                         className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4"
                       >
                         <h2 className="text-base font-semibold">Submit Support Ticket</h2>
@@ -488,7 +592,10 @@ export function LearnerDashboardPage() {
                             <select
                               id={`${uid}-tcat`}
                               value={ticketCategory}
-                              onChange={(e) => setTicketCategory(e.target.value)}
+                              onChange={(e) => {
+                                setTicketCategory(e.target.value);
+                                setTicketErrors((p) => ({ ...p, category: '' }));
+                              }}
                               className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                             >
                               <option value="Course Question">Course Question</option>
@@ -497,6 +604,7 @@ export function LearnerDashboardPage() {
                               <option value="Complaint">Complaint</option>
                               <option value="Feedback">Feedback</option>
                             </select>
+                            <FieldError error={ticketErrors.category} />
                           </div>
                           <div>
                             <label htmlFor={`${uid}-tcourse`} className="block text-xs font-medium mb-1">
@@ -515,6 +623,7 @@ export function LearnerDashboardPage() {
                                 </option>
                               ))}
                             </select>
+                            <FieldError error={ticketErrors.courseId} />
                           </div>
                         </div>
                         <div>
@@ -525,10 +634,18 @@ export function LearnerDashboardPage() {
                             id={`${uid}-tsubj`}
                             type="text"
                             required
+                            aria-invalid={Boolean(ticketErrors.subject)}
                             value={ticketSubject}
-                            onChange={(e) => setTicketSubject(e.target.value)}
-                            className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                            onChange={(e) => {
+                              setTicketSubject(e.target.value);
+                              setTicketErrors((p) => ({ ...p, subject: '' }));
+                            }}
+                            className={fieldBorderClass(
+                              'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                              ticketErrors.subject
+                            )}
                           />
+                          <FieldError error={ticketErrors.subject} />
                         </div>
                         <div>
                           <label htmlFor={`${uid}-tdesc`} className="block text-xs font-medium mb-1">
@@ -538,16 +655,25 @@ export function LearnerDashboardPage() {
                             id={`${uid}-tdesc`}
                             rows={4}
                             required
+                            aria-invalid={Boolean(ticketErrors.description)}
                             value={ticketDesc}
-                            onChange={(e) => setTicketDesc(e.target.value)}
-                            className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                            onChange={(e) => {
+                              setTicketDesc(e.target.value);
+                              setTicketErrors((p) => ({ ...p, description: '' }));
+                            }}
+                            className={fieldBorderClass(
+                              'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                              ticketErrors.description
+                            )}
                           />
+                          <FieldError error={ticketErrors.description} />
                         </div>
                         <button
                           type="submit"
-                          className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2 text-xs font-semibold text-white"
+                          disabled={submittingTicket}
+                          className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] disabled:opacity-60 px-5 py-2 text-xs font-semibold text-white"
                         >
-                          Submit Ticket
+                          {submittingTicket ? 'Submitting...' : 'Submit Ticket'}
                         </button>
                       </form>
                     )}
@@ -621,22 +747,33 @@ export function LearnerDashboardPage() {
                               ))}
                             </div>
 
-                            <form onSubmit={handleReplyTicket} className="flex flex-col sm:flex-row gap-2.5 pt-2">
-                              <input
-                                type="text"
-                                aria-label="Reply to support ticket"
-                                value={replyText}
-                                onChange={(e) => setReplyText(e.target.value)}
-                                placeholder="Write a reply..."
-                                className="flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-                              />
-                              <button
-                                type="submit"
-                                className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white shrink-0"
-                              >
-                                <Send className="w-3.5 h-3.5" />
-                                Reply
-                              </button>
+                            <form onSubmit={handleReplyTicket} noValidate className="space-y-1.5 pt-2">
+                              <div className="flex flex-col sm:flex-row gap-2.5">
+                                <input
+                                  type="text"
+                                  aria-label="Reply to support ticket"
+                                  aria-invalid={Boolean(replyError)}
+                                  value={replyText}
+                                  onChange={(e) => {
+                                    setReplyText(e.target.value);
+                                    if (replyError) setReplyError('');
+                                  }}
+                                  placeholder="Write a reply..."
+                                  className={fieldBorderClass(
+                                    'flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                                    replyError
+                                  )}
+                                />
+                                <button
+                                  type="submit"
+                                  disabled={submittingReply}
+                                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] disabled:opacity-60 px-4 py-2 text-xs font-semibold text-white shrink-0"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                  {submittingReply ? 'Sending...' : 'Reply'}
+                                </button>
+                              </div>
+                              <FieldError error={replyError} />
                             </form>
                           </div>
                         )}
@@ -764,22 +901,31 @@ export function LearnerDashboardPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <form
                       onSubmit={handleSaveProfile}
+                      noValidate
                       className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4"
                     >
                       <h2 className="text-lg font-bold">Profile Details</h2>
                       <div>
                         <label htmlFor={`${uid}-pname`} className="block text-xs font-medium mb-1">
-                          Full Name
+                          Full Name *
                         </label>
                         <input
                           id={`${uid}-pname`}
                           type="text"
                           required
                           autoComplete="name"
+                          aria-invalid={Boolean(profileErrors.name)}
                           value={profileName}
-                          onChange={(e) => setProfileName(e.target.value)}
-                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          onChange={(e) => {
+                            setProfileName(e.target.value);
+                            setProfileErrors((p) => ({ ...p, name: '' }));
+                          }}
+                          className={fieldBorderClass(
+                            'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                            profileErrors.name
+                          )}
                         />
+                        <FieldError error={profileErrors.name} />
                       </div>
                       <div>
                         <label htmlFor={`${uid}-pphone`} className="block text-xs font-medium mb-1">
@@ -790,10 +936,18 @@ export function LearnerDashboardPage() {
                           type="tel"
                           inputMode="tel"
                           autoComplete="tel"
+                          aria-invalid={Boolean(profileErrors.phone)}
                           value={profilePhone}
-                          onChange={(e) => setProfilePhone(e.target.value)}
-                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          onChange={(e) => {
+                            setProfilePhone(e.target.value);
+                            setProfileErrors((p) => ({ ...p, phone: '' }));
+                          }}
+                          className={fieldBorderClass(
+                            'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                            profileErrors.phone
+                          )}
                         />
+                        <FieldError error={profileErrors.phone} />
                       </div>
                       <div>
                         <label htmlFor={`${uid}-porg`} className="block text-xs font-medium mb-1">
@@ -803,21 +957,31 @@ export function LearnerDashboardPage() {
                           id={`${uid}-porg`}
                           type="text"
                           autoComplete="organization"
+                          aria-invalid={Boolean(profileErrors.organization)}
                           value={profileOrg}
-                          onChange={(e) => setProfileOrg(e.target.value)}
-                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          onChange={(e) => {
+                            setProfileOrg(e.target.value);
+                            setProfileErrors((p) => ({ ...p, organization: '' }));
+                          }}
+                          className={fieldBorderClass(
+                            'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                            profileErrors.organization
+                          )}
                         />
+                        <FieldError error={profileErrors.organization} />
                       </div>
                       <button
                         type="submit"
-                        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2 text-xs font-semibold text-white"
+                        disabled={savingProfile}
+                        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] disabled:opacity-60 px-5 py-2 text-xs font-semibold text-white"
                       >
-                        Save Profile
+                        {savingProfile ? 'Saving...' : 'Save Profile'}
                       </button>
                     </form>
 
                     <form
                       onSubmit={handleChangePassword}
+                      noValidate
                       className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4"
                     >
                       <h2 className="text-lg font-bold">Change Password</h2>
@@ -828,16 +992,23 @@ export function LearnerDashboardPage() {
                         <input
                           id={`${uid}-curpw`}
                           type="password"
-                          required
                           autoComplete="current-password"
+                          aria-invalid={Boolean(passwordErrors.currentPassword)}
                           value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          onChange={(e) => {
+                            setCurrentPassword(e.target.value);
+                            setPasswordErrors((p) => ({ ...p, currentPassword: '' }));
+                          }}
+                          className={fieldBorderClass(
+                            'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                            passwordErrors.currentPassword
+                          )}
                         />
+                        <FieldError error={passwordErrors.currentPassword} />
                       </div>
                       <div>
                         <label htmlFor={`${uid}-newpw`} className="block text-xs font-medium mb-1">
-                          New Password
+                          New Password *
                         </label>
                         <input
                           id={`${uid}-newpw`}
@@ -845,16 +1016,50 @@ export function LearnerDashboardPage() {
                           required
                           autoComplete="new-password"
                           minLength={8}
+                          aria-invalid={Boolean(passwordErrors.newPassword)}
                           value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                          onChange={(e) => {
+                            setNewPassword(e.target.value);
+                            setPasswordErrors((p) => ({ ...p, newPassword: '' }));
+                          }}
+                          placeholder="Min 8 chars, upper + lower + number"
+                          className={fieldBorderClass(
+                            'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                            passwordErrors.newPassword
+                          )}
                         />
+                        <FieldError error={passwordErrors.newPassword} />
+                      </div>
+                      <div>
+                        <label htmlFor={`${uid}-confirmpw`} className="block text-xs font-medium mb-1">
+                          Confirm New Password *
+                        </label>
+                        <input
+                          id={`${uid}-confirmpw`}
+                          type="password"
+                          required
+                          autoComplete="new-password"
+                          minLength={8}
+                          aria-invalid={Boolean(passwordErrors.confirmPassword)}
+                          value={confirmNewPassword}
+                          onChange={(e) => {
+                            setConfirmNewPassword(e.target.value);
+                            setPasswordErrors((p) => ({ ...p, confirmPassword: '' }));
+                          }}
+                          placeholder="Re-enter new password"
+                          className={fieldBorderClass(
+                            'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                            passwordErrors.confirmPassword
+                          )}
+                        />
+                        <FieldError error={passwordErrors.confirmPassword} />
                       </div>
                       <button
                         type="submit"
-                        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] px-5 py-2 text-xs font-semibold text-white"
+                        disabled={savingPassword}
+                        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] disabled:opacity-60 px-5 py-2 text-xs font-semibold text-white"
                       >
-                        Update Password
+                        {savingPassword ? 'Updating...' : 'Update Password'}
                       </button>
                     </form>
                   </div>

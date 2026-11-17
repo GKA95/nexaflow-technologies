@@ -188,9 +188,13 @@ function classifyDBError(err: unknown): { code: DBErrorCode; message: string } {
     };
   }
 
+  const isProd = process.env.NODE_ENV === 'production';
   return {
     code: 'UNKNOWN',
-    message: raw ? `MongoDB connection error: ${raw}` : 'Unable to connect to MongoDB Atlas.',
+    message:
+      !isProd && raw
+        ? `MongoDB connection error: ${raw}`
+        : 'Unable to connect to MongoDB Atlas.',
   };
 }
 
@@ -266,10 +270,15 @@ export async function connectDB(options?: { force?: boolean }): Promise<typeof m
       if (uriChanged && mongoose.connection.readyState !== 0) {
         await mongoose.disconnect().catch(() => {});
       }
+      mongoose.set('sanitizeFilter', true);
+      const isLocalMongo = /^mongodb(?:\+srv)?:\/\/(?:[^/@]*@)?(?:localhost|127\.0\.0\.1)(?:[:/?]|$)/i.test(
+        normalizedUri
+      );
       const m = await mongoose.connect(normalizedUri, {
         bufferCommands: false,
         maxPoolSize: 10,
         serverSelectionTimeoutMS: 6000,
+        ...(isLocalMongo ? {} : { tls: true, tlsAllowInvalidCertificates: false }),
       });
       cached.conn = m;
       cached.lastErrorCode = null;

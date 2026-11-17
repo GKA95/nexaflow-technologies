@@ -11,9 +11,17 @@ import {
   Tag,
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { FieldError } from '../../components/FieldError';
 import { useApp } from '../../context/AppContext';
 import type { SEOPageItem, SiteSettings } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  fieldBorderClass,
+  type FieldErrors,
+  seoPageUpdateSchema,
+  siteSettingsWriteSchema,
+  validateWithSchema,
+} from '../../utils/formValidation';
 
 const PRESET_OG_IMAGES = [
   { label: 'Default OG Card', path: '/og-image.png' },
@@ -93,6 +101,8 @@ export function AdminSeoSettingsModule() {
   const [globalImgError, setGlobalImgError] = useState(false);
   const [pageImgError, setPageImgError] = useState(false);
   const [confirmResetKey, setConfirmResetKey] = useState<string | null>(null);
+  const [globalErrors, setGlobalErrors] = useState<FieldErrors>({});
+  const [pageErrors, setPageErrors] = useState<FieldErrors>({});
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -154,32 +164,42 @@ export function AdminSeoSettingsModule() {
 
   const handleSaveGlobal = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingGlobal) return;
+    const candidate = {
+      seoSiteTitle: (globalForm.seoSiteTitle || '').trim(),
+      seoTitleSuffix: (globalForm.seoTitleSuffix || '').trim(),
+      seoDefaultDescription: (globalForm.seoDefaultDescription || '').trim(),
+      seoDefaultKeywords: (globalForm.seoDefaultKeywords || '').trim(),
+      seoOgTitle: (globalForm.seoOgTitle || '').trim(),
+      seoOgDescription: (globalForm.seoOgDescription || '').trim(),
+      seoOgImage: (globalForm.seoOgImage || '').trim() || '/og-image.png',
+      seoTwitterCard: globalForm.seoTwitterCard || 'summary_large_image',
+      seoTwitterSite: (globalForm.seoTwitterSite || '').trim(),
+      seoCanonicalBaseUrl: (globalForm.seoCanonicalBaseUrl || '').trim().replace(/\/+$/, ''),
+      seoRobotsDefault: globalForm.seoRobotsDefault || 'index, follow',
+      seoStructuredDataEnabled: globalForm.seoStructuredDataEnabled !== false,
+    };
+    const check = validateWithSchema(siteSettingsWriteSchema, candidate);
+    if (!check.ok) {
+      setGlobalErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+    setGlobalErrors({});
     setSavingGlobal(true);
     try {
       const res = await apiFetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          seoSiteTitle: (globalForm.seoSiteTitle || '').trim(),
-          seoTitleSuffix: (globalForm.seoTitleSuffix || '').trim(),
-          seoDefaultDescription: (globalForm.seoDefaultDescription || '').trim(),
-          seoDefaultKeywords: (globalForm.seoDefaultKeywords || '').trim(),
-          seoOgTitle: (globalForm.seoOgTitle || '').trim(),
-          seoOgDescription: (globalForm.seoOgDescription || '').trim(),
-          seoOgImage: (globalForm.seoOgImage || '').trim() || '/og-image.png',
-          seoTwitterCard: globalForm.seoTwitterCard || 'summary_large_image',
-          seoTwitterSite: (globalForm.seoTwitterSite || '').trim(),
-          seoCanonicalBaseUrl: (globalForm.seoCanonicalBaseUrl || '').trim().replace(/\/+$/, ''),
-          seoRobotsDefault: globalForm.seoRobotsDefault || 'index, follow',
-          seoStructuredDataEnabled: globalForm.seoStructuredDataEnabled !== false,
-        }),
+        body: JSON.stringify(check.data),
       });
       if (res.ok) {
         await refreshBootstrap();
         showToast('Global SEO settings & social preview defaults saved to MongoDB.', 'success');
       } else {
         const err = await res.json().catch(() => ({}));
+        if (err.fieldErrors) setGlobalErrors(err.fieldErrors);
         showToast(err.error || 'Failed to save global SEO settings.', 'error');
       }
     } finally {
@@ -189,14 +209,30 @@ export function AdminSeoSettingsModule() {
 
   const handleSavePage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activePage) return;
+    if (!activePage || savingPage) return;
+    const check = validateWithSchema(seoPageUpdateSchema, {
+      title: activePage.title || '',
+      description: activePage.description || '',
+      canonicalUrl: activePage.canonicalUrl || '',
+      ogTitle: activePage.ogTitle || '',
+      ogDescription: activePage.ogDescription || '',
+      ogImage: activePage.ogImage || '',
+      focusKeyword: activePage.focusKeyword || '',
+      noIndex: Boolean(activePage.noIndex),
+    });
+    if (!check.ok) {
+      setPageErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+    setPageErrors({});
     setSavingPage(true);
     try {
       const res = await apiFetch(`/api/admin/seo/${encodeURIComponent(activePage.pageKey)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(activePage),
+        body: JSON.stringify(check.data),
       });
       if (res.ok) {
         await refreshBootstrap();
@@ -206,6 +242,7 @@ export function AdminSeoSettingsModule() {
         );
       } else {
         const err = await res.json().catch(() => ({}));
+        if (err.fieldErrors) setPageErrors(err.fieldErrors);
         showToast(err.error || 'Failed to update page SEO settings.', 'error');
       }
     } finally {
@@ -319,7 +356,7 @@ export function AdminSeoSettingsModule() {
       </div>
 
       {/* Section 1 & 2: Global Meta-Tags, Site Descriptions & Social Preview Images */}
-      <form onSubmit={handleSaveGlobal} className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <form onSubmit={handleSaveGlobal} noValidate className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
           {/* Global Meta-Tags & Descriptions */}
           <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4">
@@ -336,10 +373,18 @@ export function AdminSeoSettingsModule() {
                 </div>
                 <input
                   value={globalForm.seoSiteTitle || ''}
-                  onChange={(e) => setGlobalForm({ ...globalForm, seoSiteTitle: e.target.value })}
+                  onChange={(e) => {
+                    setGlobalForm({ ...globalForm, seoSiteTitle: e.target.value });
+                    setGlobalErrors((p) => ({ ...p, seoSiteTitle: '' }));
+                  }}
                   placeholder="NexaFlow Technologies | AI, Data & Digital Solutions"
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  aria-invalid={Boolean(globalErrors.seoSiteTitle)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    globalErrors.seoSiteTitle
+                  )}
                 />
+                <FieldError message={globalErrors.seoSiteTitle} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1">
@@ -347,10 +392,18 @@ export function AdminSeoSettingsModule() {
                 </label>
                 <input
                   value={globalForm.seoTitleSuffix || ''}
-                  onChange={(e) => setGlobalForm({ ...globalForm, seoTitleSuffix: e.target.value })}
+                  onChange={(e) => {
+                    setGlobalForm({ ...globalForm, seoTitleSuffix: e.target.value });
+                    setGlobalErrors((p) => ({ ...p, seoTitleSuffix: '' }));
+                  }}
                   placeholder="NexaFlow Technologies"
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  aria-invalid={Boolean(globalErrors.seoTitleSuffix)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    globalErrors.seoTitleSuffix
+                  )}
                 />
+                <FieldError message={globalErrors.seoTitleSuffix} />
               </div>
             </div>
 
@@ -369,12 +422,18 @@ export function AdminSeoSettingsModule() {
               <textarea
                 rows={3}
                 value={globalForm.seoDefaultDescription || ''}
-                onChange={(e) =>
-                  setGlobalForm({ ...globalForm, seoDefaultDescription: e.target.value })
-                }
+                onChange={(e) => {
+                  setGlobalForm({ ...globalForm, seoDefaultDescription: e.target.value });
+                  setGlobalErrors((p) => ({ ...p, seoDefaultDescription: '' }));
+                }}
                 placeholder="Summarize NexaFlow Technologies in 120–160 characters..."
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                aria-invalid={Boolean(globalErrors.seoDefaultDescription)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  globalErrors.seoDefaultDescription
+                )}
               />
+              <FieldError message={globalErrors.seoDefaultDescription} />
             </div>
 
             <div>
@@ -383,12 +442,18 @@ export function AdminSeoSettingsModule() {
               </label>
               <input
                 value={globalForm.seoDefaultKeywords || ''}
-                onChange={(e) =>
-                  setGlobalForm({ ...globalForm, seoDefaultKeywords: e.target.value })
-                }
+                onChange={(e) => {
+                  setGlobalForm({ ...globalForm, seoDefaultKeywords: e.target.value });
+                  setGlobalErrors((p) => ({ ...p, seoDefaultKeywords: '' }));
+                }}
                 placeholder="AI automation, web development, data analytics, machine learning"
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                aria-invalid={Boolean(globalErrors.seoDefaultKeywords)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  globalErrors.seoDefaultKeywords
+                )}
               />
+              <FieldError message={globalErrors.seoDefaultKeywords} />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -399,12 +464,18 @@ export function AdminSeoSettingsModule() {
                 <input
                   type="url"
                   value={globalForm.seoCanonicalBaseUrl || ''}
-                  onChange={(e) =>
-                    setGlobalForm({ ...globalForm, seoCanonicalBaseUrl: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setGlobalForm({ ...globalForm, seoCanonicalBaseUrl: e.target.value });
+                    setGlobalErrors((p) => ({ ...p, seoCanonicalBaseUrl: '' }));
+                  }}
                   placeholder="https://nexaflowtech.com"
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+                  aria-invalid={Boolean(globalErrors.seoCanonicalBaseUrl)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                    globalErrors.seoCanonicalBaseUrl
+                  )}
                 />
+                <FieldError message={globalErrors.seoCanonicalBaseUrl} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1">Default Search Indexing</label>
@@ -451,21 +522,35 @@ export function AdminSeoSettingsModule() {
                 <label className="block text-xs font-medium mb-1">Global OG / Social Title</label>
                 <input
                   value={globalForm.seoOgTitle || ''}
-                  onChange={(e) => setGlobalForm({ ...globalForm, seoOgTitle: e.target.value })}
+                  onChange={(e) => {
+                    setGlobalForm({ ...globalForm, seoOgTitle: e.target.value });
+                    setGlobalErrors((p) => ({ ...p, seoOgTitle: '' }));
+                  }}
                   placeholder="Defaults to page SEO title if blank"
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  aria-invalid={Boolean(globalErrors.seoOgTitle)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    globalErrors.seoOgTitle
+                  )}
                 />
+                <FieldError message={globalErrors.seoOgTitle} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1">X / Twitter Handle</label>
                 <input
                   value={globalForm.seoTwitterSite || ''}
-                  onChange={(e) =>
-                    setGlobalForm({ ...globalForm, seoTwitterSite: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setGlobalForm({ ...globalForm, seoTwitterSite: e.target.value });
+                    setGlobalErrors((p) => ({ ...p, seoTwitterSite: '' }));
+                  }}
                   placeholder="@nexaflowtech"
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+                  aria-invalid={Boolean(globalErrors.seoTwitterSite)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                    globalErrors.seoTwitterSite
+                  )}
                 />
+                <FieldError message={globalErrors.seoTwitterSite} />
               </div>
             </div>
 
@@ -476,12 +561,18 @@ export function AdminSeoSettingsModule() {
               <textarea
                 rows={2}
                 value={globalForm.seoOgDescription || ''}
-                onChange={(e) =>
-                  setGlobalForm({ ...globalForm, seoOgDescription: e.target.value })
-                }
+                onChange={(e) => {
+                  setGlobalForm({ ...globalForm, seoOgDescription: e.target.value });
+                  setGlobalErrors((p) => ({ ...p, seoOgDescription: '' }));
+                }}
                 placeholder="Defaults to page/site meta description if blank"
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                aria-invalid={Boolean(globalErrors.seoOgDescription)}
+                className={fieldBorderClass(
+                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  globalErrors.seoOgDescription
+                )}
               />
+              <FieldError message={globalErrors.seoOgDescription} />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -494,10 +585,16 @@ export function AdminSeoSettingsModule() {
                   onChange={(e) => {
                     setGlobalImgError(false);
                     setGlobalForm({ ...globalForm, seoOgImage: e.target.value });
+                    setGlobalErrors((p) => ({ ...p, seoOgImage: '' }));
                   }}
                   placeholder="/og-image.png or https://..."
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+                  aria-invalid={Boolean(globalErrors.seoOgImage)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                    globalErrors.seoOgImage
+                  )}
                 />
+                <FieldError message={globalErrors.seoOgImage} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1">X / Twitter Card Style</label>
@@ -531,6 +628,7 @@ export function AdminSeoSettingsModule() {
                       onClick={() => {
                         setGlobalImgError(false);
                         setGlobalForm({ ...globalForm, seoOgImage: preset.path });
+                        setGlobalErrors((p) => ({ ...p, seoOgImage: '' }));
                       }}
                       className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
                         selected
@@ -657,6 +755,7 @@ export function AdminSeoSettingsModule() {
                 type="button"
                 onClick={() => {
                   setPageImgError(false);
+                  setPageErrors({});
                   setSelectedKey(page.pageKey);
                 }}
                 className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -672,7 +771,7 @@ export function AdminSeoSettingsModule() {
         </div>
 
         {activePage && (
-          <form onSubmit={handleSavePage} className="grid grid-cols-1 xl:grid-cols-3 gap-6 pt-2">
+          <form onSubmit={handleSavePage} noValidate className="grid grid-cols-1 xl:grid-cols-3 gap-6 pt-2">
             <div className="xl:col-span-2 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -682,10 +781,18 @@ export function AdminSeoSettingsModule() {
                   </div>
                   <input
                     value={activePage.title || ''}
-                    onChange={(e) => updateActivePageField('title', e.target.value)}
+                    onChange={(e) => {
+                      updateActivePageField('title', e.target.value);
+                      setPageErrors((p) => ({ ...p, title: '' }));
+                    }}
                     placeholder={globalForm.seoSiteTitle || 'Inherits global title'}
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(pageErrors.title)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      pageErrors.title
+                    )}
                   />
+                  <FieldError message={pageErrors.title} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">
@@ -693,10 +800,18 @@ export function AdminSeoSettingsModule() {
                   </label>
                   <input
                     value={activePage.focusKeyword || ''}
-                    onChange={(e) => updateActivePageField('focusKeyword', e.target.value)}
+                    onChange={(e) => {
+                      updateActivePageField('focusKeyword', e.target.value);
+                      setPageErrors((p) => ({ ...p, focusKeyword: '' }));
+                    }}
                     placeholder="Inherits global keywords if blank"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(pageErrors.focusKeyword)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      pageErrors.focusKeyword
+                    )}
                   />
+                  <FieldError message={pageErrors.focusKeyword} />
                 </div>
               </div>
 
@@ -713,10 +828,18 @@ export function AdminSeoSettingsModule() {
                 <textarea
                   rows={2}
                   value={activePage.description || ''}
-                  onChange={(e) => updateActivePageField('description', e.target.value)}
+                  onChange={(e) => {
+                    updateActivePageField('description', e.target.value);
+                    setPageErrors((p) => ({ ...p, description: '' }));
+                  }}
                   placeholder="Inherits global site description if left blank"
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  aria-invalid={Boolean(pageErrors.description)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    pageErrors.description
+                  )}
                 />
+                <FieldError message={pageErrors.description} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -726,10 +849,18 @@ export function AdminSeoSettingsModule() {
                   </label>
                   <input
                     value={activePage.ogTitle || ''}
-                    onChange={(e) => updateActivePageField('ogTitle', e.target.value)}
+                    onChange={(e) => {
+                      updateActivePageField('ogTitle', e.target.value);
+                      setPageErrors((p) => ({ ...p, ogTitle: '' }));
+                    }}
                     placeholder="Inherits Page Title or Global OG Title"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(pageErrors.ogTitle)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      pageErrors.ogTitle
+                    )}
                   />
+                  <FieldError message={pageErrors.ogTitle} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">
@@ -737,10 +868,18 @@ export function AdminSeoSettingsModule() {
                   </label>
                   <input
                     value={activePage.canonicalUrl || ''}
-                    onChange={(e) => updateActivePageField('canonicalUrl', e.target.value)}
+                    onChange={(e) => {
+                      updateActivePageField('canonicalUrl', e.target.value);
+                      setPageErrors((p) => ({ ...p, canonicalUrl: '' }));
+                    }}
                     placeholder={`${origin}${activePage.pageKey === 'home' ? '/' : `/${activePage.pageKey}`}`}
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+                    aria-invalid={Boolean(pageErrors.canonicalUrl)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                      pageErrors.canonicalUrl
+                    )}
                   />
+                  <FieldError message={pageErrors.canonicalUrl} />
                 </div>
               </div>
 
@@ -751,10 +890,18 @@ export function AdminSeoSettingsModule() {
                 <textarea
                   rows={2}
                   value={activePage.ogDescription || ''}
-                  onChange={(e) => updateActivePageField('ogDescription', e.target.value)}
+                  onChange={(e) => {
+                    updateActivePageField('ogDescription', e.target.value);
+                    setPageErrors((p) => ({ ...p, ogDescription: '' }));
+                  }}
                   placeholder="Inherits Page Description or Global OG Description"
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  aria-invalid={Boolean(pageErrors.ogDescription)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    pageErrors.ogDescription
+                  )}
                 />
+                <FieldError message={pageErrors.ogDescription} />
               </div>
 
               <div>
@@ -768,6 +915,7 @@ export function AdminSeoSettingsModule() {
                       onClick={() => {
                         setPageImgError(false);
                         updateActivePageField('ogImage', '');
+                        setPageErrors((p) => ({ ...p, ogImage: '' }));
                       }}
                       className="text-[11px] text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                     >
@@ -780,10 +928,16 @@ export function AdminSeoSettingsModule() {
                   onChange={(e) => {
                     setPageImgError(false);
                     updateActivePageField('ogImage', e.target.value);
+                    setPageErrors((p) => ({ ...p, ogImage: '' }));
                   }}
                   placeholder={`Inherits Global (${resolvedGlobalImg})`}
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+                  aria-invalid={Boolean(pageErrors.ogImage)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                    pageErrors.ogImage
+                  )}
                 />
+                <FieldError message={pageErrors.ogImage} />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {PRESET_OG_IMAGES.map((preset) => (
                     <button
@@ -792,6 +946,7 @@ export function AdminSeoSettingsModule() {
                       onClick={() => {
                         setPageImgError(false);
                         updateActivePageField('ogImage', preset.path);
+                        setPageErrors((p) => ({ ...p, ogImage: '' }));
                       }}
                       className={`rounded border px-2 py-1 text-[11px] font-medium transition-colors ${
                         activePage.ogImage === preset.path

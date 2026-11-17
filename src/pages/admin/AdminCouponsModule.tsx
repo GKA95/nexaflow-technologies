@@ -1,9 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Edit3, Plus, Shuffle, Tag, Trash2, X } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { FieldError } from '../../components/FieldError';
 import { useApp } from '../../context/AppContext';
 import type { CouponItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  couponWriteSchema,
+  fieldBorderClass,
+  type FieldErrors,
+  validateWithSchema,
+} from '../../utils/formValidation';
 
 interface CourseOption {
   _id: string;
@@ -33,6 +40,16 @@ export function AdminCouponsModule() {
   const [active, setActive] = useState(true);
 
   const [deleteTarget, setDeleteTarget] = useState<CouponItem | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   const loadCoupons = useCallback(async () => {
     setLoading(true);
@@ -65,6 +82,7 @@ export function AdminCouponsModule() {
     setExpiresAt('');
     setDescription('');
     setActive(true);
+    setFieldErrors({});
   };
 
   const openCreate = () => {
@@ -101,27 +119,39 @@ export function AdminCouponsModule() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    setFieldErrors({});
+    const payload = {
+      code: code.trim().toUpperCase(),
+      discountPercent: Number(discountPercent),
+      courseId: courseId || null,
+      maxUses: Number(maxUses || 0),
+      expiresAt: expiresAt ? `${expiresAt}T23:59:59.999Z` : null,
+      description: description.trim(),
+      active,
+    };
+    const check = validateWithSchema(couponWriteSchema, payload);
+    if (!check.ok) {
+      setFieldErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+
     setSaving(true);
     try {
-      const payload = {
-        code: code.trim().toUpperCase(),
-        discountPercent: Number(discountPercent),
-        courseId: courseId || null,
-        maxUses: Number(maxUses || 0),
-        expiresAt: expiresAt ? `${expiresAt}T23:59:59.999Z` : null,
-        description: description.trim(),
-        active,
-      };
       const url = editingId ? `/api/admin/coupons/${editingId}` : '/api/admin/coupons';
       const method = editingId ? 'PATCH' : 'POST';
       const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(check.data),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setFieldErrors(data.fieldErrors as FieldErrors);
+        }
         showToast(data.error || 'Could not save coupon.', 'error');
         return;
       }
@@ -129,6 +159,8 @@ export function AdminCouponsModule() {
       setShowForm(false);
       resetForm();
       await loadCoupons();
+    } catch {
+      showToast('Network error saving coupon.', 'error');
     } finally {
       setSaving(false);
     }
@@ -197,6 +229,7 @@ export function AdminCouponsModule() {
       {showForm && (
         <form
           onSubmit={handleSave}
+          noValidate
           className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4"
         >
           <div className="flex items-center justify-between gap-3">
@@ -226,14 +259,24 @@ export function AdminCouponsModule() {
                   id="coupon-code"
                   type="text"
                   required
+                  aria-invalid={Boolean(fieldErrors.code)}
                   value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setCode(e.target.value.toUpperCase());
+                    clearFieldError('code');
+                  }}
                   placeholder="e.g. LAUNCH25"
-                  className="min-h-[44px] flex-1 min-w-0 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono uppercase"
+                  className={fieldBorderClass(
+                    'min-h-[44px] flex-1 min-w-0 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono uppercase',
+                    fieldErrors.code
+                  )}
                 />
                 <button
                   type="button"
-                  onClick={generateCode}
+                  onClick={() => {
+                    generateCode();
+                    clearFieldError('code');
+                  }}
                   title="Generate code"
                   aria-label="Generate random coupon code"
                   className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 text-xs font-medium hover:border-[#176BFF]"
@@ -241,6 +284,7 @@ export function AdminCouponsModule() {
                   <Shuffle className="w-4 h-4" />
                 </button>
               </div>
+              <FieldError error={fieldErrors.code} />
             </div>
 
             <div>
@@ -253,10 +297,18 @@ export function AdminCouponsModule() {
                 required
                 min={1}
                 max={100}
+                aria-invalid={Boolean(fieldErrors.discountPercent)}
                 value={discountPercent}
-                onChange={(e) => setDiscountPercent(e.target.value)}
-                className="min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+                onChange={(e) => {
+                  setDiscountPercent(e.target.value);
+                  clearFieldError('discountPercent');
+                }}
+                className={fieldBorderClass(
+                  'min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                  fieldErrors.discountPercent
+                )}
               />
+              <FieldError error={fieldErrors.discountPercent} />
             </div>
 
             <div>
@@ -265,9 +317,16 @@ export function AdminCouponsModule() {
               </label>
               <select
                 id="coupon-course"
+                aria-invalid={Boolean(fieldErrors.courseId)}
                 value={courseId}
-                onChange={(e) => setCourseId(e.target.value)}
-                className="min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                onChange={(e) => {
+                  setCourseId(e.target.value);
+                  clearFieldError('courseId');
+                }}
+                className={fieldBorderClass(
+                  'min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  fieldErrors.courseId
+                )}
               >
                 <option value="">All Paid Courses</option>
                 {courses.map((c) => (
@@ -276,6 +335,7 @@ export function AdminCouponsModule() {
                   </option>
                 ))}
               </select>
+              <FieldError error={fieldErrors.courseId} />
             </div>
           </div>
 
@@ -288,10 +348,18 @@ export function AdminCouponsModule() {
                 id="coupon-max-uses"
                 type="number"
                 min={0}
+                aria-invalid={Boolean(fieldErrors.maxUses)}
                 value={maxUses}
-                onChange={(e) => setMaxUses(e.target.value)}
-                className="min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono"
+                onChange={(e) => {
+                  setMaxUses(e.target.value);
+                  clearFieldError('maxUses');
+                }}
+                className={fieldBorderClass(
+                  'min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm font-mono',
+                  fieldErrors.maxUses
+                )}
               />
+              <FieldError error={fieldErrors.maxUses} />
             </div>
 
             <div>
@@ -301,10 +369,18 @@ export function AdminCouponsModule() {
               <input
                 id="coupon-expiry"
                 type="date"
+                aria-invalid={Boolean(fieldErrors.expiresAt)}
                 value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
-                className="min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                onChange={(e) => {
+                  setExpiresAt(e.target.value);
+                  clearFieldError('expiresAt');
+                }}
+                className={fieldBorderClass(
+                  'min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  fieldErrors.expiresAt
+                )}
               />
+              <FieldError error={fieldErrors.expiresAt} />
             </div>
 
             <div>
@@ -315,11 +391,19 @@ export function AdminCouponsModule() {
                 id="coupon-desc"
                 type="text"
                 maxLength={240}
+                aria-invalid={Boolean(fieldErrors.description)}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  clearFieldError('description');
+                }}
                 placeholder="e.g. Early-bird cohort discount"
-                className="min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                className={fieldBorderClass(
+                  'min-h-[44px] w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                  fieldErrors.description
+                )}
               />
+              <FieldError error={fieldErrors.description} />
             </div>
           </div>
 

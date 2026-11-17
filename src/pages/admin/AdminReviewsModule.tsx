@@ -1,9 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Edit3, Eye, EyeOff, Star, Trash2, X } from 'lucide-react';
+import { FieldError } from '../../components/FieldError';
 import { StarRatingDisplay, StarRatingPicker } from '../../components/StarRating';
 import { useApp } from '../../context/AppContext';
 import type { CourseReviewItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  courseReviewUpdateSchema,
+  fieldBorderClass,
+  type FieldErrors,
+  validateWithSchema,
+} from '../../utils/formValidation';
 
 interface CourseSummary {
   _id: string;
@@ -24,6 +31,7 @@ export function AdminReviewsModule() {
   const [editRating, setEditRating] = useState(5);
   const [editTitle, setEditTitle] = useState('');
   const [editComment, setEditComment] = useState('');
+  const [editErrors, setEditErrors] = useState<FieldErrors>({});
 
   const loadReviews = useCallback(async () => {
     setLoading(true);
@@ -73,18 +81,26 @@ export function AdminReviewsModule() {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingReview) return;
+    if (!editingReview || busyId) return;
+    setEditErrors({});
+    const check = validateWithSchema(courseReviewUpdateSchema, {
+      rating: editRating,
+      title: editTitle,
+      comment: editComment,
+    });
+    if (!check.ok) {
+      setEditErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+
     setBusyId(editingReview._id);
     try {
       const res = await apiFetch(`/api/admin/reviews/${editingReview._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          rating: editRating,
-          title: editTitle,
-          comment: editComment,
-        }),
+        body: JSON.stringify(check.data),
       });
       if (res.ok) {
         showToast('Course review updated.', 'success');
@@ -92,6 +108,9 @@ export function AdminReviewsModule() {
         await Promise.all([loadReviews(), refreshBootstrap()]);
       } else {
         const d = await res.json().catch(() => ({}));
+        if (d.fieldErrors && typeof d.fieldErrors === 'object') {
+          setEditErrors(d.fieldErrors as FieldErrors);
+        }
         showToast(d.error || 'Could not update review.', 'error');
       }
     } finally {
@@ -238,6 +257,7 @@ export function AdminReviewsModule() {
                       setEditRating(rev.rating);
                       setEditTitle(rev.title || '');
                       setEditComment(rev.comment);
+                      setEditErrors({});
                     }}
                     className="inline-flex items-center gap-1 rounded-md border border-[#DCE3F2] dark:border-[#1A2550] px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
                   >
@@ -280,28 +300,51 @@ export function AdminReviewsModule() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="mt-4 space-y-4">
+            <form onSubmit={handleSaveEdit} noValidate className="mt-4 space-y-4">
               <div>
                 <label className="block text-xs font-medium mb-1">Star Rating</label>
-                <StarRatingPicker value={editRating} onChange={setEditRating} />
+                <StarRatingPicker
+                  value={editRating}
+                  onChange={(r) => {
+                    setEditRating(r);
+                    setEditErrors((p) => ({ ...p, rating: '' }));
+                  }}
+                />
+                <FieldError error={editErrors.rating} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1">Headline</label>
                 <input
+                  aria-invalid={Boolean(editErrors.title)}
                   value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  onChange={(e) => {
+                    setEditTitle(e.target.value);
+                    setEditErrors((p) => ({ ...p, title: '' }));
+                  }}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    editErrors.title
+                  )}
                 />
+                <FieldError error={editErrors.title} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1">Comment *</label>
                 <textarea
                   required
                   rows={3}
+                  aria-invalid={Boolean(editErrors.comment)}
                   value={editComment}
-                  onChange={(e) => setEditComment(e.target.value)}
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  onChange={(e) => {
+                    setEditComment(e.target.value);
+                    setEditErrors((p) => ({ ...p, comment: '' }));
+                  }}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    editErrors.comment
+                  )}
                 />
+                <FieldError error={editErrors.comment} />
               </div>
               <div className="flex items-center justify-end gap-2">
                 <button

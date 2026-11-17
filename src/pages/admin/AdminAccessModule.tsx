@@ -10,8 +10,16 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { FieldError } from '../../components/FieldError';
 import { useApp } from '../../context/AppContext';
 import { apiFetch } from '../../utils/authSession';
+import {
+  adminCreateSchema,
+  adminUpdateSchema,
+  fieldBorderClass,
+  type FieldErrors,
+  validateWithSchema,
+} from '../../utils/formValidation';
 
 interface AdminAccountItem {
   _id: string;
@@ -51,9 +59,15 @@ export function AdminAccessModule() {
     newPassword: '',
   });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [addErrors, setAddErrors] = useState<FieldErrors>({});
+  const [editErrors, setEditErrors] = useState<FieldErrors>({});
 
   // Revoke confirmation modal state
   const [revokeTarget, setRevokeTarget] = useState<AdminAccountItem | null>(null);
+
+  const findSecondaryEmailErr = (errs: FieldErrors) =>
+    errs.secondaryEmails ||
+    Object.entries(errs).find(([k]) => k.startsWith('secondaryEmails'))?.[1];
 
   const loadAdmins = useCallback(async () => {
     if (user?.role !== 'super_admin') {
@@ -80,27 +94,39 @@ export function AdminAccessModule() {
 
   const handleGrantAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingAdd) return;
+    setAddErrors({});
+    const secondaryEmails = secondaryEmailsInput
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+
+    const check = validateWithSchema(adminCreateSchema, {
+      name,
+      email,
+      secondaryEmails,
+      password,
+      role,
+    });
+    if (!check.ok) {
+      setAddErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+
     setSubmittingAdd(true);
     try {
-      const secondaryEmails = secondaryEmailsInput
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-
       const res = await apiFetch('/api/admin/admins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          name,
-          email,
-          secondaryEmails,
-          password,
-          role,
-        }),
+        body: JSON.stringify(check.data),
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setAddErrors(data.fieldErrors as FieldErrors);
+        }
         showToast(data.error || 'Could not grant administrative access.', 'error');
         return;
       }
@@ -117,6 +143,8 @@ export function AdminAccessModule() {
       setPassword('');
       setRole('admin');
       loadAdmins();
+    } catch {
+      showToast('Network error granting access.', 'error');
     } finally {
       setSubmittingAdd(false);
     }
@@ -124,32 +152,47 @@ export function AdminAccessModule() {
 
   const handleSaveEdit = async (e: React.FormEvent, id: string) => {
     e.preventDefault();
+    if (savingEdit) return;
+    setEditErrors({});
+    const payload = {
+      name: editForm.name,
+      email: editForm.email,
+      secondaryEmails: editForm.secondaryEmails
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+      role: editForm.role,
+      active: editForm.active,
+      ...(editForm.newPassword ? { newPassword: editForm.newPassword } : {}),
+    };
+    const check = validateWithSchema(adminUpdateSchema, payload);
+    if (!check.ok) {
+      setEditErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+
     setSavingEdit(true);
     try {
       const res = await apiFetch(`/api/admin/admins/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          name: editForm.name,
-          email: editForm.email,
-          secondaryEmails: editForm.secondaryEmails
-            .split(',')
-            .map((s) => s.trim().toLowerCase())
-            .filter(Boolean),
-          role: editForm.role,
-          active: editForm.active,
-          ...(editForm.newPassword ? { newPassword: editForm.newPassword } : {}),
-        }),
+        body: JSON.stringify(check.data),
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setEditErrors(data.fieldErrors as FieldErrors);
+        }
         showToast(data.error || 'Could not update administrator.', 'error');
         return;
       }
       showToast('Administrator permissions updated in MongoDB.', 'success');
       setEditingId(null);
       loadAdmins();
+    } catch {
+      showToast('Network error updating administrator.', 'error');
     } finally {
       setSavingEdit(false);
     }
@@ -214,6 +257,7 @@ export function AdminAccessModule() {
       {/* Add / Grant Administrative Access Form */}
       <form
         onSubmit={handleGrantAdmin}
+        noValidate
         className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
       >
         <div className="flex items-center gap-2">
@@ -227,11 +271,19 @@ export function AdminAccessModule() {
             <input
               type="email"
               required
+              aria-invalid={Boolean(addErrors.email)}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setAddErrors((p) => ({ ...p, email: '' }));
+              }}
               placeholder="colleague@yourdomain.com"
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                addErrors.email
+              )}
             />
+            <FieldError error={addErrors.email} />
           </div>
 
           <div>
@@ -240,11 +292,19 @@ export function AdminAccessModule() {
             </label>
             <input
               type="text"
+              aria-invalid={Boolean(addErrors.name)}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setAddErrors((p) => ({ ...p, name: '' }));
+              }}
               placeholder="Administrator name"
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                addErrors.name
+              )}
             />
+            <FieldError error={addErrors.name} />
           </div>
 
           <div>
@@ -265,11 +325,19 @@ export function AdminAccessModule() {
             </label>
             <input
               type="text"
+              aria-invalid={Boolean(findSecondaryEmailErr(addErrors))}
               value={secondaryEmailsInput}
-              onChange={(e) => setSecondaryEmailsInput(e.target.value)}
+              onChange={(e) => {
+                setSecondaryEmailsInput(e.target.value);
+                setAddErrors((p) => ({ ...p, secondaryEmails: '' }));
+              }}
               placeholder="e.g. personal.gmail@gmail.com"
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                findSecondaryEmailErr(addErrors)
+              )}
             />
+            <FieldError error={findSecondaryEmailErr(addErrors)} />
           </div>
 
           <div>
@@ -278,11 +346,19 @@ export function AdminAccessModule() {
             </label>
             <input
               type="password"
+              aria-invalid={Boolean(addErrors.password)}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setAddErrors((p) => ({ ...p, password: '' }));
+              }}
               placeholder="Leave blank for Google-only"
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              className={fieldBorderClass(
+                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                addErrors.password
+              )}
             />
+            <FieldError error={addErrors.password} />
           </div>
         </div>
 
@@ -413,38 +489,61 @@ export function AdminAccessModule() {
                   {editingId === a._id && (
                     <form
                       onSubmit={(e) => handleSaveEdit(e, a._id)}
+                      noValidate
                       className="pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550] grid grid-cols-1 sm:grid-cols-2 gap-3"
                     >
                       <div>
                         <label className="block text-[11px] font-medium mb-1">Full Name</label>
                         <input
                           required
+                          aria-invalid={Boolean(editErrors.name)}
                           value={editForm.name}
-                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs"
+                          onChange={(e) => {
+                            setEditForm({ ...editForm, name: e.target.value });
+                            setEditErrors((p) => ({ ...p, name: '' }));
+                          }}
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs',
+                            editErrors.name
+                          )}
                         />
+                        <FieldError error={editErrors.name} />
                       </div>
                       <div>
                         <label className="block text-[11px] font-medium mb-1">Primary Email</label>
                         <input
                           type="email"
                           required
+                          aria-invalid={Boolean(editErrors.email)}
                           value={editForm.email}
-                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs"
+                          onChange={(e) => {
+                            setEditForm({ ...editForm, email: e.target.value });
+                            setEditErrors((p) => ({ ...p, email: '' }));
+                          }}
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs',
+                            editErrors.email
+                          )}
                         />
+                        <FieldError error={editErrors.email} />
                       </div>
                       <div>
                         <label className="block text-[11px] font-medium mb-1">
                           Additional Emails (comma-separated)
                         </label>
                         <input
+                          aria-invalid={Boolean(findSecondaryEmailErr(editErrors))}
                           value={editForm.secondaryEmails}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, secondaryEmails: e.target.value })
-                          }
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs"
+                          onChange={(e) => {
+                            setEditForm({ ...editForm, secondaryEmails: e.target.value });
+                            setEditErrors((p) => ({ ...p, secondaryEmails: '' }));
+                          }}
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs',
+                            findSecondaryEmailErr(editErrors)
+                          )}
                         />
+                        <FieldError error={findSecondaryEmailErr(editErrors)} />
                       </div>
                       <div>
                         <label className="block text-[11px] font-medium mb-1">
@@ -452,13 +551,19 @@ export function AdminAccessModule() {
                         </label>
                         <input
                           type="password"
+                          aria-invalid={Boolean(editErrors.newPassword)}
                           value={editForm.newPassword}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, newPassword: e.target.value })
-                          }
+                          onChange={(e) => {
+                            setEditForm({ ...editForm, newPassword: e.target.value });
+                            setEditErrors((p) => ({ ...p, newPassword: '' }));
+                          }}
                           placeholder="Leave blank to keep existing"
-                          className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs"
+                          className={fieldBorderClass(
+                            'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs',
+                            editErrors.newPassword
+                          )}
                         />
+                        <FieldError error={editErrors.newPassword} />
                       </div>
                       <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 pt-1">
                         <div className="flex items-center gap-4 text-xs">

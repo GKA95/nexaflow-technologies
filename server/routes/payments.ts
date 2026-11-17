@@ -1,8 +1,15 @@
 import crypto from 'crypto';
 import { Request, Router } from 'express';
 import { connectDB, isDBConfigured } from '../db.js';
-import { getBaseUrl, requireAuth, requireDatabase } from '../middleware/auth.js';
+import {
+  getBaseUrl,
+  isValidObjectId,
+  paymentLimiter,
+  requireAuth,
+  requireDatabase,
+} from '../middleware/auth.js';
 import { Coupon, Course, Enrolment, Notification, Payment, User } from '../models.js';
+import { PAYSTACK_REF_RE } from '../shared/validation.js';
 import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
 import { sendTransactionalEmail } from '../utils/email.js';
 import {
@@ -15,54 +22,81 @@ import {
 
 const router = Router();
 
+export function serializePayment(doc: unknown): Record<string, unknown> {
+  const raw =
+    doc && typeof (doc as { toObject?: () => Record<string, unknown> }).toObject === 'function'
+      ? (doc as { toObject: () => Record<string, unknown> }).toObject()
+      : ((doc || {}) as Record<string, unknown>);
+  const { processedEvents: _omitted, ...safe } = raw;
+  return safe;
+}
+
 async function activateEnrolmentFromVerifiedPayment(params: {
-  paymentDoc: InstanceType<typeof Payment>;
+  paymentId: string;
   status: 'success' | 'failed' | 'abandoned';
   channel?: string;
   gatewayResponse?: string;
   eventKey?: string;
 }) {
-  const { paymentDoc, status, channel, gatewayResponse, eventKey } = params;
+  const { paymentId, status, channel, gatewayResponse, eventKey } = params;
 
-  if (eventKey && paymentDoc.processedEvents.includes(eventKey)) {
-    return { alreadyProcessed: true };
-  }
+  const setFields: Record<string, unknown> = { status };
+  if (channel) setFields.channel = channel;
+  if (gatewayResponse) setFields.gatewayResponse = gatewayResponse;
+  if (status === 'success') setFields.verifiedAt = new Date();
 
-  if (paymentDoc.status === 'success' && status === 'success') {
-    if (eventKey && !paymentDoc.processedEvents.includes(eventKey)) {
-      paymentDoc.processedEvents.push(eventKey);
-      await paymentDoc.save();
-    }
-    return { alreadyProcessed: true };
-  }
-
-  paymentDoc.status = status;
-  if (channel) paymentDoc.channel = channel;
-  if (gatewayResponse) paymentDoc.gatewayResponse = gatewayResponse;
-  if (status === 'success') {
-    paymentDoc.verifiedAt = new Date();
-  }
+  const guardFilter: Record<string, unknown> = {
+    _id: paymentId,
+    status: { $nin: ['success', 'refunded'] },
+  };
   if (eventKey) {
-    paymentDoc.processedEvents.push(eventKey);
+    guardFilter.processedEvents = { $ne: eventKey };
   }
-  await paymentDoc.save();
+
+  // Atomic state transition: only one concurrent caller (verify OR webhook) can win the transition to 'success'
+  const transitioned = await Payment.findOneAndUpdate(
+    guardFilter,
+    {
+      $set: setFields,
+      ...(eventKey ? { $addToSet: { processedEvents: eventKey } } : {}),
+    },
+    { new: true }
+  );
+
+  if (!transitioned) {
+    // Still record idempotent event key if already success and eventKey is new
+    if (eventKey) {
+      await Payment.updateOne(
+        { _id: paymentId, processedEvents: { $ne: eventKey } },
+        { $addToSet: { processedEvents: eventKey } }
+      );
+    }
+    const latest = await Payment.findById(paymentId);
+    return { alreadyProcessed: true, activated: false, payment: latest };
+  }
 
   if (status !== 'success') {
-    return { alreadyProcessed: false, activated: false };
+    return { alreadyProcessed: false, activated: false, payment: transitioned };
   }
 
-  // Increment coupon usage atomically only on first verified transition to 'success'
-  if (paymentDoc.couponCode) {
-    await Coupon.updateOne({ code: paymentDoc.couponCode }, { $inc: { usedCount: 1 } });
+  // Atomic coupon increment bounded by maxUses
+  if (transitioned.couponCode) {
+    await Coupon.findOneAndUpdate(
+      {
+        code: transitioned.couponCode,
+        $or: [{ maxUses: { $lte: 0 } }, { $expr: { $lt: ['$usedCount', '$maxUses'] } }],
+      },
+      { $inc: { usedCount: 1 } }
+    );
   }
 
   // Idempotent enrolment upsert
   await Enrolment.findOneAndUpdate(
-    { userId: paymentDoc.userId, courseId: paymentDoc.courseId },
+    { userId: transitioned.userId, courseId: transitioned.courseId },
     {
-      userId: paymentDoc.userId,
-      courseId: paymentDoc.courseId,
-      paymentId: paymentDoc._id,
+      userId: transitioned.userId,
+      courseId: transitioned.courseId,
+      paymentId: transitioned._id,
       status: 'active',
       activatedAt: new Date(),
     },
@@ -70,8 +104,8 @@ async function activateEnrolmentFromVerifiedPayment(params: {
   );
 
   const [course, learner] = await Promise.all([
-    Course.findById(paymentDoc.courseId).lean(),
-    User.findById(paymentDoc.userId).lean(),
+    Course.findById(transitioned.courseId).lean(),
+    User.findById(transitioned.userId).lean(),
   ]);
 
   const courseTitle = (course as { title?: string; slug?: string } | null)?.title || 'Course';
@@ -81,16 +115,16 @@ async function activateEnrolmentFromVerifiedPayment(params: {
 
   await Promise.all([
     Notification.create({
-      userId: paymentDoc.userId,
+      userId: transitioned.userId,
       targetRole: 'learner',
-      title: `Payment Confirmed & Enrolment Active`,
-      message: `Your payment (${paymentDoc.currency} ${paymentDoc.amount}) for "${courseTitle}" is verified.`,
+      title: 'Payment Confirmed & Enrolment Active',
+      message: `Your payment (${transitioned.currency} ${transitioned.amount}) for "${courseTitle}" is verified.`,
       link: `/learner/courses/${courseSlug}`,
     }),
     Notification.create({
       targetRole: 'admin',
-      title: `Verified Payment: ${paymentDoc.currency} ${paymentDoc.amount}`,
-      message: `${learnerName} enrolled in "${courseTitle}"${paymentDoc.couponCode ? ` with coupon ${paymentDoc.couponCode}` : ''} (Ref: ${paymentDoc.reference}).`,
+      title: `Verified Payment: ${transitioned.currency} ${transitioned.amount}`,
+      message: `${learnerName} enrolled in "${courseTitle}"${transitioned.couponCode ? ` with coupon ${transitioned.couponCode}` : ''} (Ref: ${transitioned.reference}).`,
       link: '/portal-admin?tab=payments',
     }),
   ]);
@@ -99,19 +133,23 @@ async function activateEnrolmentFromVerifiedPayment(params: {
     await sendTransactionalEmail({
       to: learnerEmail,
       subject: `Enrolment Confirmed: ${courseTitle} — NexaFlow Learn`,
-      text: `Hello ${learnerName},\n\nYour payment reference ${paymentDoc.reference} (${paymentDoc.currency} ${paymentDoc.amount}) has been verified and your enrolment in "${courseTitle}" is now active.\n\nYou can start learning from your Learner Dashboard.`,
+      text: `Hello ${learnerName},\n\nYour payment reference ${transitioned.reference} (${transitioned.currency} ${transitioned.amount}) has been verified and your enrolment in "${courseTitle}" is now active.\n\nYou can start learning from your Learner Dashboard.`,
     });
   }
 
-  return { alreadyProcessed: false, activated: true };
+  return { alreadyProcessed: false, activated: true, payment: transitioned };
 }
 
-router.post('/initialize', requireDatabase, requireAuth, async (req, res) => {
+router.post('/initialize', paymentLimiter, requireDatabase, requireAuth, async (req, res) => {
   try {
-    const { courseId, couponCode } = req.body || {};
-    if (!courseId) return res.status(400).json({ error: 'Course ID is required.' });
+    const rawCourseId = String(req.body?.courseId || '').trim();
+    const couponCode = req.body?.couponCode ? String(req.body.couponCode).trim() : '';
 
-    const course = await Course.findOne({ _id: courseId, published: true }).lean();
+    if (!isValidObjectId(rawCourseId)) {
+      return res.status(400).json({ error: 'Valid course identifier is required.' });
+    }
+
+    const course = await Course.findOne({ _id: rawCourseId, published: true }).lean();
     if (!course) return res.status(404).json({ error: 'Course not found or unpublished.' });
 
     const c = course as {
@@ -142,9 +180,9 @@ router.post('/initialize', requireDatabase, requireAuth, async (req, res) => {
     let discountAmount = 0;
     let finalAmount = c.price;
 
-    if (couponCode && String(couponCode).trim()) {
+    if (couponCode) {
       const couponCheck = await validateCouponForPricing({
-        code: String(couponCode),
+        code: couponCode,
         courseId: c._id.toString(),
       });
       if (!couponCheck.ok) {
@@ -176,9 +214,13 @@ router.post('/initialize', requireDatabase, requireAuth, async (req, res) => {
       });
     }
 
-    const reference = `NF-PAY-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    const reference = `NF-PAY-${Date.now()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
     const currency = (c.currency || 'GHS').toUpperCase();
     const amountMinor = Math.round(finalAmount * 100);
+
+    if (!Number.isFinite(amountMinor) || amountMinor <= 0) {
+      return res.status(400).json({ error: 'Computed payable amount is invalid.' });
+    }
 
     const payment = await Payment.create({
       userId: req.user!.id,
@@ -231,13 +273,17 @@ router.post('/initialize', requireDatabase, requireAuth, async (req, res) => {
       discountPercent,
     });
   } catch (err) {
-    console.error('[Payment Initialize] Error:', err);
+    console.error('[Payment Initialize] Error:', err instanceof Error ? err.message : err);
     return res.status(500).json({ error: 'Unable to initialize checkout right now.' });
   }
 });
 
-router.get('/verify/:reference', requireDatabase, requireAuth, async (req, res) => {
-  const { reference } = req.params;
+router.get('/verify/:reference', paymentLimiter, requireDatabase, requireAuth, async (req, res) => {
+  const reference = String(req.params.reference || '').trim();
+  if (!PAYSTACK_REF_RE.test(reference)) {
+    return res.status(400).json({ error: 'Invalid payment reference format.' });
+  }
+
   const payment = await Payment.findOne({ reference });
   if (!payment) return res.status(404).json({ error: 'Payment record not found.' });
 
@@ -246,9 +292,14 @@ router.get('/verify/:reference', requireDatabase, requireAuth, async (req, res) 
     return res.status(403).json({ error: 'Forbidden.' });
   }
 
-  if (payment.status === 'success') {
+  if (payment.status === 'success' || payment.status === 'refunded') {
     const course = await Course.findById(payment.courseId).select('title slug').lean();
-    return res.json({ status: 'success', verified: true, payment, course });
+    return res.json({
+      status: payment.status,
+      verified: payment.status === 'success',
+      payment: serializePayment(payment),
+      course,
+    });
   }
 
   const verifyRes = await verifyPaystackTransaction(reference);
@@ -259,27 +310,43 @@ router.get('/verify/:reference', requireDatabase, requireAuth, async (req, res) 
     });
   }
 
-  // Validate exact amount, currency, and intended course
+  // Strictly validate exact amount, currency, intended courseId, and intended userId
   const expectedMinor = Math.round(payment.amount * 100);
-  const metaCourseId = String(verifyRes.metadata?.courseId || '');
+  const actualMinor = Math.round(Number(verifyRes.amountMinor ?? 0));
+  const actualCurrency = String(verifyRes.currency || '').toUpperCase();
+  const metaCourseId = verifyRes.metadata?.courseId ? String(verifyRes.metadata.courseId) : '';
+  const metaUserId = verifyRes.metadata?.userId ? String(verifyRes.metadata.userId) : '';
 
   if (verifyRes.status === 'success') {
-    if (
-      (verifyRes.amountMinor ?? 0) < expectedMinor ||
-      (verifyRes.currency || '').toUpperCase() !== payment.currency.toUpperCase() ||
-      (metaCourseId && metaCourseId !== payment.courseId.toString())
-    ) {
-      payment.status = 'failed';
-      payment.gatewayResponse = 'Verification mismatch (amount/currency/course)';
-      await payment.save();
+    const amountMatches = actualMinor === expectedMinor;
+    const currencyMatches = actualCurrency === payment.currency.toUpperCase();
+    const courseMatches = !metaCourseId || metaCourseId === payment.courseId.toString();
+    const userMatches = !metaUserId || metaUserId === payment.userId.toString();
+
+    if (!amountMatches || !currencyMatches || !courseMatches || !userMatches) {
+      await Payment.findOneAndUpdate(
+        { _id: payment._id, status: 'pending' },
+        {
+          $set: {
+            status: 'failed',
+            gatewayResponse: 'Verification mismatch (amount/currency/metadata)',
+          },
+        }
+      );
+      await Notification.create({
+        targetRole: 'admin',
+        title: `Security Alert: Payment Verification Mismatch`,
+        message: `Reference ${reference} failed integrity checks (expected ${payment.currency} ${expectedMinor}, got ${actualCurrency} ${actualMinor}).`,
+        link: '/portal-admin?tab=payments',
+      });
       return res.status(400).json({
         error: 'Payment verification mismatch detected. Enrolment was not activated.',
         status: 'failed',
       });
     }
 
-    await activateEnrolmentFromVerifiedPayment({
-      paymentDoc: payment,
+    const result = await activateEnrolmentFromVerifiedPayment({
+      paymentId: payment._id.toString(),
       status: 'success',
       channel: verifyRes.channel,
       gatewayResponse: verifyRes.gatewayResponse,
@@ -287,19 +354,33 @@ router.get('/verify/:reference', requireDatabase, requireAuth, async (req, res) 
     });
 
     const course = await Course.findById(payment.courseId).select('title slug').lean();
-    return res.json({ status: 'success', verified: true, payment, course });
+    return res.json({
+      status: 'success',
+      verified: true,
+      payment: serializePayment(result.payment || payment),
+      course,
+    });
   }
 
   if (verifyRes.status === 'failed' || verifyRes.status === 'abandoned') {
-    await activateEnrolmentFromVerifiedPayment({
-      paymentDoc: payment,
+    const result = await activateEnrolmentFromVerifiedPayment({
+      paymentId: payment._id.toString(),
       status: verifyRes.status,
       channel: verifyRes.channel,
       gatewayResponse: verifyRes.gatewayResponse,
     });
+    return res.json({
+      status: verifyRes.status,
+      verified: false,
+      payment: serializePayment(result.payment || payment),
+    });
   }
 
-  res.json({ status: verifyRes.status || payment.status, verified: false, payment });
+  return res.json({
+    status: verifyRes.status || payment.status,
+    verified: false,
+    payment: serializePayment(payment),
+  });
 });
 
 // Paystack Webhook endpoint — authenticates via HMAC-SHA512 signature & processes idempotently
@@ -312,6 +393,14 @@ router.post('/webhook', async (req: Request & { rawBody?: Buffer }, res) => {
   const signature = req.headers['x-paystack-signature'] as string | undefined;
 
   if (!rawBody || !verifyPaystackWebhookSignature(rawBody, signature)) {
+    if (signature) {
+      await Notification.create({
+        targetRole: 'admin',
+        title: 'Security Alert: Invalid Paystack Webhook Signature',
+        message: `Rejected an unsigned or forged Paystack webhook request from IP ${req.ip || 'unknown'}.`,
+        link: '/portal-admin?tab=payments',
+      }).catch(() => {});
+    }
     return res.status(401).send('Invalid signature');
   }
 
@@ -320,6 +409,7 @@ router.post('/webhook', async (req: Request & { rawBody?: Buffer }, res) => {
     data?: {
       id?: number | string;
       reference?: string;
+      transaction_reference?: string;
       amount?: number;
       currency?: string;
       channel?: string;
@@ -328,43 +418,102 @@ router.post('/webhook', async (req: Request & { rawBody?: Buffer }, res) => {
     };
   };
 
-  if (!event?.event || !event?.data?.reference) {
+  const eventName = event?.event;
+  const txReference = event?.data?.reference || event?.data?.transaction_reference;
+  if (!eventName || !txReference || !PAYSTACK_REF_RE.test(String(txReference))) {
     return res.status(200).send('Ignored');
   }
 
-  const eventKey = `${event.event}:${event.data.id ?? event.data.reference}`;
-  const payment = await Payment.findOne({ reference: event.data.reference });
+  const allowedEvents = new Set(['charge.success', 'charge.failed', 'refund.processed', 'refund.failed']);
+  if (!allowedEvents.has(eventName)) {
+    return res.status(200).send('Ignored');
+  }
+
+  const eventKey = `${eventName}:${event.data?.id ?? txReference}`;
+  const payment = await Payment.findOne({ reference: txReference });
   if (!payment) {
     return res.status(200).send('Unknown reference');
   }
 
-  if (event.event === 'charge.success') {
+  if (eventName === 'charge.success') {
     const expectedMinor = Math.round(payment.amount * 100);
-    const actualMinor = Number(event.data.amount ?? 0);
-    const actualCurrency = String(event.data.currency || '').toUpperCase();
+    const actualMinor = Math.round(Number(event.data?.amount ?? 0));
+    const actualCurrency = String(event.data?.currency || '').toUpperCase();
+    const metaCourseId = event.data?.metadata?.courseId ? String(event.data.metadata.courseId) : '';
+    const metaUserId = event.data?.metadata?.userId ? String(event.data.metadata.userId) : '';
 
-    if (actualMinor >= expectedMinor && actualCurrency === payment.currency.toUpperCase()) {
+    const amountMatches = actualMinor === expectedMinor;
+    const currencyMatches = actualCurrency === payment.currency.toUpperCase();
+    const courseMatches = !metaCourseId || metaCourseId === payment.courseId.toString();
+    const userMatches = !metaUserId || metaUserId === payment.userId.toString();
+
+    if (amountMatches && currencyMatches && courseMatches && userMatches) {
       await activateEnrolmentFromVerifiedPayment({
-        paymentDoc: payment,
+        paymentId: payment._id.toString(),
         status: 'success',
-        channel: event.data.channel,
-        gatewayResponse: event.data.gateway_response,
+        channel: event.data?.channel,
+        gatewayResponse: event.data?.gateway_response,
         eventKey,
       });
+    } else {
+      await Notification.create({
+        targetRole: 'admin',
+        title: `Webhook Integrity Warning: ${txReference}`,
+        message: `Webhook charge.success discarded due to amount/currency/metadata mismatch.`,
+        link: '/portal-admin?tab=payments',
+      });
     }
-  } else if (event.event === 'refund.processed') {
-    if (!payment.processedEvents.includes(eventKey)) {
-      payment.status = 'refunded';
-      payment.processedEvents.push(eventKey);
-      await payment.save();
+  } else if (eventName === 'charge.failed') {
+    await activateEnrolmentFromVerifiedPayment({
+      paymentId: payment._id.toString(),
+      status: 'failed',
+      channel: event.data?.channel,
+      gatewayResponse: event.data?.gateway_response || 'Charge failed via webhook',
+      eventKey,
+    });
+  } else if (eventName === 'refund.processed') {
+    const updated = await Payment.findOneAndUpdate(
+      { _id: payment._id, processedEvents: { $ne: eventKey } },
+      {
+        $set: {
+          status: 'refunded',
+          refundedAt: payment.refundedAt || new Date(),
+          ...(event.data?.amount ? { refundAmount: Number(event.data.amount) / 100 } : {}),
+        },
+        $addToSet: { processedEvents: eventKey },
+      },
+      { new: true }
+    );
+    if (updated) {
       await Enrolment.updateOne(
         { userId: payment.userId, courseId: payment.courseId },
         { $set: { status: 'revoked' } }
       );
+      await Notification.create({
+        userId: payment.userId,
+        targetRole: 'learner',
+        title: 'Payment Refunded',
+        message: `Your refund for payment reference ${payment.reference} has been processed.`,
+        link: '/learner?tab=payments',
+      });
+    }
+  } else if (eventName === 'refund.failed') {
+    const updated = await Payment.findOneAndUpdate(
+      { _id: payment._id, processedEvents: { $ne: eventKey } },
+      { $addToSet: { processedEvents: eventKey } },
+      { new: true }
+    );
+    if (updated) {
+      await Notification.create({
+        targetRole: 'admin',
+        title: `Paystack Refund Failed: ${payment.reference}`,
+        message: `Paystack reported a refund failure for reference ${payment.reference}. Review inside Paystack Dashboard.`,
+        link: '/portal-admin?tab=payments',
+      });
     }
   }
 
-  res.status(200).send('OK');
+  return res.status(200).send('OK');
 });
 
 export default router;

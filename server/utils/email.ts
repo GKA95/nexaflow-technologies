@@ -23,6 +23,7 @@ export async function sendTransactionalEmail(params: {
     if (provider === 'resend') {
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
+        signal: AbortSignal.timeout(15000),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
@@ -45,6 +46,7 @@ export async function sendTransactionalEmail(params: {
     if (provider === 'sendgrid') {
       const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
+        signal: AbortSignal.timeout(15000),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',

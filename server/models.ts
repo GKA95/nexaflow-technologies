@@ -114,6 +114,11 @@ const PaymentSchema = new Schema(
     gatewayResponse: { type: String, default: '' },
     verifiedAt: { type: Date },
     processedEvents: [{ type: String }],
+    refundAmount: { type: Number, min: 0 },
+    refundReference: { type: String, default: '' },
+    refundReason: { type: String, default: '', maxlength: 500 },
+    refundedAt: { type: Date },
+    refundedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 );

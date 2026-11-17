@@ -10,10 +10,18 @@ import {
   Quote,
   Trash2,
 } from 'lucide-react';
+import { FieldError } from '../../components/FieldError';
 import { StarRatingDisplay, StarRatingPicker } from '../../components/StarRating';
 import { useApp } from '../../context/AppContext';
 import type { TestimonialItem, WorkShowcaseItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  fieldBorderClass,
+  type FieldErrors,
+  testimonialWriteSchema,
+  validateWithSchema,
+  workShowcaseWriteSchema,
+} from '../../utils/formValidation';
 
 export function AdminShowcaseModule() {
   const { showToast, refreshBootstrap } = useApp();
@@ -57,6 +65,8 @@ export function AdminShowcaseModule() {
   });
 
   const [saving, setSaving] = useState(false);
+  const [workErrors, setWorkErrors] = useState<FieldErrors>({});
+  const [testimonialErrors, setTestimonialErrors] = useState<FieldErrors>({});
 
   const loadWork = useCallback(async () => {
     setLoadingWork(true);
@@ -91,6 +101,7 @@ export function AdminShowcaseModule() {
 
   const resetWorkForm = () => {
     setEditingWorkId(null);
+    setWorkErrors({});
     setWorkForm({
       title: '',
       clientName: '',
@@ -109,6 +120,7 @@ export function AdminShowcaseModule() {
 
   const resetTestimonialForm = () => {
     setEditingTestimonialId(null);
+    setTestimonialErrors({});
     setTestimonialForm({
       authorName: '',
       authorRole: '',
@@ -124,39 +136,47 @@ export function AdminShowcaseModule() {
 
   const handleSaveWork = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    const payload = {
+      title: workForm.title,
+      clientName: workForm.clientName,
+      industry: workForm.industry,
+      category: workForm.category,
+      summary: workForm.summary,
+      outcomes: workForm.outcomesText
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean),
+      technologies: workForm.technologiesText
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+      imageUrl: workForm.imageUrl,
+      projectUrl: workForm.projectUrl,
+      featured: workForm.featured,
+      published: workForm.published,
+      order: Number(workForm.order || 0),
+    };
+    const check = validateWithSchema(workShowcaseWriteSchema, payload);
+    if (!check.ok) {
+      setWorkErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+    setWorkErrors({});
     setSaving(true);
     try {
-      const payload = {
-        title: workForm.title,
-        clientName: workForm.clientName,
-        industry: workForm.industry,
-        category: workForm.category,
-        summary: workForm.summary,
-        outcomes: workForm.outcomesText
-          .split('\n')
-          .map((s) => s.trim())
-          .filter(Boolean),
-        technologies: workForm.technologiesText
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean),
-        imageUrl: workForm.imageUrl,
-        projectUrl: workForm.projectUrl,
-        featured: workForm.featured,
-        published: workForm.published,
-        order: Number(workForm.order || 0),
-      };
-
       const url = editingWorkId ? `/api/admin/work/${editingWorkId}` : '/api/admin/work';
       const method = editingWorkId ? 'PATCH' : 'POST';
       const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(check.data),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (data.fieldErrors) setWorkErrors(data.fieldErrors);
         showToast(data.error || 'Could not save work item.', 'error');
         return;
       }
@@ -195,6 +215,18 @@ export function AdminShowcaseModule() {
 
   const handleSaveTestimonial = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    const candidate = {
+      ...testimonialForm,
+      order: Number(testimonialForm.order || 0),
+    };
+    const check = validateWithSchema(testimonialWriteSchema, candidate);
+    if (!check.ok) {
+      setTestimonialErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+    setTestimonialErrors({});
     setSaving(true);
     try {
       const url = editingTestimonialId
@@ -205,13 +237,11 @@ export function AdminShowcaseModule() {
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          ...testimonialForm,
-          order: Number(testimonialForm.order || 0),
-        }),
+        body: JSON.stringify(check.data),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (data.fieldErrors) setTestimonialErrors(data.fieldErrors);
         showToast(data.error || 'Could not save testimonial.', 'error');
         return;
       }
@@ -313,6 +343,7 @@ export function AdminShowcaseModule() {
           {showWorkForm && (
             <form
               onSubmit={handleSaveWork}
+              noValidate
               className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
             >
               <h2 className="text-base font-bold">
@@ -323,39 +354,70 @@ export function AdminShowcaseModule() {
                 <div>
                   <label className="block text-xs font-medium mb-1">Project Title *</label>
                   <input
-                    required
                     value={workForm.title}
-                    onChange={(e) => setWorkForm((f) => ({ ...f, title: e.target.value }))}
+                    onChange={(e) => {
+                      setWorkForm((f) => ({ ...f, title: e.target.value }));
+                      setWorkErrors((p) => ({ ...p, title: '' }));
+                    }}
                     placeholder="e.g., Automated Invoice & ERP Sync Pipeline"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(workErrors.title)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      workErrors.title
+                    )}
                   />
+                  <FieldError message={workErrors.title} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1">Category</label>
+                  <label className="block text-xs font-medium mb-1">Category *</label>
                   <input
                     value={workForm.category}
-                    onChange={(e) => setWorkForm((f) => ({ ...f, category: e.target.value }))}
+                    onChange={(e) => {
+                      setWorkForm((f) => ({ ...f, category: e.target.value }));
+                      setWorkErrors((p) => ({ ...p, category: '' }));
+                    }}
                     placeholder="AI Automation, Web Platform, Data Analytics..."
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(workErrors.category)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      workErrors.category
+                    )}
                   />
+                  <FieldError message={workErrors.category} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">Client / Organisation</label>
                   <input
                     value={workForm.clientName}
-                    onChange={(e) => setWorkForm((f) => ({ ...f, clientName: e.target.value }))}
+                    onChange={(e) => {
+                      setWorkForm((f) => ({ ...f, clientName: e.target.value }));
+                      setWorkErrors((p) => ({ ...p, clientName: '' }));
+                    }}
                     placeholder="e.g., Apex Logistics"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(workErrors.clientName)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      workErrors.clientName
+                    )}
                   />
+                  <FieldError message={workErrors.clientName} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">Industry / Sector</label>
                   <input
                     value={workForm.industry}
-                    onChange={(e) => setWorkForm((f) => ({ ...f, industry: e.target.value }))}
+                    onChange={(e) => {
+                      setWorkForm((f) => ({ ...f, industry: e.target.value }));
+                      setWorkErrors((p) => ({ ...p, industry: '' }));
+                    }}
                     placeholder="e.g., Logistics & Supply Chain"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(workErrors.industry)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      workErrors.industry
+                    )}
                   />
+                  <FieldError message={workErrors.industry} />
                 </div>
               </div>
 
@@ -364,13 +426,20 @@ export function AdminShowcaseModule() {
                   Summary of Work &amp; Problem Solved *
                 </label>
                 <textarea
-                  required
                   rows={3}
                   value={workForm.summary}
-                  onChange={(e) => setWorkForm((f) => ({ ...f, summary: e.target.value }))}
+                  onChange={(e) => {
+                    setWorkForm((f) => ({ ...f, summary: e.target.value }));
+                    setWorkErrors((p) => ({ ...p, summary: '' }));
+                  }}
                   placeholder="Describe what was built, how it works, and the business problem addressed..."
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  aria-invalid={Boolean(workErrors.summary)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    workErrors.summary
+                  )}
                 />
+                <FieldError message={workErrors.summary} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -406,32 +475,56 @@ export function AdminShowcaseModule() {
                     </label>
                     <input
                       value={workForm.projectUrl}
-                      onChange={(e) => setWorkForm((f) => ({ ...f, projectUrl: e.target.value }))}
+                      onChange={(e) => {
+                        setWorkForm((f) => ({ ...f, projectUrl: e.target.value }));
+                        setWorkErrors((p) => ({ ...p, projectUrl: '' }));
+                      }}
                       placeholder="https://..."
-                      className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                      aria-invalid={Boolean(workErrors.projectUrl)}
+                      className={fieldBorderClass(
+                        'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                        workErrors.projectUrl
+                      )}
                     />
+                    <FieldError message={workErrors.projectUrl} />
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
                 <div>
                   <label className="block text-xs font-medium mb-1">Image URL (Optional)</label>
                   <input
                     value={workForm.imageUrl}
-                    onChange={(e) => setWorkForm((f) => ({ ...f, imageUrl: e.target.value }))}
+                    onChange={(e) => {
+                      setWorkForm((f) => ({ ...f, imageUrl: e.target.value }));
+                      setWorkErrors((p) => ({ ...p, imageUrl: '' }));
+                    }}
                     placeholder="/assets/images/..."
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(workErrors.imageUrl)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      workErrors.imageUrl
+                    )}
                   />
+                  <FieldError message={workErrors.imageUrl} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">Display Order</label>
                   <input
                     type="number"
                     value={workForm.order}
-                    onChange={(e) => setWorkForm((f) => ({ ...f, order: Number(e.target.value) }))}
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    onChange={(e) => {
+                      setWorkForm((f) => ({ ...f, order: Number(e.target.value) }));
+                      setWorkErrors((p) => ({ ...p, order: '' }));
+                    }}
+                    aria-invalid={Boolean(workErrors.order)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      workErrors.order
+                    )}
                   />
+                  <FieldError message={workErrors.order} />
                 </div>
                 <div className="flex items-center gap-5 pt-4">
                   <label className="inline-flex items-center gap-2 text-xs font-medium">
@@ -556,6 +649,7 @@ export function AdminShowcaseModule() {
                       type="button"
                       onClick={() => {
                         setEditingWorkId(item._id);
+                        setWorkErrors({});
                         setWorkForm({
                           title: item.title,
                           clientName: item.clientName || '',
@@ -617,6 +711,7 @@ export function AdminShowcaseModule() {
           {showTestimonialForm && (
             <form
               onSubmit={handleSaveTestimonial}
+              noValidate
               className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
             >
               <h2 className="text-base font-bold">
@@ -627,60 +722,86 @@ export function AdminShowcaseModule() {
                 <div>
                   <label className="block text-xs font-medium mb-1">Client Name *</label>
                   <input
-                    required
                     value={testimonialForm.authorName}
-                    onChange={(e) =>
-                      setTestimonialForm((f) => ({ ...f, authorName: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setTestimonialForm((f) => ({ ...f, authorName: e.target.value }));
+                      setTestimonialErrors((p) => ({ ...p, authorName: '' }));
+                    }}
                     placeholder="e.g., Ama Boateng"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(testimonialErrors.authorName)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      testimonialErrors.authorName
+                    )}
                   />
+                  <FieldError message={testimonialErrors.authorName} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">Role / Title</label>
                   <input
                     value={testimonialForm.authorRole}
-                    onChange={(e) =>
-                      setTestimonialForm((f) => ({ ...f, authorRole: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setTestimonialForm((f) => ({ ...f, authorRole: e.target.value }));
+                      setTestimonialErrors((p) => ({ ...p, authorRole: '' }));
+                    }}
                     placeholder="e.g., Head of Operations"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(testimonialErrors.authorRole)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      testimonialErrors.authorRole
+                    )}
                   />
+                  <FieldError message={testimonialErrors.authorRole} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">Company / Organisation</label>
                   <input
                     value={testimonialForm.company}
-                    onChange={(e) =>
-                      setTestimonialForm((f) => ({ ...f, company: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setTestimonialForm((f) => ({ ...f, company: e.target.value }));
+                      setTestimonialErrors((p) => ({ ...p, company: '' }));
+                    }}
                     placeholder="e.g., Crestline Financial"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(testimonialErrors.company)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      testimonialErrors.company
+                    )}
                   />
+                  <FieldError message={testimonialErrors.company} />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-medium mb-1">Testimonial Quote *</label>
                 <textarea
-                  required
                   rows={3}
                   value={testimonialForm.quote}
-                  onChange={(e) =>
-                    setTestimonialForm((f) => ({ ...f, quote: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setTestimonialForm((f) => ({ ...f, quote: e.target.value }));
+                    setTestimonialErrors((p) => ({ ...p, quote: '' }));
+                  }}
                   placeholder="Share the client's feedback on NexaFlow's delivery or training..."
-                  className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  aria-invalid={Boolean(testimonialErrors.quote)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    testimonialErrors.quote
+                  )}
                 />
+                <FieldError message={testimonialErrors.quote} />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
                 <div>
                   <label className="block text-xs font-medium mb-1">Rating</label>
                   <StarRatingPicker
                     value={testimonialForm.rating}
-                    onChange={(rating) => setTestimonialForm((f) => ({ ...f, rating }))}
+                    onChange={(rating) => {
+                      setTestimonialForm((f) => ({ ...f, rating }));
+                      setTestimonialErrors((p) => ({ ...p, rating: '' }));
+                    }}
                   />
+                  <FieldError message={testimonialErrors.rating} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">
@@ -688,12 +809,18 @@ export function AdminShowcaseModule() {
                   </label>
                   <input
                     value={testimonialForm.workTitle}
-                    onChange={(e) =>
-                      setTestimonialForm((f) => ({ ...f, workTitle: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setTestimonialForm((f) => ({ ...f, workTitle: e.target.value }));
+                      setTestimonialErrors((p) => ({ ...p, workTitle: '' }));
+                    }}
                     placeholder="e.g., AI Workflow Automation"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                    aria-invalid={Boolean(testimonialErrors.workTitle)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      testimonialErrors.workTitle
+                    )}
                   />
+                  <FieldError message={testimonialErrors.workTitle} />
                 </div>
                 <div className="flex items-center gap-5 pt-4">
                   <label className="inline-flex items-center gap-2 text-xs font-medium">
@@ -808,6 +935,7 @@ export function AdminShowcaseModule() {
                       type="button"
                       onClick={() => {
                         setEditingTestimonialId(t._id);
+                        setTestimonialErrors({});
                         setTestimonialForm({
                           authorName: t.authorName,
                           authorRole: t.authorRole || '',

@@ -11,12 +11,19 @@ import {
   PlayCircle,
   ShieldCheck,
 } from 'lucide-react';
+import { FieldError } from '../../components/FieldError';
 import { ProtectedVideoPlayer } from '../../components/ProtectedVideoPlayer';
 import { SEOHead } from '../../components/SEOHead';
 import { StarRatingDisplay, StarRatingPicker } from '../../components/StarRating';
 import { useApp } from '../../context/AppContext';
 import type { CourseItem, CourseReviewItem, LessonItem, ModuleItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  courseReviewFormSchema,
+  fieldBorderClass,
+  type FieldErrors,
+  validateWithSchema,
+} from '../../utils/formValidation';
 
 export function CoursePlayerPage({ slug }: { slug: string }) {
   const { user, authLoading, navigate, showToast } = useApp();
@@ -34,6 +41,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
   const [reviewTitle, setReviewTitle] = useState('');
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewErrors, setReviewErrors] = useState<FieldErrors>({});
 
   // Per-lesson authorized stream session state (never cached in syllabus JSON)
   const [streamVideoId, setStreamVideoId] = useState<string | null>(null);
@@ -198,21 +206,33 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!course) return;
+    if (!course || reviewSubmitting) return;
+    setReviewErrors({});
+
+    const check = validateWithSchema(courseReviewFormSchema, {
+      rating: reviewRating,
+      title: reviewTitle,
+      comment: reviewComment,
+    });
+    if (!check.ok) {
+      setReviewErrors(check.fieldErrors);
+      showToast(check.message, 'error');
+      return;
+    }
+
     setReviewSubmitting(true);
     try {
       const res = await apiFetch(`/api/learner/courses/${encodeURIComponent(slug)}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          rating: reviewRating,
-          title: reviewTitle,
-          comment: reviewComment,
-        }),
+        body: JSON.stringify(check.data),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setReviewErrors(data.fieldErrors as FieldErrors);
+        }
         showToast(data.error || 'Could not submit course review.', 'error');
         return;
       }
@@ -497,16 +517,20 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                 )}
               </div>
 
-              <form onSubmit={handleSubmitReview} className="space-y-4">
+              <form onSubmit={handleSubmitReview} noValidate className="space-y-4">
                 <div>
                   <span className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
                     Star Rating *
                   </span>
                   <StarRatingPicker
                     value={reviewRating}
-                    onChange={setReviewRating}
+                    onChange={(r) => {
+                      setReviewRating(r);
+                      setReviewErrors((p) => ({ ...p, rating: '' }));
+                    }}
                     disabled={reviewSubmitting}
                   />
+                  <FieldError error={reviewErrors.rating} />
                 </div>
 
                 <div>
@@ -518,12 +542,20 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                   </label>
                   <input
                     id={`${uid}-rtitle`}
+                    aria-invalid={Boolean(reviewErrors.title)}
                     value={reviewTitle}
-                    onChange={(e) => setReviewTitle(e.target.value)}
+                    onChange={(e) => {
+                      setReviewTitle(e.target.value);
+                      setReviewErrors((p) => ({ ...p, title: '' }));
+                    }}
                     maxLength={140}
                     placeholder="e.g., Clear practical walkthrough of automation pipelines"
-                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className={fieldBorderClass(
+                      'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
+                      reviewErrors.title
+                    )}
                   />
+                  <FieldError error={reviewErrors.title} />
                 </div>
 
                 <div>
@@ -539,11 +571,19 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                     minLength={3}
                     maxLength={2000}
                     rows={3}
+                    aria-invalid={Boolean(reviewErrors.comment)}
                     value={reviewComment}
-                    onChange={(e) => setReviewComment(e.target.value)}
+                    onChange={(e) => {
+                      setReviewComment(e.target.value);
+                      setReviewErrors((p) => ({ ...p, comment: '' }));
+                    }}
                     placeholder="What did you find most helpful in this course?"
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
+                      reviewErrors.comment
+                    )}
                   />
+                  <FieldError error={reviewErrors.comment} />
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

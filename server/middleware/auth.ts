@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
 import { connectDB, getLastDBError, isDBConfigured } from '../db.js';
 import { User } from '../models.js';
@@ -145,11 +146,12 @@ export function clearSessionCookie(req: Request, res: Response) {
 }
 
 export async function requireDatabase(req: Request, res: Response, next: NextFunction) {
+  const isProd = process.env.NODE_ENV === 'production';
   if (!isDBConfigured()) {
     const lastErr = getLastDBError();
     return res.status(503).json({
       error:
-        lastErr.message ||
+        (!isProd || lastErr.code !== 'UNKNOWN' ? lastErr.message : null) ||
         'MongoDB Atlas is not configured yet. Configure MONGODB_URI in environment secrets.',
       code: lastErr.code === 'INVALID_URI' ? 'DB_INVALID_URI' : 'DB_NOT_CONFIGURED',
     });
@@ -159,7 +161,7 @@ export async function requireDatabase(req: Request, res: Response, next: NextFun
     const lastErr = getLastDBError();
     return res.status(503).json({
       error:
-        lastErr.message ||
+        (!isProd || lastErr.code !== 'UNKNOWN' ? lastErr.message : null) ||
         'Unable to reach MongoDB Atlas right now. Verify MONGODB_URI and IP access rules.',
       code: lastErr.code || 'DB_CONNECTION_FAILED',
     });
@@ -253,6 +255,68 @@ export function requireSuperAdmin(req: Request, res: Response, next: NextFunctio
   next();
 }
 
+export function isValidObjectId(val: unknown): boolean {
+  return typeof val === 'string' && /^[a-fA-F0-9]{24}$/.test(val.trim()) && mongoose.Types.ObjectId.isValid(val.trim());
+}
+
+export function escapeRegex(input: string): string {
+  return String(input || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const UNSAFE_NOSQL_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function hasUnsafeNoSqlKey(value: unknown, depth = 0): boolean {
+  if (depth > 12 || value === null || typeof value !== 'object') {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => hasUnsafeNoSqlKey(item, depth + 1));
+  }
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    if (key.startsWith('$') || key.includes('.') || UNSAFE_NOSQL_KEYS.has(key)) {
+      return true;
+    }
+    if (hasUnsafeNoSqlKey((value as Record<string, unknown>)[key], depth + 1)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function sanitizeRequestInputs(req: Request, res: Response, next: NextFunction) {
+  if (req.path === '/api/payments/webhook') {
+    return next();
+  }
+  if (
+    hasUnsafeNoSqlKey(req.body) ||
+    hasUnsafeNoSqlKey(req.query) ||
+    hasUnsafeNoSqlKey(req.params)
+  ) {
+    return res.status(400).json({
+      error: 'Invalid characters or query operators detected in request payload.',
+    });
+  }
+  next();
+}
+
+export function enforceHttpsInProduction(req: Request, res: Response, next: NextFunction) {
+  if (process.env.NODE_ENV !== 'production') {
+    return next();
+  }
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  if (!host || host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
+    return next();
+  }
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  if (forwardedProto && forwardedProto !== 'https') {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      return res.redirect(301, `https://${host}${req.originalUrl}`);
+    }
+    return res.status(403).json({ error: 'HTTPS is required in production.' });
+  }
+  next();
+}
+
 export function csrfOriginCheck(req: Request, res: Response, next: NextFunction) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
     return next();
@@ -261,22 +325,45 @@ export function csrfOriginCheck(req: Request, res: Response, next: NextFunction)
     return next();
   }
   const origin = req.headers.origin;
+  const referer = req.headers.referer;
   const host = req.headers.host;
   const forwardedHost = String(req.headers['x-forwarded-host'] || '')
     .split(',')[0]
     .trim();
+
+  const matchesHost = (candidateHost: string) =>
+    (host && candidateHost === host) || (forwardedHost && candidateHost === forwardedHost);
+
   if (origin && (host || forwardedHost)) {
     try {
       const originHost = new URL(origin).host;
-      if (originHost !== host && originHost !== forwardedHost) {
+      if (!matchesHost(originHost)) {
         return res.status(403).json({ error: 'Cross-origin request rejected.' });
       }
     } catch {
       return res.status(403).json({ error: 'Invalid origin header.' });
     }
+  } else if (referer && (host || forwardedHost)) {
+    try {
+      const refererHost = new URL(referer).host;
+      if (!matchesHost(refererHost)) {
+        return res.status(403).json({ error: 'Cross-origin referer rejected.' });
+      }
+    } catch {
+      return res.status(403).json({ error: 'Invalid referer header.' });
+    }
   }
   next();
 }
+
+export const generalApiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/payments/webhook' || req.path === '/api/payments/webhook',
+  message: { error: 'Rate limit exceeded. Please slow down and try again shortly.' },
+});
 
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -284,6 +371,22 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many authentication attempts. Please wait 15 minutes and try again.' },
+});
+
+export const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many payment requests. Please wait a few minutes and try again.' },
+});
+
+export const couponLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many coupon checks. Please wait a few minutes and try again.' },
 });
 
 export const leadLimiter = rateLimit({

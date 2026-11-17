@@ -1,10 +1,20 @@
 import React, { useEffect, useId, useState } from 'react';
 import { ArrowLeft, CheckCircle2, KeyRound, Lock, Mail, UserPlus } from 'lucide-react';
+import { FieldError } from '../../components/FieldError';
 import { GoogleIcon } from '../../components/GoogleIcon';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import type { AuthUser } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import {
+  fieldBorderClass,
+  type FieldErrors,
+  forgotPasswordFormSchema,
+  loginFormSchema,
+  registerFormSchema,
+  resetPasswordFormSchema,
+  validateWithSchema,
+} from '../../utils/formValidation';
 import { completeGoogleExchangeToken, startGoogleSignInPopup } from '../../utils/googleAuth';
 
 export function AuthPage({
@@ -29,6 +39,23 @@ export function AuthPage({
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    if (errorMsg) setErrorMsg('');
+  };
+
+  useEffect(() => {
+    setFieldErrors({});
+    setErrorMsg('');
+    setInfoMsg('');
+  }, [mode]);
 
   useEffect(() => {
     if (queryToken) setResetToken(queryToken);
@@ -100,52 +127,112 @@ export function AuthPage({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg('');
     setInfoMsg('');
-    setSubmitting(true);
+    setFieldErrors({});
 
-    try {
-      if (mode === 'forgot') {
+    if (mode === 'forgot') {
+      const check = validateWithSchema(forgotPasswordFormSchema, {
+        email,
+        portal: 'learner',
+      });
+      if (!check.ok) {
+        setFieldErrors(check.fieldErrors);
+        setErrorMsg(check.message);
+        return;
+      }
+      setSubmitting(true);
+      try {
         const res = await apiFetch('/api/auth/forgot-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, portal: 'learner' }),
+          body: JSON.stringify(check.data),
         });
         const data = await res.json();
         if (!res.ok) {
+          if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+            setFieldErrors(data.fieldErrors as FieldErrors);
+          }
           setErrorMsg(data.error || 'Could not process password reset request.');
           return;
         }
         setInfoMsg(
           data.message || 'If an account matches that email, a password reset link has been sent.'
         );
+      } catch {
+        setErrorMsg('Network error. Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (mode === 'reset') {
+      const check = validateWithSchema(resetPasswordFormSchema, {
+        token: resetToken,
+        newPassword: password,
+        confirmPassword,
+      });
+      if (!check.ok) {
+        setFieldErrors(check.fieldErrors);
+        setErrorMsg(check.message);
         return;
       }
-
-      if (mode === 'reset') {
-        if (password !== confirmPassword) {
-          setErrorMsg('Passwords do not match.');
-          return;
-        }
+      setSubmitting(true);
+      try {
         const res = await apiFetch('/api/auth/reset-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: resetToken, newPassword: password }),
+          body: JSON.stringify(check.data),
         });
         const data = await res.json();
         if (!res.ok) {
+          if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+            setFieldErrors(data.fieldErrors as FieldErrors);
+          }
           setErrorMsg(data.error || 'Could not reset password.');
           return;
         }
         showToast('Password updated in MongoDB. Please sign in.', 'success');
         navigate('/auth/login');
+      } catch {
+        setErrorMsg('Network error. Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (mode === 'register') {
+      const check = validateWithSchema(registerFormSchema, {
+        name,
+        email,
+        phone,
+        organization,
+        password,
+        confirmPassword,
+      });
+      if (!check.ok) {
+        setFieldErrors(check.fieldErrors);
+        setErrorMsg(check.message);
         return;
       }
+    } else {
+      const check = validateWithSchema(loginFormSchema, { email, password });
+      if (!check.ok) {
+        setFieldErrors(check.fieldErrors);
+        setErrorMsg(check.message);
+        return;
+      }
+    }
 
+    setSubmitting(true);
+    try {
       const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
       const payload =
         mode === 'register'
-          ? { name, email, password, phone, organization }
+          ? { name, email, password, confirmPassword, phone, organization }
           : { email, password };
 
       const res = await apiFetch(endpoint, {
@@ -156,6 +243,9 @@ export function AuthPage({
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setFieldErrors(data.fieldErrors as FieldErrors);
+        }
         setErrorMsg(data.error || 'Authentication failed.');
         return;
       }
@@ -285,7 +375,7 @@ export function AuthPage({
               </>
             )}
 
-            <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+            <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-4">
               {mode === 'register' && (
                 <div>
                   <label
@@ -299,11 +389,19 @@ export function AuthPage({
                     type="text"
                     required
                     autoComplete="name"
+                    aria-invalid={Boolean(fieldErrors.name)}
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      clearFieldError('name');
+                    }}
                     placeholder="Your full name"
-                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className={fieldBorderClass(
+                      'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
+                      fieldErrors.name
+                    )}
                   />
+                  <FieldError error={fieldErrors.name} />
                 </div>
               )}
 
@@ -320,11 +418,19 @@ export function AuthPage({
                     type="email"
                     required
                     autoComplete="email"
+                    aria-invalid={Boolean(fieldErrors.email)}
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      clearFieldError('email');
+                    }}
                     placeholder="you@example.com"
-                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className={fieldBorderClass(
+                      'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
+                      fieldErrors.email
+                    )}
                   />
+                  <FieldError error={fieldErrors.email} />
                 </div>
               )}
 
@@ -341,11 +447,19 @@ export function AuthPage({
                     type="text"
                     required
                     autoComplete="one-time-code"
+                    aria-invalid={Boolean(fieldErrors.token)}
                     value={resetToken}
-                    onChange={(e) => setResetToken(e.target.value)}
+                    onChange={(e) => {
+                      setResetToken(e.target.value);
+                      clearFieldError('token');
+                    }}
                     placeholder="Paste reset token"
-                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm font-mono text-[#070B24] dark:text-[#F7F8FF]"
+                    className={fieldBorderClass(
+                      'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm font-mono text-[#070B24] dark:text-[#F7F8FF]',
+                      fieldErrors.token
+                    )}
                   />
+                  <FieldError error={fieldErrors.token} />
                 </div>
               )}
 
@@ -374,25 +488,34 @@ export function AuthPage({
                     required
                     autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                     minLength={mode === 'register' || mode === 'reset' ? 8 : 1}
+                    aria-invalid={Boolean(fieldErrors.password || fieldErrors.newPassword)}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      clearFieldError('password');
+                      clearFieldError('newPassword');
+                    }}
                     placeholder={
                       mode === 'register' || mode === 'reset'
-                        ? 'Minimum 8 characters'
+                        ? 'Min 8 chars, upper + lower + number'
                         : 'Enter password'
                     }
-                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]"
+                    className={fieldBorderClass(
+                      'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
+                      fieldErrors.password || fieldErrors.newPassword
+                    )}
                   />
+                  <FieldError error={fieldErrors.password || fieldErrors.newPassword} />
                 </div>
               )}
 
-              {mode === 'reset' && (
+              {(mode === 'reset' || mode === 'register') && (
                 <div>
                   <label
                     htmlFor={`${uid}-confirm-password`}
                     className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
                   >
-                    Confirm New Password *
+                    {mode === 'reset' ? 'Confirm New Password *' : 'Confirm Password *'}
                   </label>
                   <input
                     id={`${uid}-confirm-password`}
@@ -400,11 +523,19 @@ export function AuthPage({
                     required
                     autoComplete="new-password"
                     minLength={8}
+                    aria-invalid={Boolean(fieldErrors.confirmPassword)}
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Re-enter new password"
-                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF]"
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      clearFieldError('confirmPassword');
+                    }}
+                    placeholder={mode === 'reset' ? 'Re-enter new password' : 'Re-enter password'}
+                    className={fieldBorderClass(
+                      'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2.5 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
+                      fieldErrors.confirmPassword
+                    )}
                   />
+                  <FieldError error={fieldErrors.confirmPassword} />
                 </div>
               )}
 
@@ -422,10 +553,18 @@ export function AuthPage({
                       type="tel"
                       inputMode="tel"
                       autoComplete="tel"
+                      aria-invalid={Boolean(fieldErrors.phone)}
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF]"
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        clearFieldError('phone');
+                      }}
+                      className={fieldBorderClass(
+                        'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF]',
+                        fieldErrors.phone
+                      )}
                     />
+                    <FieldError error={fieldErrors.phone} />
                   </div>
                   <div>
                     <label
@@ -438,10 +577,18 @@ export function AuthPage({
                       id={`${uid}-org`}
                       type="text"
                       autoComplete="organization"
+                      aria-invalid={Boolean(fieldErrors.organization)}
                       value={organization}
-                      onChange={(e) => setOrganization(e.target.value)}
-                      className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF]"
+                      onChange={(e) => {
+                        setOrganization(e.target.value);
+                        clearFieldError('organization');
+                      }}
+                      className={fieldBorderClass(
+                        'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF]',
+                        fieldErrors.organization
+                      )}
                     />
+                    <FieldError error={fieldErrors.organization} />
                   </div>
                 </div>
               )}

@@ -8,8 +8,14 @@ import {
   UserX,
   X,
 } from 'lucide-react';
+import { FieldError } from '../../components/FieldError';
 import { useApp } from '../../context/AppContext';
 import { apiFetch } from '../../utils/authSession';
+import {
+  fieldBorderClass,
+  learnerEnrolAssignSchema,
+  validateWithSchema,
+} from '../../utils/formValidation';
 
 interface EnrolmentRecord {
   _id: string;
@@ -55,6 +61,7 @@ export function AdminLearnersModule() {
   // Enroll Modal State
   const [enrollTarget, setEnrollTarget] = useState<LearnerRecord | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [enrollError, setEnrollError] = useState('');
 
   // Un-enroll Modal State
   const [unenrollTarget, setUnenrollTarget] = useState<LearnerRecord | null>(null);
@@ -119,19 +126,27 @@ export function AdminLearnersModule() {
     );
     const firstAvailable = courses.find((c) => !enrolledIds.has(c._id));
     setSelectedCourseId(firstAvailable?._id || '');
+    setEnrollError('');
     setEnrollTarget(learner);
   };
 
   const handleEnrollSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!enrollTarget || !selectedCourseId) return;
+    if (!enrollTarget || busyId) return;
+    setEnrollError('');
+    const check = validateWithSchema(learnerEnrolAssignSchema, { courseId: selectedCourseId });
+    if (!check.ok) {
+      setEnrollError(check.fieldErrors.courseId || check.message);
+      return;
+    }
+
     setBusyId(enrollTarget._id);
     try {
       const res = await apiFetch(`/api/admin/learners/${enrollTarget._id}/enrol`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ courseId: selectedCourseId }),
+        body: JSON.stringify(check.data),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -140,6 +155,7 @@ export function AdminLearnersModule() {
         setSelectedCourseId('');
         await loadLearners();
       } else {
+        setEnrollError(data.error || 'Could not enroll learner.');
         showToast(data.error || 'Could not enroll learner.', 'error');
       }
     } finally {
@@ -535,7 +551,7 @@ export function AdminLearnersModule() {
               </button>
             </div>
 
-            <form onSubmit={handleEnrollSubmit} className="mt-5 space-y-4">
+            <form onSubmit={handleEnrollSubmit} noValidate className="mt-5 space-y-4">
               {courses.length === 0 ? (
                 <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">
                   No courses exist yet. Create a course under Courses &amp; LMS first.
@@ -543,13 +559,20 @@ export function AdminLearnersModule() {
               ) : (
                 <div>
                   <label className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
-                    Select Course
+                    Select Course *
                   </label>
                   <select
                     required
+                    aria-invalid={Boolean(enrollError)}
                     value={selectedCourseId}
-                    onChange={(e) => setSelectedCourseId(e.target.value)}
-                    className="w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2.5 text-sm"
+                    onChange={(e) => {
+                      setSelectedCourseId(e.target.value);
+                      if (enrollError) setEnrollError('');
+                    }}
+                    className={fieldBorderClass(
+                      'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2.5 text-sm',
+                      enrollError
+                    )}
                   >
                     <option value="">-- Choose a course --</option>
                     {courses.map((c) => {
@@ -565,6 +588,7 @@ export function AdminLearnersModule() {
                       );
                     })}
                   </select>
+                  <FieldError error={enrollError} />
                 </div>
               )}
 
