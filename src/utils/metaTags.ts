@@ -37,6 +37,7 @@ export function resolveRouteMeta(params: {
   featuredCourses: CourseItem[];
   featuredArticles: ArticleItem[];
   override: PageMetaConfig | null;
+  remoteMeta?: Partial<ResolvedMetaTags> | null;
 }): ResolvedMetaTags {
   const {
     pathname,
@@ -47,6 +48,7 @@ export function resolveRouteMeta(params: {
     featuredCourses,
     featuredArticles,
     override,
+    remoteMeta,
   } = params;
 
   const cleanPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
@@ -236,23 +238,38 @@ export function resolveRouteMeta(params: {
     noIndex = true;
   }
 
+  // Merge database-fetched metadata from /api/seo/metadata before component overrides
+  const dbTitle = remoteMeta?.title?.trim() || title;
+  const dbDescription = remoteMeta?.description?.trim() || description;
+  const dbCanonical = remoteMeta?.canonicalUrl?.trim() || canonicalUrl;
+  const dbOgTitle = remoteMeta?.ogTitle?.trim() || ogTitle;
+  const dbOgDescription = remoteMeta?.ogDescription?.trim() || ogDescription;
+  const dbOgImage = remoteMeta?.ogImage?.trim()
+    ? resolveAbsoluteUrl(remoteMeta.ogImage, browserOrigin, '/og-image.png')
+    : ogImage;
+  const dbOgType = remoteMeta?.ogType || ogType;
+  const dbKeywords = remoteMeta?.keywords ? normalizeKeywords(remoteMeta.keywords) : keywords;
+  const dbNoIndex = remoteMeta?.noIndex !== undefined ? remoteMeta.noIndex : noIndex;
+  const dbStructuredData =
+    remoteMeta?.structuredData !== undefined ? remoteMeta.structuredData : structuredData;
+
   // Merge active component-level <SEOHead /> / setPageMeta override
-  const finalTitle = override?.title?.trim() || title;
-  const finalDescription = override?.description?.trim() || description;
-  const finalCanonical = override?.canonicalUrl?.trim() || canonicalUrl;
-  const finalOgTitle = override?.ogTitle?.trim() || ogTitle || finalTitle;
-  const finalOgDescription = override?.ogDescription?.trim() || ogDescription || finalDescription;
+  const finalTitle = override?.title?.trim() || dbTitle;
+  const finalDescription = override?.description?.trim() || dbDescription;
+  const finalCanonical = override?.canonicalUrl?.trim() || dbCanonical;
+  const finalOgTitle = override?.ogTitle?.trim() || dbOgTitle || finalTitle;
+  const finalOgDescription = override?.ogDescription?.trim() || dbOgDescription || finalDescription;
   const finalOgImage = override?.ogImage?.trim()
     ? resolveAbsoluteUrl(override.ogImage, browserOrigin, '/og-image.png')
-    : ogImage || globalOgImage;
-  const finalOgType = override?.ogType || ogType;
-  const finalKeywords = override?.keywords ? normalizeKeywords(override.keywords) : keywords;
-  const finalNoIndex = override?.noIndex !== undefined ? override.noIndex : noIndex;
+    : dbOgImage || globalOgImage;
+  const finalOgType = override?.ogType || dbOgType;
+  const finalKeywords = override?.keywords ? normalizeKeywords(override.keywords) : dbKeywords;
+  const finalNoIndex = override?.noIndex !== undefined ? override.noIndex : dbNoIndex;
   const finalStructuredData =
     structuredDataEnabled && !finalNoIndex
       ? override?.structuredData !== undefined
         ? override.structuredData
-        : structuredData
+        : dbStructuredData
       : null;
 
   return {
@@ -263,9 +280,9 @@ export function resolveRouteMeta(params: {
     ogDescription: finalOgDescription,
     ogImage: finalOgImage,
     ogType: finalOgType,
-    twitterCard,
-    twitterSite,
-    siteName,
+    twitterCard: remoteMeta?.twitterCard || twitterCard,
+    twitterSite: remoteMeta?.twitterSite || twitterSite,
+    siteName: remoteMeta?.siteName || siteName,
     keywords: finalKeywords,
     noIndex: finalNoIndex,
     structuredData: finalStructuredData,

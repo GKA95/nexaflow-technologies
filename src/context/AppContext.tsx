@@ -105,6 +105,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     path: string;
     config: PageMetaConfig;
   } | null>(null);
+  const [remoteSeoMeta, setRemoteSeoMeta] = useState<{
+    path: string;
+    meta: Partial<ResolvedMetaTags>;
+  } | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
@@ -301,6 +305,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [normalizedPath]
   );
 
+  useEffect(() => {
+    const isPrivateRoute =
+      normalizedPath === '/portal-admin' ||
+      normalizedPath.startsWith('/portal-admin/') ||
+      normalizedPath === '/learner' ||
+      normalizedPath.startsWith('/learner/') ||
+      normalizedPath === '/auth' ||
+      normalizedPath.startsWith('/auth/');
+
+    if (isPrivateRoute) {
+      setRemoteSeoMeta(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    fetch(`/api/seo/metadata?path=${encodeURIComponent(normalizedPath)}`, {
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.found && data?.meta) {
+          setRemoteSeoMeta({
+            path: normalizedPath,
+            meta: data.meta as Partial<ResolvedMetaTags>,
+          });
+        } else {
+          setRemoteSeoMeta((prev) => (prev && prev.path === normalizedPath ? null : prev));
+        }
+      })
+      .catch(() => {
+        // Silent fallback to local/bootstrap SEO metadata if request is aborted or offline
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [normalizedPath]);
+
   const pageMeta = useMemo(
     () =>
       resolveRouteMeta({
@@ -313,6 +355,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         featuredArticles,
         override:
           pageMetaOverride?.path === normalizedPath ? pageMetaOverride.config : null,
+        remoteMeta: remoteSeoMeta?.path === normalizedPath ? remoteSeoMeta.meta : null,
       }),
     [
       normalizedPath,
@@ -323,6 +366,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       featuredCourses,
       featuredArticles,
       pageMetaOverride,
+      remoteSeoMeta,
     ]
   );
 
