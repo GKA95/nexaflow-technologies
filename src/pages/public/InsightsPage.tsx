@@ -38,12 +38,12 @@ export function InsightsPage() {
         noIndex={seo?.noIndex}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-16">
+      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
             NexaFlow Insights
           </p>
-          <h1 className="mt-3 text-3xl sm:text-5xl font-bold tracking-tight">
+          <h1 className="mt-3 text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
             Insights &amp; Technical Resources
           </h1>
           <p className="mt-4 text-base text-[#AEB8D4] max-w-2xl leading-relaxed">
@@ -52,7 +52,7 @@ export function InsightsPage() {
         </div>
       </section>
 
-      <section className="py-16">
+      <section className="py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {categories.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 mb-8">
@@ -61,7 +61,7 @@ export function InsightsPage() {
                   key={cat}
                   type="button"
                   onClick={() => setActiveCategory(cat)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  className={`min-h-[44px] px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
                     activeCategory === cat
                       ? 'bg-[#176BFF] text-white'
                       : 'border border-[#DCE3F2] dark:border-[#1A2550] text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-[#F7F8FF]'
@@ -98,12 +98,15 @@ export function InsightsPage() {
                         <MediaImage
                           src={article.featuredImage}
                           alt={article.title}
+                          width={640}
+                          height={360}
+                          sizes="(max-width: 767px) 100vw, (max-width: 1023px) 48vw, 31vw"
                           className="w-full h-full object-cover"
                         />
                       </div>
                     )}
-                    <div className="p-6">
-                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex items-center gap-2">
+                    <div className="p-5 sm:p-6">
+                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span>{article.category}</span>
                         <span aria-hidden="true">·</span>
                         <span>{article.readingTimeMinutes} min read</span>
@@ -122,11 +125,11 @@ export function InsightsPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="px-6 pb-6">
+                  <div className="px-5 sm:px-6 pb-5 sm:pb-6">
                     <button
                       type="button"
                       onClick={() => navigate(`/insights/${article.slug}`)}
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                      className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                     >
                       Read article
                       <ArrowRight className="w-4 h-4" />

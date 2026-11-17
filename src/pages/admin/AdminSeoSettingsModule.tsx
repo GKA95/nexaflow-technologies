@@ -629,17 +629,17 @@ export function AdminSeoSettingsModule() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             <input
               value={newPageKey}
               onChange={(e) => setNewPageKey(e.target.value)}
               placeholder="Custom page key..."
-              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-1.5 text-xs font-mono"
+              className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-xs font-mono"
             />
             <button
               type="button"
               onClick={handleAddCustomPage}
-              className="inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs font-semibold hover:border-[#176BFF]"
+              className="min-h-[44px] inline-flex items-center justify-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-2 text-xs font-semibold hover:border-[#176BFF] shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Page Key
@@ -821,7 +821,7 @@ export function AdminSeoSettingsModule() {
                 <button
                   type="submit"
                   disabled={savingPage}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white"
+                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   {savingPage ? 'Saving Page...' : `Save "${activePage.pageKey}" Meta-Tags`}
@@ -829,7 +829,7 @@ export function AdminSeoSettingsModule() {
                 <button
                   type="button"
                   onClick={() => setConfirmResetKey(activePage.pageKey)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2.5 text-xs font-semibold hover:border-red-400 hover:text-red-400"
+                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2.5 text-xs font-semibold hover:border-red-400 hover:text-red-400"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   Reset Page Override

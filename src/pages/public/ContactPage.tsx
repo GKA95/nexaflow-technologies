@@ -28,12 +28,12 @@ export function ContactPage() {
         noIndex={seo?.noIndex}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-16">
+      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
             Contact &amp; Consultations
           </p>
-          <h1 className="mt-3 text-3xl sm:text-5xl font-bold tracking-tight">
+          <h1 className="mt-3 text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
             Get in Touch With NexaFlow Technologies
           </h1>
           <p className="mt-4 text-base text-[#AEB8D4] max-w-2xl leading-relaxed">
@@ -42,7 +42,7 @@ export function ContactPage() {
         </div>
       </section>
 
-      <section className="py-16">
+      <section className="py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-5 space-y-6">
             <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 sm:p-8 space-y-5">
@@ -56,12 +56,12 @@ export function ContactPage() {
               <div className="space-y-4 text-sm">
                 {settings?.email ? (
                   <div className="flex items-start gap-3">
-                    <Mail className="w-4 h-4 text-[#00D4FF] mt-1 shrink-0" />
-                    <div>
+                    <Mail className="w-4 h-4 text-[#00D4FF] mt-2 shrink-0" />
+                    <div className="min-w-0">
                       <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">Email</p>
                       <a
                         href={`mailto:${settings.email}`}
-                        className="font-medium text-[#070B24] dark:text-[#F7F8FF] hover:text-[#176BFF]"
+                        className="inline-flex items-center min-h-[40px] font-medium text-[#070B24] dark:text-[#F7F8FF] hover:text-[#176BFF] break-all"
                       >
                         {settings.email}
                       </a>
@@ -71,12 +71,12 @@ export function ContactPage() {
 
                 {settings?.phone ? (
                   <div className="flex items-start gap-3">
-                    <Phone className="w-4 h-4 text-[#00D4FF] mt-1 shrink-0" />
-                    <div>
+                    <Phone className="w-4 h-4 text-[#00D4FF] mt-2 shrink-0" />
+                    <div className="min-w-0">
                       <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">Telephone</p>
                       <a
                         href={`tel:${settings.phone}`}
-                        className="font-medium text-[#070B24] dark:text-[#F7F8FF] hover:text-[#176BFF]"
+                        className="inline-flex items-center min-h-[40px] font-medium text-[#070B24] dark:text-[#F7F8FF] hover:text-[#176BFF]"
                       >
                         {settings.phone}
                       </a>
@@ -86,8 +86,8 @@ export function ContactPage() {
 
                 {cleanWhatsapp ? (
                   <div className="flex items-start gap-3">
-                    <MessageSquare className="w-4 h-4 text-[#00D4FF] mt-1 shrink-0" />
-                    <div>
+                    <MessageSquare className="w-4 h-4 text-[#00D4FF] mt-2 shrink-0" />
+                    <div className="min-w-0">
                       <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">WhatsApp</p>
                       <a
                         href={`https://wa.me/${cleanWhatsapp}?text=${encodeURIComponent(
@@ -95,7 +95,7 @@ export function ContactPage() {
                         )}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                        className="inline-flex items-center min-h-[40px] font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                       >
                         Message on WhatsApp
                       </a>
@@ -142,11 +142,11 @@ export function ContactPage() {
           </div>
 
           <div className="lg:col-span-7 space-y-4">
-            <div className="inline-flex rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-1">
+            <div className="grid grid-cols-1 sm:inline-flex gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-1 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => setFormTab('general')}
-                className={`px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
+                className={`min-h-[44px] px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
                   formTab === 'general'
                     ? 'bg-[#176BFF] text-white'
                     : 'text-[#4A5578] dark:text-[#AEB8D4]'
@@ -157,7 +157,7 @@ export function ContactPage() {
               <button
                 type="button"
                 onClick={() => setFormTab('consultation')}
-                className={`px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
+                className={`min-h-[44px] px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
                   formTab === 'consultation'
                     ? 'bg-[#176BFF] text-white'
                     : 'text-[#4A5578] dark:text-[#AEB8D4]'

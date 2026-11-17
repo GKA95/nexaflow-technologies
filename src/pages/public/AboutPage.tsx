@@ -19,12 +19,12 @@ export function AboutPage() {
         noIndex={seo?.noIndex}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-16 lg:py-20">
+      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
             About NexaFlow Technologies
           </p>
-          <h1 className="mt-3 text-3xl sm:text-5xl font-bold tracking-tight">
+          <h1 className="mt-3 text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
             {settings?.tagline || 'Innovate • Automate • Transform'}
           </h1>
           <p className="mt-5 text-base sm:text-lg text-[#AEB8D4] leading-relaxed max-w-3xl">
@@ -90,7 +90,7 @@ export function AboutPage() {
                 <button
                   type="button"
                   onClick={() => navigate(`/solutions/${s.slug}`)}
-                  className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                  className="mt-3 min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                 >
                   Explore service
                   <ArrowRight className="w-4 h-4" />

@@ -42,7 +42,7 @@ export function AdminProductsModule() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Product Management</h1>
           <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">
@@ -67,7 +67,7 @@ export function AdminProductsModule() {
               order: products.length + 1,
             })
           }
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+          className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
         >
           <Plus className="w-4 h-4" />
           New Product
@@ -256,7 +256,7 @@ export function AdminServicesModule() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Service Pages Manager</h1>
           <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">
@@ -278,7 +278,7 @@ export function AdminServicesModule() {
               order: services.length + 1,
             })
           }
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+          className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
         >
           <Plus className="w-4 h-4" />
           New Service
@@ -460,7 +460,7 @@ export function AdminBlogModule() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">NexaFlow Insights CMS</h1>
           <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">
@@ -483,7 +483,7 @@ export function AdminBlogModule() {
               ctaHref: '/contact?type=consultation',
             })
           }
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+          className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
         >
           <Plus className="w-4 h-4" />
           New Article
@@ -817,17 +817,17 @@ export function AdminSupportModule() {
                 ))}
               </div>
 
-              <form onSubmit={sendReply} className="flex gap-2">
+              <form onSubmit={sendReply} className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
                   placeholder="Write your official support response..."
-                  className="flex-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+                  className="flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                 />
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+                  className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
                   Send Reply

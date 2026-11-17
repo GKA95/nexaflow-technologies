@@ -175,11 +175,20 @@ export function AdminPortalShell() {
         {/* Compact Sticky Mobile Top Bar (<lg) */}
         <header className="lg:hidden sticky top-0 z-40 h-16 px-4 bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <img
-              src="/assets/aistudio/nexaflow_icon_512_4fc8acbf.png"
-              alt="NexaFlow Technologies"
-              className="h-8 w-8 rounded-md object-contain shrink-0"
-            />
+            <picture className="shrink-0">
+              <source
+                srcSet="/assets/aistudio/nexaflow_icon_512_4fc8acbf.webp"
+                type="image/webp"
+              />
+              <img
+                src="/assets/aistudio/nexaflow_icon_512_4fc8acbf.png"
+                alt="NexaFlow Technologies"
+                width={32}
+                height={32}
+                decoding="async"
+                className="h-8 w-8 rounded-md object-contain shrink-0"
+              />
+            </picture>
             <div className="min-w-0">
               <p className="text-[11px] font-mono uppercase tracking-wider text-[#00D4FF] truncate">
                 Admin Portal
@@ -214,11 +223,20 @@ export function AdminPortalShell() {
               className="relative z-10 w-72 max-w-[85vw] h-full bg-[#03051B] text-[#F7F8FF] border-r border-[#1A2550] flex flex-col shadow-2xl"
             >
               <div className="p-4 border-b border-[#1A2550] flex items-center justify-between gap-2">
-                <img
-                  src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
-                  alt="NexaFlow Technologies"
-                  className="h-8 w-auto object-contain"
-                />
+                <picture className="shrink-0">
+                  <source
+                    srcSet="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.webp"
+                    type="image/webp"
+                  />
+                  <img
+                    src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
+                    alt="NexaFlow Technologies"
+                    width={144}
+                    height={49}
+                    decoding="async"
+                    className="h-8 w-auto object-contain"
+                  />
+                </picture>
                 <button
                   type="button"
                   onClick={() => setMobileDrawerOpen(false)}
@@ -281,11 +299,20 @@ export function AdminPortalShell() {
         {/* Desktop Sidebar (>=lg) */}
         <aside className="hidden lg:flex lg:w-64 shrink-0 bg-[#03051B] text-[#F7F8FF] border-r border-[#1A2550] flex-col">
           <div className="p-4 border-b border-[#1A2550] flex items-center justify-between">
-            <img
-              src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
-              alt="NexaFlow Technologies"
-              className="h-9 w-auto object-contain"
-            />
+            <picture className="shrink-0">
+              <source
+                srcSet="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.webp"
+                type="image/webp"
+              />
+              <img
+                src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
+                alt="NexaFlow Technologies"
+                width={144}
+                height={49}
+                decoding="async"
+                className="h-9 w-auto object-contain"
+              />
+            </picture>
           </div>
 
           <nav className="p-3 flex-1 overflow-y-auto space-y-1">

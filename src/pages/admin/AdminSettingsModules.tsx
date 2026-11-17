@@ -256,7 +256,7 @@ export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | '
 
       <button
         type="submit"
-        className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-2.5 text-sm font-semibold text-white"
+        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-2.5 text-sm font-semibold text-white"
       >
         Save Changes
       </button>
@@ -594,18 +594,18 @@ export function AdminAccountSecurityModule() {
           <label className="block text-xs font-medium mb-1">
             Additional Emails (work for Password Login, Google Sign-In &amp; Password Reset)
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="email"
               value={newSecondaryEmail}
               onChange={(e) => setNewSecondaryEmail(e.target.value)}
               placeholder="Add another email address (e.g. your personal Gmail)"
-              className="flex-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+              className="flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
             />
             <button
               type="button"
               onClick={addSecondaryEmail}
-              className="inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-2 text-xs font-semibold hover:border-[#176BFF]"
+              className="min-h-[44px] inline-flex items-center justify-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-semibold hover:border-[#176BFF] shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Email
@@ -615,12 +615,12 @@ export function AdminAccountSecurityModule() {
           {secondaryEmails.length > 0 && (
             <ul className="mt-3 divide-y divide-[#DCE3F2] dark:divide-[#1A2550] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B]">
               {secondaryEmails.map((sec) => (
-                <li key={sec} className="px-3 py-2 flex items-center justify-between text-xs font-mono">
-                  <span>{sec}</span>
+                <li key={sec} className="px-3 py-2 flex items-center justify-between gap-2 text-xs font-mono">
+                  <span className="truncate">{sec}</span>
                   <button
                     type="button"
                     onClick={() => setSecondaryEmails((prev) => prev.filter((item) => item !== sec))}
-                    className="text-red-500 hover:text-red-400 inline-flex items-center gap-1"
+                    className="min-h-[36px] text-red-500 hover:text-red-400 inline-flex items-center gap-1 shrink-0"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Remove
@@ -634,7 +634,7 @@ export function AdminAccountSecurityModule() {
         <button
           type="submit"
           disabled={savingEmails}
-          className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white"
+          className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white"
         >
           {savingEmails ? 'Saving Emails...' : 'Save My Login Emails'}
         </button>
@@ -819,31 +819,63 @@ export function AdminOpsModules({
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Administrator Audit Log</h1>
-      <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-x-auto">
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="border-b border-[#DCE3F2] dark:border-[#1A2550] text-[#4A5578] dark:text-[#AEB8D4]">
-              <th className="p-3">Time</th>
-              <th className="p-3">Admin</th>
-              <th className="p-3">Action</th>
-              <th className="p-3">Entity</th>
-              <th className="p-3">Details</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
-            {logs.map((l) => (
-              <tr key={l._id}>
-                <td className="p-3 font-mono tabular-nums">
-                  {new Date(l.createdAt).toLocaleString()}
-                </td>
-                <td className="p-3">{l.adminEmail}</td>
-                <td className="p-3 font-mono">{l.action}</td>
-                <td className="p-3">{l.entityType}</td>
-                <td className="p-3">{l.details}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden">
+        {logs.length === 0 ? (
+          <div className="p-8 text-center text-sm text-[#4A5578] dark:text-[#AEB8D4]">
+            No audit events recorded yet.
+          </div>
+        ) : (
+          <>
+            {/* Mobile Audit Cards (<md) */}
+            <div className="md:hidden divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
+              {logs.map((l) => (
+                <div key={l._id} className="p-4 space-y-1.5 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-mono font-semibold text-[#176BFF] dark:text-[#00D4FF] break-all">
+                      {l.action}
+                    </span>
+                    <span className="text-[11px] font-mono text-[#4A5578] dark:text-[#AEB8D4] shrink-0">
+                      {l.entityType}
+                    </span>
+                  </div>
+                  <p className="text-[#070B24] dark:text-[#F7F8FF] break-words">{l.details}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-[#4A5578] dark:text-[#AEB8D4]">
+                    <span className="truncate">{l.adminEmail}</span>
+                    <span>{new Date(l.createdAt).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Audit Table (>=md) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#DCE3F2] dark:border-[#1A2550] text-[#4A5578] dark:text-[#AEB8D4]">
+                    <th className="p-3">Time</th>
+                    <th className="p-3">Admin</th>
+                    <th className="p-3">Action</th>
+                    <th className="p-3">Entity</th>
+                    <th className="p-3">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550]">
+                  {logs.map((l) => (
+                    <tr key={l._id}>
+                      <td className="p-3 font-mono tabular-nums">
+                        {new Date(l.createdAt).toLocaleString()}
+                      </td>
+                      <td className="p-3">{l.adminEmail}</td>
+                      <td className="p-3 font-mono">{l.action}</td>
+                      <td className="p-3">{l.entityType}</td>
+                      <td className="p-3">{l.details}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

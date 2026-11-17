@@ -80,32 +80,34 @@ export function ProductDetailPage({ slug }: { slug: string }) {
         }}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-14 lg:py-20">
+      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate('/products')}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-6"
+            className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             All Products
           </button>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-center">
-              <div className="text-xs text-[#00D4FF] flex items-center gap-2 mb-2">
+              <div className="text-xs text-[#00D4FF] flex flex-wrap items-center gap-2 mb-2">
                 <span>{product.category}</span>
                 <span aria-hidden="true">·</span>
                 <span>{product.pricingStatus}</span>
               </div>
-              <h1 className="text-3xl sm:text-5xl font-bold tracking-tight">{product.name}</h1>
+              <h1 className="text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
+                {product.name}
+              </h1>
               <p className="mt-4 text-base sm:text-lg text-[#AEB8D4] leading-relaxed">
                 {product.shortDescription}
               </p>
-              <div className="mt-6 flex flex-wrap items-center gap-3">
+              <div className="mt-6 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
                 <a
                   href="#product-enquiry"
-                  className="inline-flex items-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-colors"
+                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-colors"
                 >
                   Enquire About {product.name}
                 </a>
@@ -114,7 +116,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                     href={product.demoLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#1A2550] px-4 py-3 text-sm font-medium text-[#F7F8FF] hover:border-[#00D4FF]"
+                    className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] px-4 py-3 text-sm font-medium text-[#F7F8FF] hover:border-[#00D4FF]"
                   >
                     Open Demo
                     <ExternalLink className="w-4 h-4" />
@@ -123,10 +125,15 @@ export function ProductDetailPage({ slug }: { slug: string }) {
               </div>
             </div>
             <div className="lg:col-span-5">
-              <div className="h-full min-h-[240px] rounded-xl overflow-hidden border border-[#1A2550]">
+              <div className="h-full min-h-[220px] sm:min-h-[260px] rounded-xl overflow-hidden border border-[#1A2550] bg-[#080D2B]">
                 <MediaImage
                   src={product.images?.[0] || '/assets/images/product_gridmind_ai.jpg'}
                   alt={product.name}
+                  loading="eager"
+                  fetchPriority="high"
+                  width={1200}
+                  height={675}
+                  sizes="(max-width: 1023px) 100vw, 42vw"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -180,7 +187,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
             )}
           </div>
 
-          <div id="product-enquiry" className="lg:col-span-5">
+          <div id="product-enquiry" className="lg:col-span-5 scroll-mt-20">
             <LeadForm
               interestType="product"
               interestSlug={product.slug}

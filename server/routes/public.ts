@@ -74,6 +74,17 @@ async function getCourseRatingMap(courseIds: unknown[]) {
   return map;
 }
 
+router.use((req, res, next) => {
+  if (req.method === 'GET') {
+    if (req.path === '/health') {
+      res.setHeader('Cache-Control', 'no-store');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    }
+  }
+  next();
+});
+
 router.get('/health', async (_req, res) => {
   const dbConfigured = isDBConfigured();
   let dbConnected = false;
@@ -231,6 +242,152 @@ router.get('/courses', async (_req, res) => {
     };
   });
   res.json({ courses: enriched });
+});
+
+function matchesSearchTokens(fields: Array<string | string[] | undefined | null>, tokens: string[]) {
+  if (tokens.length === 0) return true;
+  const haystack = fields
+    .flatMap((v) => (Array.isArray(v) ? v : v ? [v] : []))
+    .join(' ')
+    .toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
+}
+
+router.get('/search', async (req, res) => {
+  try {
+    const rawQuery = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
+    const tokens = rawQuery
+      .toLowerCase()
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    if (!isDBConfigured() || !(await connectDB())) {
+      const solutions = DEFAULT_SERVICES.filter((s) =>
+        matchesSearchTokens([s.name, s.shortDescription, s.overview, s.problemsAddressed, s.deliverables], tokens)
+      )
+        .slice(0, 6)
+        .map((s) => ({
+          name: s.name,
+          slug: s.slug,
+          shortDescription: s.shortDescription,
+        }));
+
+      const products = DEFAULT_PRODUCTS.filter((p) =>
+        matchesSearchTokens(
+          [p.name, p.category, p.shortDescription, p.fullDescription, p.features, p.benefits, p.pricingStatus],
+          tokens
+        )
+      )
+        .slice(0, 6)
+        .map((p) => ({
+          name: p.name,
+          slug: p.slug,
+          category: p.category,
+          shortDescription: p.shortDescription,
+          pricingStatus: p.pricingStatus,
+        }));
+
+      return res.json({ query: rawQuery, solutions, products, courses: [] });
+    }
+
+    const [services, products, courses] = await Promise.all([
+      Service.find({ published: true })
+        .sort({ order: 1, createdAt: 1 })
+        .select('name slug shortDescription overview problemsAddressed deliverables focusKeyword')
+        .lean(),
+      Product.find({ published: true })
+        .sort({ order: 1, createdAt: 1 })
+        .select('name slug category shortDescription fullDescription features benefits pricingStatus focusKeyword')
+        .lean(),
+      Course.find({ published: true })
+        .sort({ order: 1, createdAt: -1 })
+        .select('title slug shortDescription fullDescription objectives outcomes price currency focusKeyword')
+        .lean(),
+    ]);
+
+    const matchedSolutions = services
+      .filter((s: Record<string, unknown>) =>
+        matchesSearchTokens(
+          [
+            s.name as string,
+            s.shortDescription as string,
+            s.overview as string,
+            s.problemsAddressed as string[],
+            s.deliverables as string[],
+            s.focusKeyword as string,
+          ],
+          tokens
+        )
+      )
+      .slice(0, 6)
+      .map((s: Record<string, unknown>) => ({
+        _id: s._id,
+        name: s.name,
+        slug: s.slug,
+        shortDescription: s.shortDescription,
+      }));
+
+    const matchedProducts = products
+      .filter((p: Record<string, unknown>) =>
+        matchesSearchTokens(
+          [
+            p.name as string,
+            p.category as string,
+            p.shortDescription as string,
+            p.fullDescription as string,
+            p.features as string[],
+            p.benefits as string[],
+            p.pricingStatus as string,
+            p.focusKeyword as string,
+          ],
+          tokens
+        )
+      )
+      .slice(0, 6)
+      .map((p: Record<string, unknown>) => ({
+        _id: p._id,
+        name: p.name,
+        slug: p.slug,
+        category: p.category,
+        shortDescription: p.shortDescription,
+        pricingStatus: p.pricingStatus,
+      }));
+
+    const matchedCourses = courses
+      .filter((c: Record<string, unknown>) =>
+        matchesSearchTokens(
+          [
+            c.title as string,
+            c.shortDescription as string,
+            c.fullDescription as string,
+            c.objectives as string[],
+            c.outcomes as string[],
+            c.focusKeyword as string,
+          ],
+          tokens
+        )
+      )
+      .slice(0, 6)
+      .map((c: Record<string, unknown>) => ({
+        _id: c._id,
+        title: c.title,
+        slug: c.slug,
+        shortDescription: c.shortDescription,
+        price: c.price,
+        currency: c.currency,
+      }));
+
+    return res.json({
+      query: rawQuery,
+      solutions: matchedSolutions,
+      products: matchedProducts,
+      courses: matchedCourses,
+    });
+  } catch (err) {
+    console.error('[Public Search] Error:', err);
+    return res.status(500).json({ error: 'Unable to complete search right now.' });
+  }
 });
 
 router.get('/courses/:slug', async (req, res) => {

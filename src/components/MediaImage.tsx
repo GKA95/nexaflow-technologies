@@ -8,7 +8,22 @@ interface MediaImageProps {
   fallbackLabel?: string;
   loading?: 'lazy' | 'eager';
   fetchPriority?: 'high' | 'low' | 'auto';
+  sizes?: string;
+  width?: number;
+  height?: number;
 }
+
+const LOCAL_RESPONSIVE_IMAGES = new Set([
+  '/assets/images/hero_nexaflow_architecture.jpg',
+  '/assets/images/product_gridmind_ai.jpg',
+  '/assets/images/service_ai_automation.jpg',
+  '/assets/images/service_data_analytics.jpg',
+]);
+
+const LOCAL_SINGLE_WEBP = new Set([
+  '/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png',
+  '/assets/aistudio/nexaflow_icon_512_4fc8acbf.png',
+]);
 
 export function MediaImage({
   src,
@@ -17,6 +32,9 @@ export function MediaImage({
   fallbackLabel,
   loading = 'lazy',
   fetchPriority = 'auto',
+  sizes = '(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 42vw',
+  width,
+  height,
 }: MediaImageProps) {
   const [errored, setErrored] = useState(false);
 
@@ -35,12 +53,64 @@ export function MediaImage({
     );
   }
 
+  const normalizedSrc = src.split('?')[0];
+  const isResponsiveLocal = LOCAL_RESPONSIVE_IMAGES.has(normalizedSrc);
+  const isSingleLocalWebp = LOCAL_SINGLE_WEBP.has(normalizedSrc);
+
+  if (isResponsiveLocal) {
+    const base = normalizedSrc.replace(/\.jpg$/i, '');
+    return (
+      <picture className="block w-full h-full">
+        <source
+          type="image/webp"
+          srcSet={`${base}-sm.webp 640w, ${base}.webp 1200w`}
+          sizes={sizes}
+        />
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          loading={loading}
+          decoding={loading === 'eager' ? 'sync' : 'async'}
+          fetchPriority={fetchPriority}
+          referrerPolicy="no-referrer"
+          onError={() => setErrored(true)}
+          className={className}
+        />
+      </picture>
+    );
+  }
+
+  if (isSingleLocalWebp) {
+    const webpSrc = normalizedSrc.replace(/\.png$/i, '.webp');
+    return (
+      <picture>
+        <source type="image/webp" srcSet={webpSrc} />
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          loading={loading}
+          decoding={loading === 'eager' ? 'sync' : 'async'}
+          fetchPriority={fetchPriority}
+          referrerPolicy="no-referrer"
+          onError={() => setErrored(true)}
+          className={className}
+        />
+      </picture>
+    );
+  }
+
   return (
     <img
       src={src}
       alt={alt}
+      width={width}
+      height={height}
       loading={loading}
-      decoding="async"
+      decoding={loading === 'eager' ? 'sync' : 'async'}
       fetchPriority={fetchPriority}
       referrerPolicy="no-referrer"
       onError={() => setErrored(true)}

@@ -91,37 +91,44 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
         structuredData={structuredData}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-14 lg:py-20">
+      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate('/solutions')}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-6"
+            className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             All Solutions
           </button>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-center">
-              <h1 className="text-3xl sm:text-5xl font-bold tracking-tight">{service.name}</h1>
+              <h1 className="text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
+                {service.name}
+              </h1>
               <p className="mt-4 text-base sm:text-lg text-[#AEB8D4] leading-relaxed">
                 {service.shortDescription}
               </p>
               <div className="mt-6">
                 <a
                   href="#service-enquiry"
-                  className="inline-flex items-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-colors"
+                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-colors"
                 >
                   {service.ctaLabel || `Enquire About ${service.name}`}
                 </a>
               </div>
             </div>
             <div className="lg:col-span-5">
-              <div className="h-full min-h-[240px] rounded-xl overflow-hidden border border-[#1A2550]">
+              <div className="h-full min-h-[220px] sm:min-h-[260px] rounded-xl overflow-hidden border border-[#1A2550] bg-[#080D2B]">
                 <MediaImage
                   src={service.coverImage}
                   alt={service.name}
+                  loading="eager"
+                  fetchPriority="high"
+                  width={1200}
+                  height={675}
+                  sizes="(max-width: 1023px) 100vw, 42vw"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -175,7 +182,7 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
             )}
           </div>
 
-          <div id="service-enquiry" className="lg:col-span-5">
+          <div id="service-enquiry" className="lg:col-span-5 scroll-mt-20">
             <LeadForm
               interestType="service"
               interestSlug={service.slug}

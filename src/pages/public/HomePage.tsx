@@ -142,6 +142,9 @@ export function HomePage() {
                   alt="NexaFlow Technologies layered AI and data systems architecture"
                   loading="eager"
                   fetchPriority="high"
+                  width={1200}
+                  height={670}
+                  sizes="(max-width: 1023px) 100vw, 42vw"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -165,7 +168,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => navigate('/solutions')}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
+              className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               View all solutions
               <ArrowRight className="w-4 h-4" />
@@ -195,7 +198,7 @@ export function HomePage() {
                   <button
                     type="button"
                     onClick={() => navigate(`/solutions/${service.slug}`)}
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                    className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                   >
                     Explore {service.name}
                     <ArrowRight className="w-4 h-4" />
@@ -222,7 +225,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => navigate('/products')}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
+              className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               Browse product catalogue
               <ArrowRight className="w-4 h-4" />
@@ -243,16 +246,19 @@ export function HomePage() {
                   key={product.slug}
                   className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden grid grid-cols-1 sm:grid-cols-5 items-stretch"
                 >
-                  <div className="sm:col-span-2 min-h-[180px] bg-[#03051B]">
+                  <div className="sm:col-span-2 aspect-video sm:aspect-auto sm:min-h-[180px] bg-[#03051B]">
                     <MediaImage
                       src={product.images?.[0] || '/assets/images/product_gridmind_ai.jpg'}
                       alt={product.name}
+                      width={640}
+                      height={360}
+                      sizes="(max-width: 639px) 100vw, (max-width: 1023px) 40vw, 22vw"
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <div className="sm:col-span-3 p-6 flex flex-col justify-between">
+                  <div className="sm:col-span-3 p-5 sm:p-6 flex flex-col justify-between">
                     <div>
-                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex items-center gap-2">
+                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span>{product.category}</span>
                         <span aria-hidden="true">·</span>
                         <span>{product.pricingStatus}</span>
@@ -264,11 +270,11 @@ export function HomePage() {
                         {product.shortDescription}
                       </p>
                     </div>
-                    <div className="mt-5">
+                    <div className="mt-4">
                       <button
                         type="button"
                         onClick={() => navigate(`/products/${product.slug}`)}
-                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                        className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                       >
                         View product details
                         <ArrowRight className="w-4 h-4" />
@@ -429,7 +435,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => navigate('/contact?type=consultation')}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
+              className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               Discuss a similar project
               <ArrowRight className="w-4 h-4" />
@@ -499,7 +505,7 @@ export function HomePage() {
                   </div>
 
                   {(work.technologies?.length > 0 || work.projectUrl) && (
-                    <div className="px-6 pb-6 pt-3 border-t border-[#DCE3F2] dark:border-[#1A2550] flex items-center justify-between gap-3">
+                    <div className="px-6 pb-5 pt-3 border-t border-[#DCE3F2] dark:border-[#1A2550] flex items-center justify-between gap-3">
                       <p className="text-[11px] font-mono text-[#4A5578] dark:text-[#AEB8D4] truncate">
                         {work.technologies?.join(' · ')}
                       </p>
@@ -508,7 +514,7 @@ export function HomePage() {
                           href={work.projectUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline shrink-0"
+                          className="min-h-[44px] inline-flex items-center gap-1 text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline shrink-0"
                         >
                           View
                           <ExternalLink className="w-3 h-3" />
@@ -645,7 +651,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => navigate('/insights')}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
+              className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               Read all insights
               <ArrowRight className="w-4 h-4" />
@@ -684,11 +690,11 @@ export function HomePage() {
                       {art.excerpt}
                     </p>
                   </div>
-                  <div className="mt-5">
+                  <div className="mt-4">
                     <button
                       type="button"
                       onClick={() => navigate(`/insights/${art.slug}`)}
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                      className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                     >
                       Read article
                       <ArrowRight className="w-4 h-4" />
@@ -716,7 +722,10 @@ export function HomePage() {
                 {settings?.email && (
                   <p>
                     Email:{' '}
-                    <a href={`mailto:${settings.email}`} className="text-[#176BFF] dark:text-[#00D4FF] hover:underline">
+                    <a
+                      href={`mailto:${settings.email}`}
+                      className="inline-flex items-center min-h-[40px] text-[#176BFF] dark:text-[#00D4FF] hover:underline break-all"
+                    >
                       {settings.email}
                     </a>
                   </p>
@@ -724,7 +733,10 @@ export function HomePage() {
                 {settings?.phone && (
                   <p>
                     Telephone:{' '}
-                    <a href={`tel:${settings.phone}`} className="text-[#176BFF] dark:text-[#00D4FF] hover:underline">
+                    <a
+                      href={`tel:${settings.phone}`}
+                      className="inline-flex items-center min-h-[40px] text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                    >
                       {settings.phone}
                     </a>
                   </p>

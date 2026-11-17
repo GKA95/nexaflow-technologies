@@ -50,7 +50,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          globPatterns: ['**/*.{js,css,html,ico,png,webp,svg,woff,woff2}'],
           navigateFallbackDenylist: [
             /^\/api\//,
             /^\/sitemap\.xml$/,
@@ -67,6 +67,25 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (
+              id.includes('node_modules/react/') ||
+              id.includes('node_modules/react-dom/') ||
+              id.includes('node_modules/scheduler/')
+            ) {
+              return 'react-vendor';
+            }
+            if (id.includes('node_modules/lucide-react/')) {
+              return 'lucide-vendor';
+            }
+            return undefined;
+          },
+        },
       },
     },
     server: {

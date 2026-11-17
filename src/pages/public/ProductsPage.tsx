@@ -20,12 +20,12 @@ export function ProductsPage() {
         noIndex={seo?.noIndex}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-16">
+      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
             Product Catalogue
           </p>
-          <h1 className="mt-3 text-3xl sm:text-5xl font-bold tracking-tight">
+          <h1 className="mt-3 text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
             NexaFlow Products
           </h1>
           <p className="mt-4 text-base text-[#AEB8D4] max-w-2xl leading-relaxed">
@@ -58,11 +58,14 @@ export function ProductsPage() {
                       <MediaImage
                         src={product.images?.[0] || '/assets/images/product_gridmind_ai.jpg'}
                         alt={product.name}
+                        width={640}
+                        height={360}
+                        sizes="(max-width: 767px) 100vw, 48vw"
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <div className="p-6 sm:p-8">
-                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex items-center gap-2">
+                    <div className="p-5 sm:p-8">
+                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span>{product.category}</span>
                         <span aria-hidden="true">·</span>
                         <span>{product.pricingStatus}</span>
@@ -75,11 +78,11 @@ export function ProductsPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="px-6 sm:px-8 pb-6 sm:pb-8">
+                  <div className="px-5 sm:px-8 pb-6 sm:pb-8">
                     <button
                       type="button"
                       onClick={() => navigate(`/products/${product.slug}`)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2.5 text-sm font-semibold text-white transition-colors"
+                      className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2.5 text-sm font-semibold text-white transition-colors"
                     >
                       Explore {product.name}
                       <ArrowRight className="w-4 h-4" />

@@ -223,7 +223,7 @@ export function AdminCoursesModule() {
               published: false,
             })
           }
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
+          className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
         >
           <Plus className="w-4 h-4" />
           New Course
@@ -362,17 +362,17 @@ export function AdminCoursesModule() {
             Publish Course Publicly
           </label>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               type="submit"
-              className="rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
+              className="min-h-[44px] rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
             >
               Save Course
             </button>
             <button
               type="button"
               onClick={() => setEditingCourse(null)}
-              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
+              className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
             >
               Cancel
             </button>
@@ -501,17 +501,17 @@ export function AdminCoursesModule() {
                   ],
                 })
               }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#00D4FF]/50 px-3 py-1.5 text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF]"
+              className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border border-[#00D4FF]/50 px-3 py-1.5 text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF]"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Another Sub-Video Row
             </button>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="submit"
                 disabled={savingVideos}
-                className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-4 py-2 text-xs font-semibold text-white"
+                className="min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-4 py-2 text-xs font-semibold text-white"
               >
                 {savingVideos
                   ? 'Saving Videos...'
@@ -520,7 +520,7 @@ export function AdminCoursesModule() {
               <button
                 type="button"
                 onClick={() => setMultiVideoCourse(null)}
-                className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs"
+                className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs"
               >
                 Cancel
               </button>
@@ -611,7 +611,7 @@ export function AdminCoursesModule() {
                   <button
                     type="button"
                     onClick={() => openMultiVideoForm(course)}
-                    className="inline-flex items-center gap-1 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-3 py-1.5 text-xs font-semibold text-white"
+                    className="min-h-[40px] inline-flex items-center gap-1 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-3 py-1.5 text-xs font-semibold text-white"
                   >
                     <Video className="w-3.5 h-3.5" />
                     + Add Sub-Videos
@@ -619,7 +619,7 @@ export function AdminCoursesModule() {
                   <button
                     type="button"
                     onClick={() => togglePublish(course)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs font-medium"
+                    className="min-h-[40px] inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs font-medium"
                   >
                     {course.published ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     {course.published ? 'Unpublish' : 'Publish'}
@@ -627,7 +627,7 @@ export function AdminCoursesModule() {
                   <button
                     type="button"
                     onClick={() => setEditingCourse(course)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs font-medium"
+                    className="min-h-[40px] inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs font-medium"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                     Edit Course
@@ -637,7 +637,7 @@ export function AdminCoursesModule() {
                     onClick={() =>
                       setDeleteTarget({ type: 'course', id: course._id, label: course.title })
                     }
-                    className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 text-red-500 px-3 py-1.5 text-xs font-medium"
+                    className="min-h-[40px] inline-flex items-center gap-1 rounded-lg border border-red-500/40 text-red-500 px-3 py-1.5 text-xs font-medium"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Delete
@@ -652,13 +652,13 @@ export function AdminCoursesModule() {
                     key={mod._id}
                     className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] p-4 space-y-2"
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="text-sm font-semibold">{mod.title}</h3>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <button
                           type="button"
                           onClick={() => openMultiVideoForm(course, mod._id)}
-                          className="text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                          className="min-h-[36px] text-xs font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                         >
                           + Add Videos Here
                         </button>
@@ -667,7 +667,7 @@ export function AdminCoursesModule() {
                           onClick={() =>
                             setDeleteTarget({ type: 'module', id: mod._id, label: mod.title })
                           }
-                          className="text-xs text-red-500 hover:underline"
+                          className="min-h-[36px] text-xs text-red-500 hover:underline"
                         >
                           Remove Section
                         </button>
@@ -676,13 +676,16 @@ export function AdminCoursesModule() {
                     {mod.lessons.length > 0 && (
                       <ul className="divide-y divide-[#DCE3F2] dark:divide-[#1A2550] text-xs">
                         {mod.lessons.map((l, idx) => (
-                          <li key={l._id} className="py-2 flex items-center justify-between gap-3">
-                            <span className="min-w-0">
+                          <li
+                            key={l._id}
+                            className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3"
+                          >
+                            <span className="min-w-0 break-words">
                               <strong className="font-mono text-[#00D4FF] mr-1.5">
                                 #{idx + 1}
                               </strong>
                               {l.title} {l.duration ? `(${l.duration})` : ''} —{' '}
-                              <span className="font-mono text-[#4A5578] dark:text-[#AEB8D4]">
+                              <span className="font-mono text-[#4A5578] dark:text-[#AEB8D4] break-all">
                                 {l.youtubeUrl || 'No YouTube URL'}
                               </span>
                             </span>
@@ -690,7 +693,7 @@ export function AdminCoursesModule() {
                               <button
                                 type="button"
                                 onClick={() => startEditLesson(l)}
-                                className="text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                                className="min-h-[36px] px-1 text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                               >
                                 Edit
                               </button>
@@ -699,7 +702,7 @@ export function AdminCoursesModule() {
                                 onClick={() =>
                                   setDeleteTarget({ type: 'lesson', id: l._id, label: l.title })
                                 }
-                                className="text-red-500 hover:underline"
+                                className="min-h-[36px] px-1 text-red-500 hover:underline"
                               >
                                 Delete
                               </button>
@@ -711,7 +714,7 @@ export function AdminCoursesModule() {
                   </div>
                 ))}
 
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     value={newModTitle[course._id] || ''}
@@ -719,12 +722,12 @@ export function AdminCoursesModule() {
                       setNewModTitle((p) => ({ ...p, [course._id]: e.target.value }))
                     }
                     placeholder="Optional new section/module title..."
-                    className="flex-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-1.5 text-sm"
+                    className="flex-1 min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                   />
                   <button
                     type="button"
                     onClick={() => addModule(course._id)}
-                    className="rounded-lg border border-[#176BFF] text-[#176BFF] dark:text-[#00D4FF] px-3 py-1.5 text-xs font-semibold"
+                    className="min-h-[44px] rounded-lg border border-[#176BFF] text-[#176BFF] dark:text-[#00D4FF] px-4 py-2 text-xs font-semibold shrink-0"
                   >
                     Add Section
                   </button>

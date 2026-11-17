@@ -3,12 +3,14 @@ import {
   Download,
   Menu,
   Moon,
+  Search,
   Sun,
   User,
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { CompactHeaderSearchPanel, DesktopHeaderSearch } from './GlobalHeaderSearch';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const {
@@ -26,6 +28,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const [showIOSModal, setShowIOSModal] = useState(false);
 
   const navItems = [
@@ -36,28 +39,48 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { label: 'About', href: '/about' },
   ];
 
-  // Close mobile menu on route change
+  // Close mobile menu and search overlay on route change
   useEffect(() => {
     setMobileOpen(false);
+    setCompactSearchOpen(false);
   }, [currentPath]);
 
-  // Prevent background scrolling & close on Escape while mobile drawer is open
+  // Global Cmd/Ctrl + K shortcut for < xl compact header search
   useEffect(() => {
-    if (!mobileOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        if (!window.matchMedia('(min-width: 1280px)').matches) {
+          e.preventDefault();
+          setMobileOpen(false);
+          setCompactSearchOpen((prev) => !prev);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Prevent background scrolling & close on Escape while mobile drawer or compact search is open
+  useEffect(() => {
+    if (!mobileOpen && !compactSearchOpen) return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMobileOpen(false);
+      if (e.key === 'Escape') {
+        setMobileOpen(false);
+        setCompactSearchOpen(false);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [mobileOpen]);
+  }, [mobileOpen, compactSearchOpen]);
 
   const handleNav = (href: string) => {
     setMobileOpen(false);
+    setCompactSearchOpen(false);
     navigate(href);
   };
 
@@ -71,25 +94,43 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex flex-col bg-[#F6F8FC] text-[#070B24] dark:bg-[#03051B] dark:text-[#F7F8FF]">
       {/* Primary Top Bar grounded in #03051B so the approved NexaFlow logo artwork blends seamlessly */}
       <header className="sticky top-0 z-40 bg-[#03051B]/95 backdrop-blur-md border-b border-[#1A2550] text-[#F7F8FF]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 sm:gap-4 lg:gap-8">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-3 lg:gap-4 xl:gap-5">
           {/* Zone 1: Exact Supplied NexaFlow Brand Mark (horizontal on desktop/tablet, compact N mark on small mobile) */}
           <button
             type="button"
             onClick={() => handleNav('/')}
-            className="flex items-center gap-2.5 shrink-0 min-h-[44px] focus-visible:outline-2 focus-visible:outline-[#00D4FF] rounded-md"
+            className="flex items-center gap-2 shrink-0 min-h-[44px] focus-visible:outline-2 focus-visible:outline-[#00D4FF] rounded-md"
             aria-label="NexaFlow Technologies Home"
           >
-            <img
-              src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
-              alt="NexaFlow Technologies — Innovate • Automate • Transform"
-              className="hidden sm:block h-11 w-auto object-contain"
-            />
-            <span className="flex sm:hidden items-center gap-2">
-              <img
-                src="/assets/aistudio/nexaflow_icon_512_4fc8acbf.png"
-                alt="NexaFlow Technologies"
-                className="h-9 w-9 rounded-md object-contain"
+            <picture className="hidden sm:block shrink-0">
+              <source
+                srcSet="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.webp"
+                type="image/webp"
               />
+              <img
+                src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
+                alt="NexaFlow Technologies — Innovate • Automate • Transform"
+                width={144}
+                height={49}
+                decoding="async"
+                className="h-10 lg:h-11 w-auto object-contain"
+              />
+            </picture>
+            <span className="flex sm:hidden items-center gap-2">
+              <picture className="shrink-0">
+                <source
+                  srcSet="/assets/aistudio/nexaflow_icon_512_4fc8acbf.webp"
+                  type="image/webp"
+                />
+                <img
+                  src="/assets/aistudio/nexaflow_icon_512_4fc8acbf.png"
+                  alt="NexaFlow Technologies"
+                  width={32}
+                  height={32}
+                  decoding="async"
+                  className="h-8 w-8 rounded-md object-contain"
+                />
+              </picture>
               <span className="font-display font-bold text-base tracking-tight text-[#F7F8FF] whitespace-nowrap">
                 NexaFlow
               </span>
@@ -99,7 +140,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* Zone 2: 5 concise single-line text links */}
           <nav
             aria-label="Primary Navigation"
-            className="hidden lg:flex items-center gap-5 xl:gap-7 text-sm font-medium text-[#AEB8D4]"
+            className="hidden lg:flex items-center gap-4 2xl:gap-6 text-sm font-medium text-[#AEB8D4]"
           >
             {navItems.map((item) => {
               const active = isRouteActive(item.href);
@@ -121,13 +162,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          {/* Zone 3: Theme, Learner Account, Primary Consultation CTA & Optional PWA Install */}
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Desktop Global Search Input (1280px+) */}
+          <DesktopHeaderSearch />
+
+          {/* Zone 3: Search Toggle (<1280px), Theme, Learner Account, Primary Consultation CTA & Optional PWA Install */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false);
+                setCompactSearchOpen((prev) => !prev);
+              }}
+              aria-label={compactSearchOpen ? 'Close search' : 'Search products, solutions, and courses'}
+              aria-expanded={compactSearchOpen}
+              aria-controls="header-compact-search-panel"
+              className={`xl:hidden min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border transition-colors ${
+                compactSearchOpen
+                  ? 'border-[#00D4FF] bg-[#10183A] text-[#00D4FF]'
+                  : 'border-[#1A2550] text-[#AEB8D4] hover:text-[#F7F8FF] hover:border-[#176BFF]'
+              }`}
+            >
+              {compactSearchOpen ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+            </button>
+
             {!isInstalled && isInstallable && (
               <button
                 type="button"
                 onClick={install}
-                className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 min-h-[40px] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] hover:border-[#00D4FF]/50 transition-colors whitespace-nowrap shrink-0"
+                className="hidden 2xl:inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 min-h-[40px] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] hover:border-[#00D4FF]/50 transition-colors whitespace-nowrap shrink-0"
               >
                 <Download className="w-3.5 h-3.5" />
                 Install App
@@ -137,7 +199,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setShowIOSModal(true)}
-                className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 min-h-[40px] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] transition-colors whitespace-nowrap shrink-0"
+                className="hidden 2xl:inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 min-h-[40px] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] transition-colors whitespace-nowrap shrink-0"
               >
                 <Download className="w-3.5 h-3.5" />
                 Install App
@@ -185,14 +247,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => handleNav('/contact?type=consultation')}
-              className="hidden md:inline-flex items-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 min-h-[40px] text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0"
+              className="hidden md:inline-flex items-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-3.5 xl:px-4 min-h-[40px] text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0"
             >
               Request Consultation
             </button>
 
             <button
               type="button"
-              onClick={() => setMobileOpen((o) => !o)}
+              onClick={() => {
+                setCompactSearchOpen(false);
+                setMobileOpen((o) => !o);
+              }}
               aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
               aria-expanded={mobileOpen}
               aria-controls="public-mobile-drawer"
@@ -202,6 +267,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </div>
+
+        {/* Compact Header Search Panel (< 1280px viewports) */}
+        <CompactHeaderSearchPanel
+          open={compactSearchOpen}
+          onClose={() => setCompactSearchOpen(false)}
+        />
 
         {/* Mobile Drawer Backdrop */}
         {mobileOpen && (
@@ -219,6 +290,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
             aria-label="Mobile Navigation"
             className="lg:hidden relative z-40 border-t border-[#1A2550] bg-[#080D2B] px-4 py-4 space-y-1.5 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain shadow-2xl"
           >
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false);
+                setCompactSearchOpen(true);
+              }}
+              className="flex items-center gap-2.5 w-full text-left px-3.5 min-h-[44px] mb-2 rounded-lg bg-[#03051B] border border-[#1A2550] hover:border-[#00D4FF]/50 text-sm text-[#8C98BD] hover:text-[#F7F8FF] transition-colors"
+            >
+              <Search className="w-4 h-4 text-[#00D4FF] shrink-0" aria-hidden="true" />
+              <span>Search products, solutions, courses...</span>
+            </button>
+
             {navItems.map((item) => {
               const active = isRouteActive(item.href);
               return (
@@ -341,12 +424,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-14">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10">
             <div className="sm:col-span-2 lg:col-span-1">
-              <img
-                src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
-                alt="NexaFlow Technologies"
-                loading="lazy"
-                className="h-12 w-auto object-contain"
-              />
+              <picture className="inline-block">
+                <source
+                  srcSet="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.webp"
+                  type="image/webp"
+                />
+                <img
+                  src="/assets/aistudio/nexaflow_technologies_logo_edf3abcf.png"
+                  alt="NexaFlow Technologies"
+                  width={144}
+                  height={49}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-12 w-auto object-contain"
+                />
+              </picture>
               <p className="mt-4 text-sm text-[#AEB8D4] leading-relaxed">
                 {settings?.descriptor || 'AI, Data & Digital Solutions'}
               </p>

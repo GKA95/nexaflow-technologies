@@ -261,11 +261,11 @@ export function AdminShowcaseModule() {
           </p>
         </div>
 
-        <div className="inline-flex rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-1">
+        <div className="grid grid-cols-2 sm:inline-flex gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-1 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setSubTab('work')}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+            className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-semibold transition-colors ${
               subTab === 'work'
                 ? 'bg-[#176BFF] text-white'
                 : 'text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-white'
@@ -277,7 +277,7 @@ export function AdminShowcaseModule() {
           <button
             type="button"
             onClick={() => setSubTab('testimonials')}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+            className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-semibold transition-colors ${
               subTab === 'testimonials'
                 ? 'bg-[#176BFF] text-white'
                 : 'text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#070B24] dark:hover:text-white'
@@ -303,7 +303,7 @@ export function AdminShowcaseModule() {
                   setShowWorkForm(true);
                 }
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
+              className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
             >
               <Plus className="w-4 h-4" />
               {showWorkForm && !editingWorkId ? 'Close Form' : 'Add Project / Work Done'}
@@ -526,10 +526,10 @@ export function AdminShowcaseModule() {
                         href={item.projectUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-xs text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                        className="mt-2 inline-flex items-start gap-1 text-xs text-[#176BFF] dark:text-[#00D4FF] hover:underline break-all"
                       >
-                        {item.projectUrl}
-                        <ExternalLink className="w-3 h-3" />
+                        <span>{item.projectUrl}</span>
+                        <ExternalLink className="w-3 h-3 shrink-0 mt-0.5" />
                       </a>
                     )}
                   </div>
@@ -607,7 +607,7 @@ export function AdminShowcaseModule() {
                   setShowTestimonialForm(true);
                 }
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
+              className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
             >
               <Plus className="w-4 h-4" />
               {showTestimonialForm && !editingTestimonialId ? 'Close Form' : 'Add Testimonial'}
