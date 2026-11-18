@@ -154,7 +154,7 @@ router.post('/enrol-free', async (req, res) => {
           ],
         },
         { $inc: { usedCount: 1 } },
-        { new: true }
+        { returnDocument: 'after' }
       );
       if (!atomicCoupon) {
         return res.status(400).json({ error: 'This coupon has reached its redemption limit.' });
@@ -192,7 +192,7 @@ router.post('/enrol-free', async (req, res) => {
         status: 'active',
         activatedAt: new Date(),
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     await Notification.create({
@@ -355,7 +355,7 @@ router.post('/courses/:slug/review', async (req, res) => {
       completedCourse,
       status: 'published',
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   await Notification.create({
@@ -467,7 +467,7 @@ router.post('/progress', async (req, res) => {
   const record = await LessonProgress.findOneAndUpdate(
     { userId: req.user!.id, lessonId },
     update,
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   res.json({ progress: record });

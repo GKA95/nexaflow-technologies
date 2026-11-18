@@ -80,7 +80,7 @@ async function recordOAuthPollResult(
             error: entry.error || '',
             expiresAt: new Date(expiresAtMs),
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
       }
     } catch (err) {
@@ -1012,7 +1012,7 @@ router.patch('/profile', requireDatabase, requireAuth, async (req, res) => {
       phone: stripHtmlTags(parsed.data.phone),
       organization: stripHtmlTags(parsed.data.organization),
     },
-    { new: true }
+    { returnDocument: 'after' }
   )
     .select('_id name email secondaryEmails role phone organization')
     .lean();
@@ -1061,7 +1061,7 @@ router.patch('/account-emails', requireDatabase, requireAuth, async (req, res) =
       email: primaryEmail,
       secondaryEmails: cleanedSecondary,
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!updated) return res.status(404).json({ error: 'Account not found.' });

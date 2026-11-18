@@ -576,7 +576,7 @@ router.patch('/courses/:id', async (req, res) => {
   if (d.noIndex !== undefined) update.noIndex = d.noIndex;
   if (d.focusKeyword !== undefined) update.focusKeyword = stripHtmlTags(d.focusKeyword);
 
-  const updated = await Course.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  const updated = await Course.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' });
   if (!updated) return res.status(404).json({ error: 'Course not found.' });
 
   await logAdminActivity(req.user!, 'update_course', 'Course', updated._id.toString(), updated.title);
@@ -650,7 +650,7 @@ router.patch('/modules/:id', async (req, res) => {
   if (parsed.data.description !== undefined) update.description = stripHtmlTags(parsed.data.description);
   if (parsed.data.order !== undefined) update.order = parsed.data.order;
 
-  const updated = await Module.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  const updated = await Module.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' });
   if (!updated) return res.status(404).json({ error: 'Module not found.' });
   res.json({ module: updated });
 });
@@ -792,7 +792,7 @@ router.patch('/lessons/:id', async (req, res) => {
   if (parsed.data.order !== undefined) update.order = parsed.data.order;
   if (parsed.data.published !== undefined) update.published = parsed.data.published;
 
-  const updated = await Lesson.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  const updated = await Lesson.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' });
   if (!updated) return res.status(404).json({ error: 'Lesson not found.' });
   await logAdminActivity(req.user!, 'update_lesson', 'Lesson', updated._id.toString(), updated.title);
   res.json({ lesson: updated });
@@ -882,7 +882,7 @@ router.patch('/learners/:id/status', async (req, res) => {
   const updated = await User.findOneAndUpdate(
     { _id: req.params.id, role: 'learner' },
     { $set: { active } },
-    { new: true }
+    { returnDocument: 'after' }
   ).select('_id name email active');
   if (!updated) return res.status(404).json({ error: 'Learner not found.' });
   await logAdminActivity(
@@ -926,7 +926,7 @@ router.post('/learners/:id/enrol', async (req, res) => {
       status: 'active',
       activatedAt: new Date(),
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   await Promise.all([
@@ -964,7 +964,7 @@ router.delete('/learners/:id/enrolments/:courseId', async (req, res) => {
   const enrolment = await Enrolment.findOneAndUpdate(
     { userId: id, courseId, status: 'active' },
     { $set: { status: 'revoked' } },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!enrolment) {
@@ -1101,7 +1101,7 @@ router.post('/payments/:id/refund', async (req, res) => {
       },
       $addToSet: { processedEvents: `admin_refund:${payment.reference}` },
     },
-    { new: true }
+    { returnDocument: 'after' }
   )
     .populate('userId', 'name email')
     .populate('courseId', 'title slug');
@@ -1450,7 +1450,7 @@ router.patch('/products/:id', async (req, res) => {
   if (d.published !== undefined) update.published = d.published;
   if (d.order !== undefined) update.order = d.order;
 
-  const updated = await Product.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  const updated = await Product.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' });
   if (!updated) return res.status(404).json({ error: 'Product not found.' });
   await logAdminActivity(req.user!, 'update_product', 'Product', updated._id.toString(), updated.name);
   res.json({ product: updated });
@@ -1537,7 +1537,7 @@ router.patch('/services/:id', async (req, res) => {
   if (d.published !== undefined) update.published = d.published;
   if (d.order !== undefined) update.order = d.order;
 
-  const updated = await Service.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  const updated = await Service.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' });
   if (!updated) return res.status(404).json({ error: 'Service not found.' });
   await logAdminActivity(req.user!, 'update_service', 'Service', updated._id.toString(), updated.name);
   res.json({ service: updated });
@@ -1642,7 +1642,7 @@ router.patch('/articles/:id', async (req, res) => {
   if (d.ctaLabel !== undefined) update.ctaLabel = stripHtmlTags(d.ctaLabel);
   if (d.ctaHref !== undefined) update.ctaHref = d.ctaHref;
 
-  const updated = await Article.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  const updated = await Article.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' });
   if (!updated) return res.status(404).json({ error: 'Article not found.' });
   await logAdminActivity(req.user!, 'update_article', 'Article', updated._id.toString(), updated.title);
   res.json({ article: updated });
@@ -1694,7 +1694,7 @@ router.patch('/tickets/:id', async (req, res) => {
   const updated = await SupportTicket.findByIdAndUpdate(
     req.params.id,
     { $set: { status: parsed.data.status } },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (!updated) return res.status(404).json({ error: 'Ticket not found.' });
   await logAdminActivity(
@@ -1813,7 +1813,7 @@ router.put('/settings', async (req, res) => {
   const updated = await SiteSettings.findOneAndUpdate(
     { key: 'main' },
     { $set: update },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   ).lean();
 
   await logAdminActivity(
@@ -1870,7 +1870,7 @@ router.put('/seo/:pageKey', async (req, res) => {
   const updated = await SEOSettings.findOneAndUpdate(
     { pageKey },
     { $set: payload },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   ).lean();
   await logAdminActivity(req.user!, 'update_seo', 'SEOSettings', pageKey, payload.title || pageKey);
   res.json({ seo: updated });
@@ -2296,7 +2296,7 @@ router.patch('/work/:id', async (req, res) => {
   if (d.published !== undefined) update.published = d.published;
   if (d.order !== undefined) update.order = d.order;
 
-  const updated = await WorkShowcase.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  const updated = await WorkShowcase.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' });
   if (!updated) return res.status(404).json({ error: 'Work item not found.' });
   await logAdminActivity(req.user!, 'update_work_item', 'WorkShowcase', updated._id.toString(), updated.title);
   res.json({ workItem: updated });
@@ -2382,7 +2382,7 @@ router.patch('/testimonials/:id', async (req, res) => {
   if (d.published !== undefined) update.published = d.published;
   if (d.order !== undefined) update.order = d.order;
 
-  const updated = await Testimonial.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  const updated = await Testimonial.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' });
   if (!updated) return res.status(404).json({ error: 'Testimonial not found.' });
   await logAdminActivity(
     req.user!,
@@ -2458,7 +2458,7 @@ router.patch('/reviews/:id', async (req, res) => {
   if (parsed.data.title !== undefined) update.title = stripHtmlTags(parsed.data.title);
   if (parsed.data.comment !== undefined) update.comment = stripHtmlTags(parsed.data.comment);
 
-  const updated = await CourseReview.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+  const updated = await CourseReview.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' })
     .populate('courseId', 'title slug')
     .populate('userId', 'name email');
   if (!updated) return res.status(404).json({ error: 'Course review not found.' });
@@ -2611,7 +2611,7 @@ router.patch('/coupons/:id', async (req, res) => {
     if (d.expiresAt !== undefined) update.expiresAt = d.expiresAt ? new Date(d.expiresAt) : null;
     if (d.active !== undefined) update.active = d.active;
 
-    const updated = await Coupon.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+    const updated = await Coupon.findByIdAndUpdate(req.params.id, { $set: update }, { returnDocument: 'after' })
       .populate('courseId', 'title slug')
       .lean();
     if (!updated) return res.status(404).json({ error: 'Coupon not found.' });

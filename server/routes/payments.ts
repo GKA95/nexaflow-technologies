@@ -62,7 +62,7 @@ async function activateEnrolmentFromVerifiedPayment(params: {
       $set: setFields,
       ...(eventKey ? { $addToSet: { processedEvents: eventKey } } : {}),
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!transitioned) {
@@ -105,7 +105,7 @@ async function activateEnrolmentFromVerifiedPayment(params: {
       status: 'active',
       activatedAt: new Date(),
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   const [course, learner] = await Promise.all([
@@ -487,7 +487,7 @@ router.post('/webhook', async (req: Request & { rawBody?: Buffer }, res) => {
         },
         $addToSet: { processedEvents: eventKey },
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (updated) {
       await Enrolment.updateOne(
@@ -506,7 +506,7 @@ router.post('/webhook', async (req: Request & { rawBody?: Buffer }, res) => {
     const updated = await Payment.findOneAndUpdate(
       { _id: payment._id, processedEvents: mongoose.trusted({ $ne: eventKey }) },
       { $addToSet: { processedEvents: eventKey } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (updated) {
       await Notification.create({

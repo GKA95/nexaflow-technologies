@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import express, { Request, Response } from 'express';
 import mongoose from 'mongoose';
@@ -651,5 +654,56 @@ describe('Compound indexes & rich-text HTML sanitization / helpers', () => {
       plainTextToHtml('First paragraph.\nLine two.\n\nSecond <paragraph>.'),
       '<p>First paragraph.<br />Line two.</p><p>Second &lt;paragraph&gt;.</p>'
     );
+  });
+
+  test('sanitize-html resolves CommonJS htmlparser2 (prevents Vercel ERR_REQUIRE_ESM startup crash)', () => {
+    const req = createRequire(import.meta.url);
+    const sanitizeHtmlEntry = req.resolve('sanitize-html');
+    const hpEntry = req.resolve('htmlparser2', { paths: [path.dirname(sanitizeHtmlEntry)] });
+    let dir = path.dirname(hpEntry);
+    let hpPkg: { version?: string; type?: string } | null = null;
+    while (dir.length > 1) {
+      const candidate = path.join(dir, 'package.json');
+      if (fs.existsSync(candidate)) {
+        const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8')) as {
+          name?: string;
+          version?: string;
+          type?: string;
+        };
+        if (parsed.name === 'htmlparser2') {
+          hpPkg = parsed;
+          break;
+        }
+      }
+      dir = path.dirname(dir);
+    }
+    assert.ok(hpPkg, 'Expected htmlparser2 package.json to be found');
+    assert.notEqual(
+      hpPkg.type,
+      'module',
+      `htmlparser2@${hpPkg.version} must be CommonJS for sanitize-html require() compatibility`
+    );
+  });
+
+  test('server routes do not use deprecated Mongoose { new: true } option', () => {
+    const serverDir = path.resolve(process.cwd(), 'server');
+    const walk = (dir: string): string[] => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const files: string[] = [];
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) files.push(...walk(full));
+        else if (e.isFile() && /\.(ts|js|mjs|cjs)$/.test(e.name)) files.push(full);
+      }
+      return files;
+    };
+    const offending: string[] = [];
+    for (const file of walk(serverDir)) {
+      const text = fs.readFileSync(file, 'utf8');
+      if (/\bnew\s*:\s*true\b/.test(text)) {
+        offending.push(path.relative(process.cwd(), file));
+      }
+    }
+    assert.deepEqual(offending, []);
   });
 });
