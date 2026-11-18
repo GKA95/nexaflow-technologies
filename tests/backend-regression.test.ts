@@ -20,6 +20,16 @@ import {
   SupportTicket,
   User,
 } from '../server/models.js';
+import { renderSeoInjectedHtml } from '../server/routes/seo.js';
+import {
+  needsServerImageResolution,
+  normalizeImageUrl,
+  parseImgurUrl,
+} from '../server/shared/media.js';
+import {
+  assertPublicSafeUrl,
+  isPrivateOrReservedIp,
+} from '../server/utils/imageResolver.js';
 
 type QueryCastable = {
   cast(model: unknown): void;
@@ -324,5 +334,126 @@ describe('Express 4 async safety and API endpoint regression checks', () => {
       if (prevUri === undefined) delete process.env.MONGODB_URI;
       else process.env.MONGODB_URI = prevUri;
     }
+  });
+
+  test('blocks SSRF targets on /api/public/image-proxy with HTTP 400', async () => {
+    const ssrfTargets = [
+      'http://127.0.0.1/secret.png',
+      'http://169.254.169.254/latest/meta-data',
+      'http://localhost:3000/og-image.png',
+      'http://[::1]/secret.png',
+      'file:///etc/passwd',
+    ];
+    for (const target of ssrfTargets) {
+      const res = await fetch(
+        `${baseUrl}/api/public/image-proxy?url=${encodeURIComponent(target)}`
+      );
+      assert.equal(res.status, 400, `Expected HTTP 400 for SSRF target ${target}`);
+    }
+  });
+
+  test('serves image-enabled sitemap.xml, robots.txt, and BreadcrumbList metadata cleanly', async () => {
+    const [sitemapRes, robotsRes, metaRes] = await Promise.all([
+      fetch(`${baseUrl}/sitemap.xml`),
+      fetch(`${baseUrl}/robots.txt`),
+      fetch(`${baseUrl}/api/seo/metadata?path=/learn`),
+    ]);
+
+    assert.equal(sitemapRes.status, 200);
+    const sitemapXml = await sitemapRes.text();
+    assert.match(sitemapXml, /xmlns:image="http:\/\/www\.google\.com\/schemas\/sitemap-image\/1\.1"/);
+    assert.match(sitemapXml, /<changefreq>daily<\/changefreq>/);
+    assert.match(sitemapXml, /<image:loc>/);
+
+    assert.equal(robotsRes.status, 200);
+    const robotsTxt = await robotsRes.text();
+    assert.match(robotsTxt, /Sitemap: https?:\/\/.*\/sitemap\.xml/);
+
+    assert.equal(metaRes.status, 200);
+    const metaJson = (await metaRes.json()) as {
+      ok?: boolean;
+      meta?: { robots?: string; structuredData?: unknown };
+    };
+    assert.equal(metaJson.ok, true);
+    assert.match(String(metaJson.meta?.robots), /max-image-preview:large/);
+    assert.ok(Array.isArray(metaJson.meta?.structuredData));
+    const types = (metaJson.meta?.structuredData as Array<{ '@type'?: string }>).map(
+      (s) => s['@type']
+    );
+    assert.ok(types.includes('CollectionPage'));
+    assert.ok(types.includes('BreadcrumbList'));
+  });
+});
+
+describe('External/Imgur image normalization, SSRF guards & SSR SEO injection', () => {
+  test('normalizes Imgur, Google Drive, and Dropbox URLs accurately', () => {
+    assert.equal(normalizeImageUrl('https://imgur.com/aBcDe12'), 'https://i.imgur.com/aBcDe12.jpg');
+    assert.equal(normalizeImageUrl('http://m.imgur.com/xYz7890'), 'https://i.imgur.com/xYz7890.jpg');
+    assert.equal(normalizeImageUrl('http://i.imgur.com/xYz7890.png'), 'https://i.imgur.com/xYz7890.png');
+    assert.equal(normalizeImageUrl('https://i.imgur.com/qRs4567.gifv'), 'https://i.imgur.com/qRs4567.gif');
+
+    const albumParsed = parseImgurUrl('https://imgur.com/a/kLm9988');
+    assert.equal(albumParsed.isImgur, true);
+    assert.equal(albumParsed.kind, 'album');
+    assert.equal(needsServerImageResolution('https://imgur.com/a/kLm9988'), true);
+    assert.equal(needsServerImageResolution('https://imgur.com/gallery/sample-gH4411'), true);
+    assert.equal(needsServerImageResolution('https://i.imgur.com/aBcDe12.jpg'), false);
+
+    assert.equal(
+      normalizeImageUrl('https://drive.google.com/file/d/1AbCdEfGhIjK/view?usp=sharing'),
+      'https://drive.google.com/uc?export=view&id=1AbCdEfGhIjK'
+    );
+    assert.equal(
+      normalizeImageUrl('https://www.dropbox.com/s/abc123/cover.png?dl=0'),
+      'https://www.dropbox.com/s/abc123/cover.png?raw=1'
+    );
+  });
+
+  test('rejects private/reserved IPs and unsafe URL schemes in SSRF validator', async () => {
+    assert.equal(isPrivateOrReservedIp('127.0.0.1'), true);
+    assert.equal(isPrivateOrReservedIp('10.0.0.5'), true);
+    assert.equal(isPrivateOrReservedIp('169.254.169.254'), true);
+    assert.equal(isPrivateOrReservedIp('172.16.5.4'), true);
+    assert.equal(isPrivateOrReservedIp('192.168.1.1'), true);
+    assert.equal(isPrivateOrReservedIp('::1'), true);
+    assert.equal(isPrivateOrReservedIp('8.8.8.8'), false);
+
+    await assert.rejects(() => assertPublicSafeUrl('http://127.0.0.1/a.png'));
+    await assert.rejects(() => assertPublicSafeUrl('https://user:pass@imgur.com/a.png'));
+    await assert.rejects(() => assertPublicSafeUrl('https://imgur.com:8443/a.png'));
+  });
+
+  test('injects route-specific meta tags, canonical link, JSON-LD, and crawlable links into SSR HTML', async () => {
+    const ssrApp = express();
+    ssrApp.get('*', (req, res) => {
+      void renderSeoInjectedHtml(req, res);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const srv = ssrApp.listen(0, '127.0.0.1', () => {
+        const addr = srv.address() as { port: number };
+        fetch(`http://127.0.0.1:${addr.port}/products/gridmind-ai`)
+          .then(async (r) => {
+            assert.equal(r.status, 200);
+            const html = await r.text();
+            assert.match(html, /<title>GridMind AI/i);
+            assert.match(html, /<meta property="og:title" content="GridMind AI/i);
+            assert.match(html, /<link rel="canonical" href="https?:\/\/[^"]+\/products\/gridmind-ai"/);
+            assert.match(html, /<script id="nf-jsonld" type="application\/ld\+json">/);
+            assert.match(html, /"SoftwareApplication"/);
+            assert.match(html, /"BreadcrumbList"/);
+            assert.match(html, /data-ssr-seo="true"/);
+            assert.match(html, /href="\/learn"/);
+          })
+          .then(() => {
+            srv.close();
+            resolve();
+          })
+          .catch((e) => {
+            srv.close();
+            reject(e);
+          });
+      });
+    });
   });
 });

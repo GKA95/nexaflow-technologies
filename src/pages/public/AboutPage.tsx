@@ -1,9 +1,10 @@
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 
 export function AboutPage() {
-  const { settings, services, seoPages, navigate } = useApp();
+  const { settings, services, seoPages } = useApp();
   const seo = seoPages.find((p) => p.pageKey === 'about');
 
   return (
@@ -87,14 +88,13 @@ export function AboutPage() {
                 <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4]">
                   {s.shortDescription}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/solutions/${s.slug}`)}
+                <AppLink
+                  to={`/solutions/${s.slug}`}
                   className="mt-3 min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                 >
                   Explore service
                   <ArrowRight className="w-4 h-4" />
-                </button>
+                </AppLink>
               </div>
             ))}
           </div>

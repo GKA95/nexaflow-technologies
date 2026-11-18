@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
 import { SEOHead } from '../../components/SEOHead';
@@ -7,7 +8,7 @@ import { useApp } from '../../context/AppContext';
 import type { ServiceItem } from '../../types';
 
 export function ServiceDetailPage({ slug }: { slug: string }) {
-  const { services, navigate } = useApp();
+  const { services } = useApp();
   const cached = services.find((s) => s.slug === slug) || null;
   const [service, setService] = useState<ServiceItem | null>(cached);
   const [loading, setLoading] = useState(!cached);
@@ -39,13 +40,12 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-20 text-center">
         <h1 className="text-2xl font-bold">Service Not Found</h1>
-        <button
-          type="button"
-          onClick={() => navigate('/solutions')}
-          className="mt-4 text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+        <AppLink
+          to="/solutions"
+          className="mt-4 inline-flex items-center text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
         >
           Back to Solutions
-        </button>
+        </AppLink>
       </div>
     );
   }
@@ -93,14 +93,13 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
 
       <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={() => navigate('/solutions')}
+          <AppLink
+            to="/solutions"
             className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             All Solutions
-          </button>
+          </AppLink>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-center">

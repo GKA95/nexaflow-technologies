@@ -10,12 +10,12 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { AppLink } from './AppLink';
 import { CompactHeaderSearchPanel, DesktopHeaderSearch } from './GlobalHeaderSearch';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const {
     currentPath,
-    navigate,
     theme,
     toggleTheme,
     user,
@@ -78,10 +78,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     };
   }, [mobileOpen, compactSearchOpen]);
 
-  const handleNav = (href: string) => {
+  const closeDrawers = () => {
     setMobileOpen(false);
     setCompactSearchOpen(false);
-    navigate(href);
   };
 
   const isRouteActive = (href: string) =>
@@ -96,9 +95,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 bg-[#03051B]/95 backdrop-blur-md border-b border-[#1A2550] text-[#F7F8FF]">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-3 lg:gap-4 xl:gap-5">
           {/* Zone 1: Exact Supplied NexaFlow Brand Mark (horizontal on desktop/tablet, compact N mark on small mobile) */}
-          <button
-            type="button"
-            onClick={() => handleNav('/')}
+          <AppLink
+            to="/"
+            onClick={closeDrawers}
             className="flex items-center gap-2 shrink-0 min-h-[44px] focus-visible:outline-2 focus-visible:outline-[#00D4FF] rounded-md"
             aria-label="NexaFlow Technologies Home"
           >
@@ -135,7 +134,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 NexaFlow
               </span>
             </span>
-          </button>
+          </AppLink>
 
           {/* Zone 2: 5 concise single-line text links */}
           <nav
@@ -145,10 +144,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {navItems.map((item) => {
               const active = isRouteActive(item.href);
               return (
-                <button
+                <AppLink
                   key={item.href}
-                  type="button"
-                  onClick={() => handleNav(item.href)}
+                  to={item.href}
+                  onClick={closeDrawers}
                   aria-current={active ? 'page' : undefined}
                   className={`whitespace-nowrap shrink-0 py-1.5 transition-colors border-b-2 ${
                     active
@@ -157,7 +156,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   }`}
                 >
                   {item.label}
-                </button>
+                </AppLink>
               );
             })}
           </nav>
@@ -216,41 +215,41 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
 
             {showLearnerPortal ? (
-              <button
-                type="button"
-                onClick={() => handleNav('/learner')}
+              <AppLink
+                to="/learner"
+                onClick={closeDrawers}
                 className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-[#00D4FF]/40 bg-[#080D2B] px-3.5 min-h-[40px] text-xs font-semibold text-[#F7F8FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
               >
                 <User className="w-3.5 h-3.5 text-[#00D4FF]" />
                 My Portal
-              </button>
+              </AppLink>
             ) : (
               <div className="hidden sm:flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => handleNav('/auth/login')}
+                <AppLink
+                  to="/auth/login"
+                  onClick={closeDrawers}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#1A2550] px-3 min-h-[40px] text-xs font-medium text-[#F7F8FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
                 >
                   <User className="w-3.5 h-3.5 text-[#00D4FF]" />
                   Sign In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleNav('/auth/register')}
+                </AppLink>
+                <AppLink
+                  to="/auth/register"
+                  onClick={closeDrawers}
                   className="inline-flex items-center rounded-lg border border-[#00D4FF]/40 px-3 min-h-[40px] text-xs font-semibold text-[#00D4FF] hover:bg-[#10183A] transition-colors whitespace-nowrap shrink-0"
                 >
                   Register
-                </button>
+                </AppLink>
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => handleNav('/contact?type=consultation')}
+            <AppLink
+              to="/contact?type=consultation"
+              onClick={closeDrawers}
               className="hidden md:inline-flex items-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-3.5 xl:px-4 min-h-[40px] text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0"
             >
               Request Consultation
-            </button>
+            </AppLink>
 
             <button
               type="button"
@@ -305,10 +304,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {navItems.map((item) => {
               const active = isRouteActive(item.href);
               return (
-                <button
+                <AppLink
                   key={item.href}
-                  type="button"
-                  onClick={() => handleNav(item.href)}
+                  to={item.href}
+                  onClick={closeDrawers}
                   aria-current={active ? 'page' : undefined}
                   className={`flex items-center justify-between w-full text-left px-3.5 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
                     active
@@ -320,12 +319,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   {active && (
                     <span className="h-1.5 w-1.5 rounded-full bg-[#00D4FF]" aria-hidden="true" />
                   )}
-                </button>
+                </AppLink>
               );
             })}
-            <button
-              type="button"
-              onClick={() => handleNav('/contact')}
+            <AppLink
+              to="/contact"
+              onClick={closeDrawers}
               aria-current={isRouteActive('/contact') ? 'page' : undefined}
               className={`flex items-center justify-between w-full text-left px-3.5 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
                 isRouteActive('/contact')
@@ -337,7 +336,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {isRouteActive('/contact') && (
                 <span className="h-1.5 w-1.5 rounded-full bg-[#00D4FF]" aria-hidden="true" />
               )}
-            </button>
+            </AppLink>
 
             {!isInstalled && isInstallable && (
               <button
@@ -369,13 +368,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="pt-3 mt-2 border-t border-[#1A2550] flex flex-col gap-2.5">
               {showLearnerPortal ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => handleNav('/learner')}
-                    className="w-full min-h-[44px] rounded-lg border border-[#00D4FF]/40 px-4 py-2.5 text-sm font-semibold text-[#F7F8FF] text-center"
+                  <AppLink
+                    to="/learner"
+                    onClick={closeDrawers}
+                    className="w-full min-h-[44px] inline-flex items-center justify-center rounded-lg border border-[#00D4FF]/40 px-4 py-2.5 text-sm font-semibold text-[#F7F8FF] text-center"
                   >
                     My Portal
-                  </button>
+                  </AppLink>
                   <button
                     type="button"
                     onClick={() => {
@@ -389,29 +388,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </>
               ) : (
                 <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => handleNav('/auth/login')}
-                    className="w-full min-h-[44px] rounded-lg border border-[#1A2550] px-3 py-2.5 text-sm font-medium text-[#F7F8FF] text-center"
+                  <AppLink
+                    to="/auth/login"
+                    onClick={closeDrawers}
+                    className="w-full min-h-[44px] inline-flex items-center justify-center rounded-lg border border-[#1A2550] px-3 py-2.5 text-sm font-medium text-[#F7F8FF] text-center"
                   >
                     Sign In
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleNav('/auth/register')}
-                    className="w-full min-h-[44px] rounded-lg border border-[#00D4FF]/40 px-3 py-2.5 text-sm font-semibold text-[#00D4FF] text-center"
+                  </AppLink>
+                  <AppLink
+                    to="/auth/register"
+                    onClick={closeDrawers}
+                    className="w-full min-h-[44px] inline-flex items-center justify-center rounded-lg border border-[#00D4FF]/40 px-3 py-2.5 text-sm font-semibold text-[#00D4FF] text-center"
                   >
                     Register
-                  </button>
+                  </AppLink>
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => handleNav('/contact?type=consultation')}
-                className="w-full min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2.5 text-sm font-semibold text-white text-center transition-colors"
+              <AppLink
+                to="/contact?type=consultation"
+                onClick={closeDrawers}
+                className="w-full min-h-[44px] inline-flex items-center justify-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2.5 text-sm font-semibold text-white text-center transition-colors"
               >
                 Request Consultation
-              </button>
+              </AppLink>
             </div>
           </nav>
         )}
@@ -454,40 +453,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h4 className="text-sm font-semibold text-[#F7F8FF] mb-3">Platform</h4>
               <ul className="space-y-1 text-sm">
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/solutions')}
+                  <AppLink
+                    to="/solutions"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Solutions &amp; Services
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/products')}
+                  <AppLink
+                    to="/products"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Products
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/learn')}
+                  <AppLink
+                    to="/learn"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     NexaFlow Learn
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/insights')}
+                  <AppLink
+                    to="/insights"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Insights &amp; Resources
-                  </button>
+                  </AppLink>
                 </li>
               </ul>
             </div>
@@ -496,31 +491,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h4 className="text-sm font-semibold text-[#F7F8FF] mb-3">Company &amp; Contact</h4>
               <ul className="space-y-1 text-sm">
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/about')}
+                  <AppLink
+                    to="/about"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     About NexaFlow
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/contact')}
+                  <AppLink
+                    to="/contact"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Contact &amp; Enquiries
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/contact?type=consultation')}
+                  <AppLink
+                    to="/contact?type=consultation"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Request Consultation
-                  </button>
+                  </AppLink>
                 </li>
                 {settings?.email && (
                   <li>
@@ -549,40 +541,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h4 className="text-sm font-semibold text-[#F7F8FF] mb-3">Legal &amp; Governance</h4>
               <ul className="space-y-1 text-sm">
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/legal/privacy')}
+                  <AppLink
+                    to="/legal/privacy"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Privacy Policy
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/legal/terms')}
+                  <AppLink
+                    to="/legal/terms"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Terms of Service
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/legal/cookies')}
+                  <AppLink
+                    to="/legal/cookies"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Cookie &amp; Analytics Notice
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/legal/refund')}
+                  <AppLink
+                    to="/legal/refund"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
                     Course &amp; Refund Policy
-                  </button>
+                  </AppLink>
                 </li>
                 <li>
                   <button
@@ -658,13 +646,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <p className="text-xs text-[#AEB8D4] leading-relaxed">
             NexaFlow uses essential session cookies for secure sign-in. Optional analytics cookies
             help us measure page and course interest and only load if you accept.{' '}
-            <button
-              type="button"
-              onClick={() => navigate('/legal/cookies')}
+            <AppLink
+              to="/legal/cookies"
               className="text-[#00D4FF] underline"
             >
               Read Cookie Notice
-            </button>
+            </AppLink>
             .
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">

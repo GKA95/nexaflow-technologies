@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, FileText } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { MediaImage } from '../../components/MediaImage';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import type { ArticleItem } from '../../types';
 
 export function InsightsPage() {
-  const { seoPages, navigate } = useApp();
+  const { seoPages } = useApp();
   const seo = seoPages.find((p) => p.pageKey === 'insights');
   const [articles, setArticles] = useState<ArticleItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -126,14 +127,13 @@ export function InsightsPage() {
                     </div>
                   </div>
                   <div className="px-5 sm:px-6 pb-5 sm:pb-6">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/insights/${article.slug}`)}
+                    <AppLink
+                      to={`/insights/${article.slug}`}
                       className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                     >
                       Read article
                       <ArrowRight className="w-4 h-4" />
-                    </button>
+                    </AppLink>
                   </div>
                 </article>
               ))}

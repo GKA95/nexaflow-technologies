@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ArrowRight, BookOpen } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowRight, BookOpen, Search, X } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { CouponApplyBar } from '../../components/CouponApplyBar';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
@@ -10,10 +11,16 @@ import type { CourseItem } from '../../types';
 import { formatMoneyAmount, getCourseDiscountPricing } from '../../utils/pricing';
 
 export function LearnCataloguePage() {
-  const { seoPages, navigate, appliedCoupon } = useApp();
+  const { seoPages, appliedCoupon, searchParams } = useApp();
   const seo = seoPages.find((p) => p.pageKey === 'learn');
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const urlQuery = searchParams.get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(urlQuery);
+
+  useEffect(() => {
+    setSearchQuery(urlQuery);
+  }, [urlQuery]);
 
   useEffect(() => {
     fetch('/api/public/courses')
@@ -21,6 +28,18 @@ export function LearnCataloguePage() {
       .then((d) => setCourses(d.courses || []))
       .finally(() => setLoading(false));
   }, []);
+
+  const filteredCourses = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return courses;
+    return courses.filter((c) => {
+      const hay = [c.title, c.shortDescription, c.fullDescription, c.focusKeyword]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [courses, searchQuery]);
 
   return (
     <>
@@ -46,8 +65,39 @@ export function LearnCataloguePage() {
           <p className="mt-4 text-base text-[#AEB8D4] max-w-2xl leading-relaxed">
             Enrol in guided video courses with module progress tracking, learner support tickets, and verified online payments.
           </p>
-          <div className="mt-8">
-            <CouponApplyBar variant="dark" compact />
+          <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+            <div className="lg:col-span-7">
+              <CouponApplyBar variant="dark" compact />
+            </div>
+            <div className="lg:col-span-5">
+              <label htmlFor="learn-catalogue-search" className="sr-only">
+                Search courses
+              </label>
+              <div className="relative flex items-center">
+                <Search
+                  className="w-4 h-4 text-[#00D4FF] absolute left-3.5 pointer-events-none"
+                  aria-hidden="true"
+                />
+                <input
+                  id="learn-catalogue-search"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search courses by topic or keyword..."
+                  className="w-full min-h-[44px] rounded-xl border border-[#1A2550] bg-[#080D2B] pl-10 pr-10 py-2.5 text-sm text-[#F7F8FF] placeholder-[#8C98BD] focus:outline-none focus:border-[#00D4FF]"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear course search"
+                    className="absolute right-2 min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-lg text-[#AEB8D4] hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -73,9 +123,26 @@ export function LearnCataloguePage() {
                 New training programmes are published directly from the NexaFlow Learn portal. If your organisation requires custom training, use the enquiry form below.
               </p>
             </div>
+          ) : filteredCourses.length === 0 ? (
+            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-8 sm:p-10 text-center max-w-2xl mx-auto">
+              <Search className="w-7 h-7 mx-auto text-[#176BFF] dark:text-[#00D4FF] mb-3" />
+              <h2 className="text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                No matching courses found
+              </h2>
+              <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4]">
+                No published courses matched &ldquo;{searchQuery.trim()}&rdquo;.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="mt-4 min-h-[44px] inline-flex items-center justify-center rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-sm font-medium hover:bg-[#EEF2FA] dark:hover:bg-[#10183A]"
+              >
+                Show All Courses
+              </button>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {courses.map((course) => {
+              {filteredCourses.map((course) => {
                 const pricing = getCourseDiscountPricing(course, appliedCoupon);
                 return (
                   <article
@@ -139,14 +206,13 @@ export function LearnCataloguePage() {
                       </div>
                     </div>
                     <div className="px-5 sm:px-6 pb-5 sm:pb-6">
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/learn/${course.slug}`)}
+                      <AppLink
+                        to={`/learn/${course.slug}`}
                         className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
                       >
                         View Curriculum &amp; Enrol
                         <ArrowRight className="w-4 h-4" />
-                      </button>
+                      </AppLink>
                     </div>
                   </article>
                 );

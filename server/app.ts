@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import path from 'node:path';
 import {
   csrfOriginCheck,
   enforceHttpsInProduction,
@@ -14,7 +15,7 @@ import authRoutes from './routes/auth.js';
 import learnerRoutes from './routes/learner.js';
 import paymentRoutes from './routes/payments.js';
 import publicRoutes from './routes/public.js';
-import seoRoutes from './routes/seo.js';
+import seoRoutes, { renderSeoInjectedHtml } from './routes/seo.js';
 
 function getConfiguredOrigins(): Set<string> {
   const allowed = new Set<string>();
@@ -160,6 +161,15 @@ export function createExpressApp() {
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'API endpoint not found.' });
   });
+
+  // On Vercel serverless deployments, serve SSR SEO-injected HTML when bot rewrites route here
+  if (process.env.VERCEL) {
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) return next();
+      const distHtmlPath = path.resolve(process.cwd(), 'dist', 'index.html');
+      return renderSeoInjectedHtml(req, res, distHtmlPath);
+    });
+  }
 
   // Global JSON error handler for Express API routes (no stack traces or internal leaks in production)
   app.use(

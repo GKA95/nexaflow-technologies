@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { MediaImage } from '../../components/MediaImage';
 import { SEOHead } from '../../components/SEOHead';
-import { useApp } from '../../context/AppContext';
 import type { ArticleItem } from '../../types';
+import { normalizeImageUrl } from '../../utils/media';
 
 export function ArticleDetailPage({ slug }: { slug: string }) {
-  const { navigate } = useApp();
   const [article, setArticle] = useState<ArticleItem | null>(null);
   const [related, setRelated] = useState<ArticleItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,32 +36,58 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-20 text-center">
         <h1 className="text-2xl font-bold">Article Not Found</h1>
-        <button
-          type="button"
-          onClick={() => navigate('/insights')}
-          className="mt-4 text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+        <AppLink
+          to="/insights"
+          className="mt-4 inline-flex items-center text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
         >
           Back to Insights
-        </button>
+        </AppLink>
       </div>
     );
   }
 
-  const structuredData = {
-    '@context': 'https://schema.org',
-    '@type': 'Article',
-    headline: article.title,
-    description: article.seoDescription || article.excerpt,
-    author: {
-      '@type': 'Person',
-      name: article.authorName || 'NexaFlow Editorial',
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const articleUrl = `${origin}/insights/${article.slug}`;
+  const rawImg = normalizeImageUrl(article.ogImage || article.featuredImage);
+  const articleImage = rawImg
+    ? /^https?:\/\//i.test(rawImg)
+      ? rawImg
+      : `${origin}${rawImg.startsWith('/') ? '' : '/'}${rawImg}`
+    : `${origin}/og-image.png`;
+
+  const structuredData = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: article.title,
+      description: article.seoDescription || article.excerpt,
+      image: articleImage,
+      url: articleUrl,
+      author: {
+        '@type': 'Person',
+        name: article.authorName || 'NexaFlow Editorial',
+      },
+      ...(article.publishedAt ? { datePublished: article.publishedAt } : {}),
+      ...(article.updatedAt ? { dateModified: article.updatedAt } : {}),
+      publisher: {
+        '@type': 'Organization',
+        name: 'NexaFlow Technologies',
+        logo: {
+          '@type': 'ImageObject',
+          url: `${origin}/favicon.svg`,
+        },
+      },
     },
-    ...(article.publishedAt ? { datePublished: article.publishedAt } : {}),
-    publisher: {
-      '@type': 'Organization',
-      name: 'NexaFlow Technologies',
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: `${origin}/` },
+        { '@type': 'ListItem', position: 2, name: 'Insights', item: `${origin}/insights` },
+        { '@type': 'ListItem', position: 3, name: article.title, item: articleUrl },
+      ],
     },
-  };
+  ];
 
   return (
     <>
@@ -78,14 +104,13 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
 
       <article className="py-12 lg:py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={() => navigate('/insights')}
+          <AppLink
+            to="/insights"
             className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] hover:text-[#176BFF] dark:hover:text-[#00D4FF] mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             All Insights
-          </button>
+          </AppLink>
 
           <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-2">
             <span>{article.category}</span>
@@ -144,14 +169,13 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
             <div className="mt-10 rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4">
               {article.ctaLabel && article.ctaHref && (
                 <div>
-                  <button
-                    type="button"
-                    onClick={() => navigate(article.ctaHref!)}
+                  <AppLink
+                    to={article.ctaHref}
                     className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-2.5 text-sm font-semibold text-white"
                   >
                     {article.ctaLabel}
                     <ArrowRight className="w-4 h-4" />
-                  </button>
+                  </AppLink>
                 </div>
               )}
               {article.internalLinks && article.internalLinks.length > 0 && (
@@ -161,14 +185,13 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
                   </p>
                   <div className="flex flex-wrap gap-3">
                     {article.internalLinks.map((lnk) => (
-                      <button
+                      <AppLink
                         key={lnk.href}
-                        type="button"
-                        onClick={() => navigate(lnk.href)}
+                        to={lnk.href}
                         className="min-h-[40px] inline-flex items-center text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                       >
                         {lnk.label}
-                      </button>
+                      </AppLink>
                     ))}
                   </div>
                 </div>
@@ -183,11 +206,10 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {related.map((rel) => (
-                  <button
+                  <AppLink
                     key={rel.slug}
-                    type="button"
-                    onClick={() => navigate(`/insights/${rel.slug}`)}
-                    className="text-left rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 hover:border-[#176BFF] transition-colors"
+                    to={`/insights/${rel.slug}`}
+                    className="block text-left rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 hover:border-[#176BFF] transition-colors"
                   >
                     <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
                       {rel.category} · {rel.readingTimeMinutes} min read
@@ -195,7 +217,7 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
                     <p className="mt-1.5 font-semibold text-[#070B24] dark:text-[#F7F8FF]">
                       {rel.title}
                     </p>
-                  </button>
+                  </AppLink>
                 ))}
               </div>
             </div>

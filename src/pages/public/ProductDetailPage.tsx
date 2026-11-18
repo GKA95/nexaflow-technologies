@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, ExternalLink } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import type { ProductItem } from '../../types';
 import { trackEvent } from '../../utils/analytics';
+import { normalizeImageUrl } from '../../utils/media';
 
 export function ProductDetailPage({ slug }: { slug: string }) {
-  const { products, navigate, consent } = useApp();
+  const { products, consent } = useApp();
   const cached = products.find((p) => p.slug === slug) || null;
   const [product, setProduct] = useState<ProductItem | null>(cached);
   const [loading, setLoading] = useState(!cached);
@@ -49,16 +51,50 @@ export function ProductDetailPage({ slug }: { slug: string }) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-20 text-center">
         <h1 className="text-2xl font-bold">Product Not Found</h1>
-        <button
-          type="button"
-          onClick={() => navigate('/products')}
-          className="mt-4 text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+        <AppLink
+          to="/products"
+          className="mt-4 inline-flex items-center text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
         >
           Back to Products
-        </button>
+        </AppLink>
       </div>
     );
   }
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const productUrl = `${origin}/products/${product.slug}`;
+  const rawImg = normalizeImageUrl(product.ogImage || product.images?.[0]);
+  const productImage = rawImg
+    ? /^https?:\/\//i.test(rawImg)
+      ? rawImg
+      : `${origin}${rawImg.startsWith('/') ? '' : '/'}${rawImg}`
+    : `${origin}/og-image.png`;
+
+  const structuredData = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: product.name,
+      applicationCategory: product.category || 'BusinessApplication',
+      operatingSystem: 'Web',
+      description: product.seoDescription || product.shortDescription,
+      image: productImage,
+      url: productUrl,
+      brand: {
+        '@type': 'Organization',
+        name: 'NexaFlow Technologies',
+      },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: `${origin}/` },
+        { '@type': 'ListItem', position: 2, name: 'Products', item: `${origin}/products` },
+        { '@type': 'ListItem', position: 3, name: product.name, item: productUrl },
+      ],
+    },
+  ];
 
   return (
     <>
@@ -69,27 +105,18 @@ export function ProductDetailPage({ slug }: { slug: string }) {
         ogImage={product.ogImage || product.images?.[0]}
         keywords={product.focusKeyword}
         noIndex={product.noIndex}
-        structuredData={{
-          '@context': 'https://schema.org',
-          '@type': 'SoftwareApplication',
-          name: product.name,
-          applicationCategory: product.category || 'BusinessApplication',
-          operatingSystem: 'Web',
-          description: product.seoDescription || product.shortDescription,
-          url: `${window.location.origin}/products/${product.slug}`,
-        }}
+        structuredData={structuredData}
       />
 
       <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={() => navigate('/products')}
+          <AppLink
+            to="/products"
             className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             All Products
-          </button>
+          </AppLink>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-center">

@@ -229,6 +229,7 @@ export interface ArticleItem {
   tags: string[];
   authorName: string;
   publishedAt?: string;
+  updatedAt?: string;
   status: 'draft' | 'published';
   readingTimeMinutes: number;
   internalLinks?: Array<{ label: string; href: string }>;

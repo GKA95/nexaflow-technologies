@@ -8,12 +8,55 @@ import type {
   ServiceItem,
   SiteSettings,
 } from '../types';
+import { normalizeImageUrl } from './media';
 
 function resolveAbsoluteUrl(value: string | undefined, origin: string, fallbackPath: string): string {
-  const trimmed = value?.trim();
-  if (!trimmed) return `${origin}${fallbackPath}`;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `${origin}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+  const normalized = normalizeImageUrl(value) || value?.trim() || '';
+  if (!normalized) return `${origin}${fallbackPath}`;
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  return `${origin}${normalized.startsWith('/') ? '' : '/'}${normalized}`;
+}
+
+function buildFallbackBreadcrumbSchema(
+  cleanPath: string,
+  origin: string
+): Record<string, unknown> | null {
+  if (!origin || cleanPath === '/') return null;
+  const labels: Record<string, string> = {
+    about: 'About',
+    solutions: 'Solutions',
+    products: 'Products',
+    learn: 'Learn',
+    insights: 'Insights',
+    contact: 'Contact',
+    legal: 'Legal',
+  };
+  const segments = cleanPath.split('/').filter(Boolean);
+  if (segments.length === 0) return null;
+  const items: Array<Record<string, unknown>> = [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: `${origin}/` },
+  ];
+  let acc = '';
+  segments.forEach((seg, idx) => {
+    acc += `/${seg}`;
+    const label =
+      labels[seg] ||
+      seg
+        .split('-')
+        .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ''))
+        .join(' ');
+    items.push({
+      '@type': 'ListItem',
+      position: idx + 2,
+      name: label,
+      item: `${origin}${acc}`,
+    });
+  });
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items,
+  };
 }
 
 function normalizeKeywords(input?: string[] | string): string {
@@ -82,8 +125,8 @@ export function resolveRouteMeta(params: {
     title = seo?.title?.trim() || fallbackTitle;
     description = seo?.description?.trim() || fallbackDescription;
     canonicalUrl = seo?.canonicalUrl?.trim() || canonicalUrl;
-    ogTitle = seo?.ogTitle?.trim() || globalOgTitle;
-    ogDescription = seo?.ogDescription?.trim() || globalOgDescription;
+    ogTitle = seo?.ogTitle?.trim() || title;
+    ogDescription = seo?.ogDescription?.trim() || description;
     ogImage = seo?.ogImage?.trim()
       ? resolveAbsoluteUrl(seo.ogImage, browserOrigin, '/og-image.png')
       : globalOgImage;
@@ -94,8 +137,8 @@ export function resolveRouteMeta(params: {
   let title = globalTitle;
   let description = globalDescription;
   let canonicalUrl = `${canonicalOrigin}${cleanPath}`;
-  let ogTitle = globalOgTitle;
-  let ogDescription = globalOgDescription;
+  let ogTitle = '';
+  let ogDescription = '';
   let ogImage = globalOgImage;
   let ogType: 'website' | 'article' = 'website';
   let keywords = globalKeywords;
@@ -265,11 +308,17 @@ export function resolveRouteMeta(params: {
   const finalOgType = override?.ogType || dbOgType;
   const finalKeywords = override?.keywords ? normalizeKeywords(override.keywords) : dbKeywords;
   const finalNoIndex = override?.noIndex !== undefined ? override.noIndex : dbNoIndex;
+  const fallbackBreadcrumb =
+    !noIndex && structuredData === null
+      ? buildFallbackBreadcrumbSchema(cleanPath, canonicalOrigin)
+      : null;
+  const defaultStructuredData = structuredData ?? fallbackBreadcrumb;
+
   const finalStructuredData =
     structuredDataEnabled && !finalNoIndex
       ? override?.structuredData !== undefined
         ? override.structuredData
-        : dbStructuredData
+        : dbStructuredData ?? defaultStructuredData
       : null;
 
   return {
@@ -313,7 +362,13 @@ export function applyDocumentHeadMeta(
   document.title = meta.title;
 
   upsertMeta('name', 'description', meta.description);
-  upsertMeta('name', 'robots', meta.noIndex ? 'noindex, nofollow' : 'index, follow');
+  upsertMeta(
+    'name',
+    'robots',
+    meta.noIndex
+      ? 'noindex, nofollow'
+      : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
+  );
 
   if (meta.keywords) {
     upsertMeta('name', 'keywords', meta.keywords);

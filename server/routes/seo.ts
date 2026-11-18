@@ -1,4 +1,5 @@
-import { Request } from 'express';
+import fs from 'node:fs';
+import { Request, Response } from 'express';
 import { connectDB, isDBConfigured } from '../db.js';
 import {
   DEFAULT_PRODUCTS,
@@ -22,6 +23,11 @@ import {
   Service,
   SiteSettings,
 } from '../models.js';
+import {
+  buildImageProxyPath,
+  needsServerImageResolution,
+  normalizeImageUrl,
+} from '../shared/media.js';
 
 const router = createAsyncRouter();
 
@@ -69,6 +75,8 @@ const STATIC_PAGE_DEFAULTS: Record<string, { titleSuffixLabel: string; schemaTyp
   contact: { titleSuffixLabel: 'Contact & Consultation', schemaType: 'ContactPage' },
 };
 
+const htmlTemplateCache = new Map<string, string>();
+
 function getBaseUrl(req: Request, canonicalOverride?: string): string {
   if (canonicalOverride?.trim()) {
     return canonicalOverride.trim().replace(/\/+$/, '');
@@ -79,6 +87,28 @@ function getBaseUrl(req: Request, canonicalOverride?: string): string {
 function cleanText(value: unknown, maxLen = 500): string {
   if (typeof value !== 'string') return '';
   return stripHtmlTags(value).replace(/\s+/g, ' ').trim().slice(0, maxLen);
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeJsonLdStringify(data: unknown): string {
+  return JSON.stringify(data).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
 }
 
 function normalizeSeoPath(rawPath: unknown): string {
@@ -106,10 +136,14 @@ function resolveAbsoluteAssetUrl(
   baseUrl: string,
   fallbackPath: string
 ): string {
-  const trimmed = value?.trim();
-  if (!trimmed) return `${baseUrl}${fallbackPath}`;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `${baseUrl}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+  const raw = value?.trim() || '';
+  if (!raw) return `${baseUrl}${fallbackPath}`;
+  const normalized = normalizeImageUrl(raw) || raw;
+  if (needsServerImageResolution(normalized)) {
+    return `${baseUrl}${buildImageProxyPath(normalized)}`;
+  }
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  return `${baseUrl}${normalized.startsWith('/') ? '' : '/'}${normalized}`;
 }
 
 function normalizeKeywords(...inputs: Array<string | string[] | undefined>): string {
@@ -140,6 +174,22 @@ function resolveEffectiveCanonical(
   if (!trimmed) return `${baseUrl}${path}`;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `${baseUrl}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+}
+
+function buildBreadcrumbJsonLd(
+  baseUrl: string,
+  items: Array<{ name: string; path: string }>
+): Record<string, unknown> {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      name: cleanText(item.name, 140),
+      item: item.path.startsWith('http') ? item.path : `${baseUrl}${item.path}`,
+    })),
+  };
 }
 
 async function getCourseSeoStatsMap(courseIds: unknown[]) {
@@ -222,11 +272,17 @@ function buildCourseJsonLd(params: {
   description: string;
   ogImage: string;
   stats?: { moduleCount: number; lessonCount: number; averageRating: number; reviewCount: number };
+  reviews?: Array<Record<string, unknown>>;
 }): Record<string, unknown> {
-  const { course, baseUrl, canonicalUrl, siteName, description, ogImage, stats } = params;
+  const { course, baseUrl, canonicalUrl, siteName, description, ogImage, stats, reviews } = params;
   const title = cleanText(course.title, 180);
   const price = Number(course.price || 0);
   const currency = cleanText(course.currency, 10).toUpperCase() || 'GHS';
+  const teaches = Array.isArray(course.outcomes) && course.outcomes.length > 0
+    ? course.outcomes.map((o) => cleanText(o, 180)).filter(Boolean)
+    : Array.isArray(course.objectives)
+      ? course.objectives.map((o) => cleanText(o, 180)).filter(Boolean)
+      : [];
 
   const schema: Record<string, unknown> = {
     '@context': 'https://schema.org',
@@ -235,9 +291,11 @@ function buildCourseJsonLd(params: {
     description,
     url: canonicalUrl,
     image: ogImage,
+    inLanguage: 'en',
     provider: {
       '@type': 'Organization',
       name: siteName,
+      url: baseUrl,
       sameAs: baseUrl,
     },
     offers: {
@@ -248,6 +306,10 @@ function buildCourseJsonLd(params: {
       url: canonicalUrl,
     },
   };
+
+  if (teaches.length > 0) {
+    schema.teaches = teaches.slice(0, 8);
+  }
 
   if (stats && stats.lessonCount > 0) {
     schema.numberOfCredits = stats.moduleCount;
@@ -266,6 +328,24 @@ function buildCourseJsonLd(params: {
       bestRating: 5,
       worstRating: 1,
     };
+  }
+
+  if (reviews && reviews.length > 0) {
+    schema.review = reviews.slice(0, 5).map((r) => ({
+      '@type': 'Review',
+      author: {
+        '@type': 'Person',
+        name: cleanText(r.authorName, 100) || 'Verified Learner',
+      },
+      reviewRating: {
+        '@type': 'Rating',
+        ratingValue: Number(r.rating || 5),
+        bestRating: 5,
+        worstRating: 1,
+      },
+      ...(cleanText(r.title, 160) ? { name: cleanText(r.title, 160) } : {}),
+      ...(cleanText(r.comment, 500) ? { reviewBody: cleanText(r.comment, 500) } : {}),
+    }));
   }
 
   return schema;
@@ -371,306 +451,188 @@ async function resolveSiteContext(req: Request) {
   };
 }
 
-router.get('/robots.txt', async (req, res) => {
-  let canonicalOverride = '';
-  if (isDBConfigured() && (await connectDB())) {
-    const s = (await SiteSettings.findOne({ key: 'main' })
-      .select('seoCanonicalBaseUrl')
-      .lean()) as { seoCanonicalBaseUrl?: string } | null;
-    canonicalOverride = s?.seoCanonicalBaseUrl || '';
+export async function resolveSeoMetadataForPath(
+  req: Request,
+  rawPath: unknown,
+  options?: { type?: string; slug?: string; pageKey?: string }
+) {
+  const rawType = options?.type ? options.type.trim().toLowerCase() : '';
+  const explicitSlug = normalizeSlug(options?.slug);
+  const explicitPageKey = normalizeSlug(options?.pageKey);
+
+  let targetPath = normalizeSeoPath(rawPath);
+  if ((!rawPath || rawPath === '') && rawType) {
+    if (rawType === 'course') {
+      targetPath = explicitSlug ? `/learn/${explicitSlug}` : '/learn';
+    } else if (rawType === 'product') {
+      targetPath = explicitSlug ? `/products/${explicitSlug}` : '/products';
+    } else if (rawType === 'service') {
+      targetPath = explicitSlug ? `/solutions/${explicitSlug}` : '/solutions';
+    } else if (rawType === 'article') {
+      targetPath = explicitSlug ? `/insights/${explicitSlug}` : '/insights';
+    } else if (rawType === 'page') {
+      const key = explicitPageKey || explicitSlug || 'home';
+      targetPath = key === 'home' ? '/' : `/${key}`;
+    }
   }
-  const baseUrl = getBaseUrl(req, canonicalOverride);
-  res.type('text/plain').send(
-    [
-      'User-agent: *',
-      'Allow: /',
-      'Disallow: /portal-admin',
-      'Disallow: /learner',
-      'Disallow: /auth',
-      'Disallow: /api/',
-      '',
-      `Sitemap: ${baseUrl}/sitemap.xml`,
-    ].join('\n')
-  );
-});
 
-router.get('/sitemap.xml', async (req, res) => {
-  let baseUrl = getBaseUrl(req);
+  const ctx = await resolveSiteContext(req);
+  const defaultSeoMap = new Map(DEFAULT_SEO_PAGES.map((p) => [p.pageKey, p]));
 
-  const staticPaths = [
-    '/',
-    '/about',
-    '/solutions',
-    '/products',
-    '/learn',
-    '/insights',
-    '/contact',
-    '/legal/privacy',
-    '/legal/terms',
-    '/legal/cookies',
-    '/legal/refund',
+  const lookupPageSeo = async (pageKey: string) => {
+    if (ctx.dbReady) {
+      const doc = (await SEOSettings.findOne({ pageKey }).lean()) as Record<
+        string,
+        unknown
+      > | null;
+      if (doc) return doc;
+    }
+    return (defaultSeoMap.get(pageKey) as Record<string, unknown> | undefined) || null;
+  };
+
+  let found = true;
+  let entityType: SeoEntityType = 'page';
+  let pageKey = targetPath === '/' ? 'home' : targetPath.replace(/^\//, '');
+  let slug = '';
+  let updatedAt: string | null = null;
+  let entitySummary: Record<string, unknown> | null = null;
+  let heading = ctx.siteName;
+  const crawlerLinks: Array<{ href: string; label: string }> = [
+    { href: '/solutions', label: 'Solutions & Services' },
+    { href: '/products', label: 'Products & Platforms' },
+    { href: '/learn', label: 'NexaFlow Learn Courses' },
+    { href: '/insights', label: 'Insights & Resources' },
+    { href: '/about', label: 'About NexaFlow' },
+    { href: '/contact', label: 'Contact & Consultation' },
   ];
 
-  const urls: Array<{ loc: string; lastmod?: string; priority: string }> = [];
+  let title = ctx.globalTitle;
+  let description = ctx.globalDescription;
+  let canonicalUrl = `${ctx.baseUrl}${targetPath}`;
+  let ogTitle = '';
+  let ogDescription = '';
+  let ogImage = ctx.globalOgImage;
+  let ogType: 'website' | 'article' = 'website';
+  let keywords = ctx.globalKeywords;
+  let noIndex = ctx.globalNoIndex;
+  let structuredData: Record<string, unknown> | Array<Record<string, unknown>> | null = null;
 
-  let noIndexKeys = new Set<string>();
-  let services: Array<{ slug: string; updatedAt?: Date; noIndex?: boolean }> = DEFAULT_SERVICES;
-  let products: Array<{ slug: string; updatedAt?: Date; noIndex?: boolean }> = DEFAULT_PRODUCTS;
-  let courses: Array<{ slug: string; updatedAt?: Date; noIndex?: boolean }> = [];
-  let articles: Array<{ slug: string; updatedAt?: Date; publishedAt?: Date; noIndex?: boolean }> = [];
+  const applyPageSeoRecord = (
+    seoDoc: Record<string, unknown> | null,
+    fallbackTitle: string,
+    fallbackDescription: string
+  ) => {
+    title = cleanText(seoDoc?.title, 200) || fallbackTitle;
+    description = cleanText(seoDoc?.description, 400) || fallbackDescription;
+    canonicalUrl = resolveEffectiveCanonical(
+      typeof seoDoc?.canonicalUrl === 'string' ? seoDoc.canonicalUrl : '',
+      ctx.baseUrl,
+      targetPath
+    );
+    ogTitle = cleanText(seoDoc?.ogTitle, 200) || title;
+    ogDescription = cleanText(seoDoc?.ogDescription, 400) || description;
+    ogImage =
+      typeof seoDoc?.ogImage === 'string' && seoDoc.ogImage.trim()
+        ? resolveAbsoluteAssetUrl(seoDoc.ogImage, ctx.baseUrl, '/og-image.png')
+        : ctx.globalOgImage;
+    keywords =
+      normalizeKeywords(typeof seoDoc?.focusKeyword === 'string' ? seoDoc.focusKeyword : '') ||
+      ctx.globalKeywords;
+    noIndex = seoDoc?.noIndex !== undefined ? Boolean(seoDoc.noIndex) : ctx.globalNoIndex;
+    if (seoDoc?.updatedAt) {
+      updatedAt = new Date(seoDoc.updatedAt as string | Date).toISOString();
+    }
+  };
 
-  if (isDBConfigured() && (await connectDB())) {
-    const [siteSettings, dbSeo, dbServices, dbProducts, dbCourses, dbArticles] = await Promise.all([
-      SiteSettings.findOne({ key: 'main' }).select('seoCanonicalBaseUrl').lean(),
-      SEOSettings.find({ noIndex: true }).select('pageKey').lean(),
-      Service.find({ published: true }).select('slug updatedAt noIndex').lean(),
-      Product.find({ published: true }).select('slug updatedAt noIndex').lean(),
-      Course.find({ published: true }).select('slug updatedAt noIndex').lean(),
-      Article.find({ status: 'published' })
-        .select('slug updatedAt publishedAt noIndex')
-        .lean(),
+  if (
+    targetPath === '/portal-admin' ||
+    targetPath.startsWith('/portal-admin/') ||
+    targetPath === '/learner' ||
+    targetPath.startsWith('/learner/') ||
+    targetPath === '/auth' ||
+    targetPath.startsWith('/auth/')
+  ) {
+    entityType = 'private';
+    noIndex = true;
+    structuredData = null;
+    if (targetPath.startsWith('/portal-admin')) {
+      title = `Administrator Portal | ${ctx.titleSuffix}`;
+      description = `Protected ${ctx.siteName} administrator management portal.`;
+      heading = 'Administrator Portal';
+    } else if (targetPath.startsWith('/learner')) {
+      title = 'Learner Portal | NexaFlow Learn';
+      description = 'Access your enrolled courses, lesson progress, and support tickets.';
+      heading = 'Learner Portal';
+    } else {
+      title = 'Account Access | NexaFlow Learn';
+      description = 'Sign in, create a learner account, or reset your NexaFlow Learn password.';
+      heading = 'Account Access';
+    }
+  } else if (targetPath === '/') {
+    entityType = 'home';
+    pageKey = 'home';
+    const seoDoc = await lookupPageSeo('home');
+    applyPageSeoRecord(seoDoc, ctx.globalTitle, ctx.globalDescription);
+    ogTitle = cleanText(seoDoc?.ogTitle, 200) || title;
+    ogDescription = cleanText(seoDoc?.ogDescription, 400) || description;
+    heading = `${ctx.siteName} — AI, Data & Digital Solutions`;
+    structuredData = [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Organization',
+        name: ctx.siteName,
+        url: ctx.baseUrl,
+        description,
+        logo: resolveAbsoluteAssetUrl('/favicon.svg', ctx.baseUrl, '/favicon.svg'),
+        ...(ctx.socialSameAs.length > 0 ? { sameAs: ctx.socialSameAs } : {}),
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        name: ctx.siteName,
+        url: ctx.baseUrl,
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${ctx.baseUrl}/learn?q={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      },
+    ];
+  } else if (targetPath === '/learn') {
+    entityType = 'lms_catalog';
+    pageKey = 'learn';
+    heading = 'Structured Courses for Practitioners & Teams';
+    const [seoDoc, publishedCourses] = await Promise.all([
+      lookupPageSeo('learn'),
+      ctx.dbReady
+        ? Course.find({ published: true })
+            .sort({ order: 1, createdAt: -1 })
+            .select(
+              'title slug shortDescription coverImage price currency noIndex objectives outcomes updatedAt'
+            )
+            .lean()
+        : Promise.resolve([]),
     ]);
-    const canonicalOverride = (siteSettings as { seoCanonicalBaseUrl?: string } | null)
-      ?.seoCanonicalBaseUrl;
-    if (canonicalOverride?.trim()) {
-      baseUrl = getBaseUrl(req, canonicalOverride);
-    }
-    noIndexKeys = new Set(dbSeo.map((s: Record<string, unknown>) => String(s.pageKey)));
-    services = (dbServices as typeof services).filter((s) => s.noIndex !== true);
-    products = (dbProducts as typeof products).filter((p) => p.noIndex !== true);
-    courses = (dbCourses as typeof courses).filter((c) => c.noIndex !== true);
-    articles = (dbArticles as typeof articles).filter((a) => a.noIndex !== true);
-  }
-
-  for (const path of staticPaths) {
-    const key = path === '/' ? 'home' : path.replace(/^\//, '');
-    if (!noIndexKeys.has(key)) {
-      urls.push({
-        loc: `${baseUrl}${path}`,
-        priority: path === '/' ? '1.0' : '0.8',
+    const courseList = (publishedCourses as Array<Record<string, unknown>>).filter(
+      (c) => c.noIndex !== true
+    );
+    const statsMap = ctx.dbReady
+      ? await getCourseSeoStatsMap(courseList.map((c) => c._id))
+      : new Map();
+    applyPageSeoRecord(
+      seoDoc,
+      'NexaFlow Learn | Practical AI, Data & Engineering Courses',
+      ctx.globalDescription
+    );
+    entitySummary = { totalPublishedCourses: courseList.length };
+    for (const c of courseList) {
+      crawlerLinks.push({
+        href: `/learn/${String(c.slug || '')}`,
+        label: cleanText(c.title, 140),
       });
     }
-  }
-
-  for (const s of services) {
-    urls.push({
-      loc: `${baseUrl}/solutions/${s.slug}`,
-      lastmod: s.updatedAt ? new Date(s.updatedAt).toISOString() : undefined,
-      priority: '0.85',
-    });
-  }
-
-  for (const p of products) {
-    urls.push({
-      loc: `${baseUrl}/products/${p.slug}`,
-      lastmod: p.updatedAt ? new Date(p.updatedAt).toISOString() : undefined,
-      priority: '0.8',
-    });
-  }
-
-  for (const c of courses) {
-    urls.push({
-      loc: `${baseUrl}/learn/${c.slug}`,
-      lastmod: c.updatedAt ? new Date(c.updatedAt).toISOString() : undefined,
-      priority: '0.85',
-    });
-  }
-
-  for (const a of articles) {
-    const dt = a.updatedAt || a.publishedAt;
-    urls.push({
-      loc: `${baseUrl}/insights/${a.slug}`,
-      lastmod: dt ? new Date(dt).toISOString() : undefined,
-      priority: '0.75',
-    });
-  }
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls
-  .map(
-    (u) => `  <url>
-    <loc>${u.loc}</loc>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}
-    <priority>${u.priority}</priority>
-  </url>`
-  )
-  .join('\n')}
-</urlset>`;
-
-  res.type('application/xml').send(xml);
-});
-
-/**
- * GET /api/seo/metadata
- * Dynamically resolves page, LMS course, product, service, or article SEO metadata
- * and Schema.org JSON-LD directly from MongoDB (with graceful defaults when DB is offline).
- *
- * Query params:
- *   - path: route pathname (e.g. /learn/ai-engineering, /products/gridmind-ai, /learn)
- *   - OR type (page|course|product|service|article) + slug / pageKey
- */
-router.get('/api/seo/metadata', async (req, res) => {
-  try {
-    const rawType = typeof req.query.type === 'string' ? req.query.type.trim().toLowerCase() : '';
-    if (rawType && !ALLOWED_QUERY_TYPES.has(rawType as SeoQueryType)) {
-      return res.status(400).json({
-        error: 'Invalid SEO metadata type. Allowed values: page, course, product, service, article.',
-      });
-    }
-
-    const explicitSlug = normalizeSlug(req.query.slug);
-    const explicitPageKey = normalizeSlug(req.query.pageKey);
-
-    let targetPath = normalizeSeoPath(req.query.path);
-    if (!req.query.path && rawType) {
-      if (rawType === 'course') {
-        targetPath = explicitSlug ? `/learn/${explicitSlug}` : '/learn';
-      } else if (rawType === 'product') {
-        targetPath = explicitSlug ? `/products/${explicitSlug}` : '/products';
-      } else if (rawType === 'service') {
-        targetPath = explicitSlug ? `/solutions/${explicitSlug}` : '/solutions';
-      } else if (rawType === 'article') {
-        targetPath = explicitSlug ? `/insights/${explicitSlug}` : '/insights';
-      } else if (rawType === 'page') {
-        const key = explicitPageKey || explicitSlug || 'home';
-        targetPath = key === 'home' ? '/' : `/${key}`;
-      }
-    }
-
-    const ctx = await resolveSiteContext(req);
-    const defaultSeoMap = new Map(DEFAULT_SEO_PAGES.map((p) => [p.pageKey, p]));
-
-    const lookupPageSeo = async (pageKey: string) => {
-      if (ctx.dbReady) {
-        const doc = (await SEOSettings.findOne({ pageKey }).lean()) as Record<
-          string,
-          unknown
-        > | null;
-        if (doc) return doc;
-      }
-      return (defaultSeoMap.get(pageKey) as Record<string, unknown> | undefined) || null;
-    };
-
-    let found = true;
-    let entityType: SeoEntityType = 'page';
-    let pageKey = targetPath === '/' ? 'home' : targetPath.replace(/^\//, '');
-    let slug = '';
-    let updatedAt: string | null = null;
-    let entitySummary: Record<string, unknown> | null = null;
-
-    let title = ctx.globalTitle;
-    let description = ctx.globalDescription;
-    let canonicalUrl = `${ctx.baseUrl}${targetPath}`;
-    let ogTitle = ctx.globalOgTitle;
-    let ogDescription = ctx.globalOgDescription;
-    let ogImage = ctx.globalOgImage;
-    let ogType: 'website' | 'article' = 'website';
-    let keywords = ctx.globalKeywords;
-    let noIndex = ctx.globalNoIndex;
-    let structuredData: Record<string, unknown> | Array<Record<string, unknown>> | null = null;
-
-    const applyPageSeoRecord = (
-      seoDoc: Record<string, unknown> | null,
-      fallbackTitle: string,
-      fallbackDescription: string
-    ) => {
-      title = cleanText(seoDoc?.title, 200) || fallbackTitle;
-      description = cleanText(seoDoc?.description, 400) || fallbackDescription;
-      canonicalUrl = resolveEffectiveCanonical(
-        typeof seoDoc?.canonicalUrl === 'string' ? seoDoc.canonicalUrl : '',
-        ctx.baseUrl,
-        targetPath
-      );
-      ogTitle = cleanText(seoDoc?.ogTitle, 200) || ctx.globalOgTitle;
-      ogDescription = cleanText(seoDoc?.ogDescription, 400) || ctx.globalOgDescription;
-      ogImage =
-        typeof seoDoc?.ogImage === 'string' && seoDoc.ogImage.trim()
-          ? resolveAbsoluteAssetUrl(seoDoc.ogImage, ctx.baseUrl, '/og-image.png')
-          : ctx.globalOgImage;
-      keywords =
-        normalizeKeywords(typeof seoDoc?.focusKeyword === 'string' ? seoDoc.focusKeyword : '') ||
-        ctx.globalKeywords;
-      noIndex = seoDoc?.noIndex !== undefined ? Boolean(seoDoc.noIndex) : ctx.globalNoIndex;
-      if (seoDoc?.updatedAt) {
-        updatedAt = new Date(seoDoc.updatedAt as string | Date).toISOString();
-      }
-    };
-
-    if (
-      targetPath === '/portal-admin' ||
-      targetPath.startsWith('/portal-admin/') ||
-      targetPath === '/learner' ||
-      targetPath.startsWith('/learner/') ||
-      targetPath === '/auth' ||
-      targetPath.startsWith('/auth/')
-    ) {
-      entityType = 'private';
-      noIndex = true;
-      structuredData = null;
-      if (targetPath.startsWith('/portal-admin')) {
-        title = `Administrator Portal | ${ctx.titleSuffix}`;
-        description = `Protected ${ctx.siteName} administrator management portal.`;
-      } else if (targetPath.startsWith('/learner')) {
-        title = 'Learner Portal | NexaFlow Learn';
-        description = 'Access your enrolled courses, lesson progress, and support tickets.';
-      } else {
-        title = 'Account Access | NexaFlow Learn';
-        description = 'Sign in, create a learner account, or reset your NexaFlow Learn password.';
-      }
-    } else if (targetPath === '/') {
-      entityType = 'home';
-      pageKey = 'home';
-      const seoDoc = await lookupPageSeo('home');
-      applyPageSeoRecord(seoDoc, ctx.globalTitle, ctx.globalDescription);
-      ogTitle = cleanText(seoDoc?.ogTitle, 200) || title;
-      ogDescription = cleanText(seoDoc?.ogDescription, 400) || description;
-      structuredData = [
-        {
-          '@context': 'https://schema.org',
-          '@type': 'Organization',
-          name: ctx.siteName,
-          url: ctx.baseUrl,
-          description,
-          logo: resolveAbsoluteAssetUrl('/favicon.svg', ctx.baseUrl, '/favicon.svg'),
-          ...(ctx.socialSameAs.length > 0 ? { sameAs: ctx.socialSameAs } : {}),
-        },
-        {
-          '@context': 'https://schema.org',
-          '@type': 'WebSite',
-          name: ctx.siteName,
-          url: ctx.baseUrl,
-          potentialAction: {
-            '@type': 'SearchAction',
-            target: `${ctx.baseUrl}/learn?q={search_term_string}`,
-            'query-input': 'required name=search_term_string',
-          },
-        },
-      ];
-    } else if (targetPath === '/learn') {
-      entityType = 'lms_catalog';
-      pageKey = 'learn';
-      const [seoDoc, publishedCourses] = await Promise.all([
-        lookupPageSeo('learn'),
-        ctx.dbReady
-          ? Course.find({ published: true })
-              .sort({ order: 1, createdAt: -1 })
-              .select('title slug shortDescription coverImage price currency noIndex updatedAt')
-              .lean()
-          : Promise.resolve([]),
-      ]);
-      const courseList = (publishedCourses as Array<Record<string, unknown>>).filter(
-        (c) => c.noIndex !== true
-      );
-      const statsMap = ctx.dbReady
-        ? await getCourseSeoStatsMap(courseList.map((c) => c._id))
-        : new Map();
-      applyPageSeoRecord(
-        seoDoc,
-        'NexaFlow Learn | Practical AI, Data & Engineering Courses',
-        ctx.globalDescription
-      );
-      entitySummary = { totalPublishedCourses: courseList.length };
-      structuredData = {
+    structuredData = [
+      {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
         name: title,
@@ -703,66 +665,81 @@ router.get('/api/seo/metadata', async (req, res) => {
             };
           }),
         },
-      };
-    } else if (targetPath.startsWith('/learn/')) {
-      entityType = 'course';
-      pageKey = 'learn';
-      slug = normalizeSlug(targetPath.slice('/learn/'.length));
-      const course =
-        ctx.dbReady && slug
-          ? ((await Course.findOne({ slug, published: true }).lean()) as Record<
-              string,
-              unknown
-            > | null)
-          : null;
+      },
+      buildBreadcrumbJsonLd(ctx.baseUrl, [
+        { name: 'Home', path: '/' },
+        { name: 'Learn', path: '/learn' },
+      ]),
+    ];
+  } else if (targetPath.startsWith('/learn/')) {
+    entityType = 'course';
+    pageKey = 'learn';
+    slug = normalizeSlug(targetPath.slice('/learn/'.length));
+    const course =
+      ctx.dbReady && slug
+        ? ((await Course.findOne({ slug, published: true }).lean()) as Record<
+            string,
+            unknown
+          > | null)
+        : null;
 
-      if (!course) {
-        found = false;
-        entityType = 'not_found';
-        title = `Course Not Found | ${ctx.titleSuffix}`;
-        description = 'The requested course could not be found in the NexaFlow Learn catalog.';
-        noIndex = true;
-      } else {
-        const statsMap = await getCourseSeoStatsMap([course._id]);
-        const stats = statsMap.get(String(course._id)) || {
-          moduleCount: 0,
-          lessonCount: 0,
-          averageRating: 0,
-          reviewCount: 0,
-        };
-        const courseTitle = cleanText(course.title, 180);
-        title = cleanText(course.seoTitle, 200) || `${courseTitle} | NexaFlow Learn`;
-        description =
-          cleanText(course.seoDescription, 400) ||
-          cleanText(course.shortDescription, 400) ||
-          ctx.globalDescription;
-        canonicalUrl = resolveEffectiveCanonical(
-          typeof course.canonicalUrl === 'string' ? course.canonicalUrl : '',
-          ctx.baseUrl,
-          targetPath
-        );
-        ogImage =
-          typeof course.ogImage === 'string' && course.ogImage.trim()
-            ? resolveAbsoluteAssetUrl(course.ogImage, ctx.baseUrl, '/og-image.png')
-            : typeof course.coverImage === 'string' && course.coverImage.trim()
-              ? resolveAbsoluteAssetUrl(course.coverImage, ctx.baseUrl, '/og-image.png')
-              : ctx.globalOgImage;
-        keywords =
-          normalizeKeywords(
-            typeof course.focusKeyword === 'string' ? course.focusKeyword : '',
-            ctx.globalKeywords
-          ) || ctx.globalKeywords;
-        noIndex = course.noIndex !== undefined ? Boolean(course.noIndex) : ctx.globalNoIndex;
-        updatedAt = course.updatedAt ? new Date(course.updatedAt as string | Date).toISOString() : null;
-        entitySummary = {
-          id: String(course._id),
-          title: courseTitle,
-          slug: String(course.slug || slug),
-          price: Number(course.price || 0),
-          currency: cleanText(course.currency, 10) || 'GHS',
-          ...stats,
-        };
-        structuredData = buildCourseJsonLd({
+    if (!course) {
+      found = false;
+      entityType = 'not_found';
+      title = `Course Not Found | ${ctx.titleSuffix}`;
+      heading = 'Course Not Found';
+      description = 'The requested course could not be found in the NexaFlow Learn catalog.';
+      noIndex = true;
+    } else {
+      const [statsMap, publishedReviews] = await Promise.all([
+        getCourseSeoStatsMap([course._id]),
+        CourseReview.find({ courseId: course._id, status: 'published' })
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .select('authorName rating title comment createdAt')
+          .lean(),
+      ]);
+      const stats = statsMap.get(String(course._id)) || {
+        moduleCount: 0,
+        lessonCount: 0,
+        averageRating: 0,
+        reviewCount: 0,
+      };
+      const courseTitle = cleanText(course.title, 180);
+      heading = courseTitle;
+      title = cleanText(course.seoTitle, 200) || `${courseTitle} | NexaFlow Learn`;
+      description =
+        cleanText(course.seoDescription, 400) ||
+        cleanText(course.shortDescription, 400) ||
+        ctx.globalDescription;
+      canonicalUrl = resolveEffectiveCanonical(
+        typeof course.canonicalUrl === 'string' ? course.canonicalUrl : '',
+        ctx.baseUrl,
+        targetPath
+      );
+      ogImage =
+        typeof course.ogImage === 'string' && course.ogImage.trim()
+          ? resolveAbsoluteAssetUrl(course.ogImage, ctx.baseUrl, '/og-image.png')
+          : typeof course.coverImage === 'string' && course.coverImage.trim()
+            ? resolveAbsoluteAssetUrl(course.coverImage, ctx.baseUrl, '/og-image.png')
+            : ctx.globalOgImage;
+      keywords =
+        normalizeKeywords(
+          typeof course.focusKeyword === 'string' ? course.focusKeyword : '',
+          ctx.globalKeywords
+        ) || ctx.globalKeywords;
+      noIndex = course.noIndex !== undefined ? Boolean(course.noIndex) : ctx.globalNoIndex;
+      updatedAt = course.updatedAt ? new Date(course.updatedAt as string | Date).toISOString() : null;
+      entitySummary = {
+        id: String(course._id),
+        title: courseTitle,
+        slug: String(course.slug || slug),
+        price: Number(course.price || 0),
+        currency: cleanText(course.currency, 10) || 'GHS',
+        ...stats,
+      };
+      structuredData = [
+        buildCourseJsonLd({
           course,
           baseUrl: ctx.baseUrl,
           canonicalUrl,
@@ -770,28 +747,43 @@ router.get('/api/seo/metadata', async (req, res) => {
           description,
           ogImage,
           stats,
-        });
-      }
-    } else if (targetPath === '/products') {
-      entityType = 'product_catalog';
-      pageKey = 'products';
-      const [seoDoc, publishedProducts] = await Promise.all([
-        lookupPageSeo('products'),
-        ctx.dbReady
-          ? Product.find({ published: true })
-              .sort({ order: 1, createdAt: 1 })
-              .select(
-                'name slug category shortDescription images pricingStatus features noIndex updatedAt'
-              )
-              .lean()
-          : Promise.resolve(DEFAULT_PRODUCTS),
-      ]);
-      const productList = (publishedProducts as Array<Record<string, unknown>>).filter(
-        (p) => p.noIndex !== true
-      );
-      applyPageSeoRecord(seoDoc, `Products & Platforms | ${ctx.titleSuffix}`, ctx.globalDescription);
-      entitySummary = { totalPublishedProducts: productList.length };
-      structuredData = {
+          reviews: publishedReviews as Array<Record<string, unknown>>,
+        }),
+        buildBreadcrumbJsonLd(ctx.baseUrl, [
+          { name: 'Home', path: '/' },
+          { name: 'Learn', path: '/learn' },
+          { name: courseTitle, path: `/learn/${String(course.slug || slug)}` },
+        ]),
+      ];
+    }
+  } else if (targetPath === '/products') {
+    entityType = 'product_catalog';
+    pageKey = 'products';
+    heading = 'NexaFlow Products & Platforms';
+    const [seoDoc, publishedProducts] = await Promise.all([
+      lookupPageSeo('products'),
+      ctx.dbReady
+        ? Product.find({ published: true })
+            .sort({ order: 1, createdAt: 1 })
+            .select(
+              'name slug category shortDescription images pricingStatus features noIndex updatedAt'
+            )
+            .lean()
+        : Promise.resolve(DEFAULT_PRODUCTS),
+    ]);
+    const productList = (publishedProducts as Array<Record<string, unknown>>).filter(
+      (p) => p.noIndex !== true
+    );
+    applyPageSeoRecord(seoDoc, `Products & Platforms | ${ctx.titleSuffix}`, ctx.globalDescription);
+    entitySummary = { totalPublishedProducts: productList.length };
+    for (const p of productList) {
+      crawlerLinks.push({
+        href: `/products/${String(p.slug || '')}`,
+        label: cleanText(p.name, 140),
+      });
+    }
+    structuredData = [
+      {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
         name: title,
@@ -819,89 +811,111 @@ router.get('/api/seo/metadata', async (req, res) => {
             };
           }),
         },
-      };
-    } else if (targetPath.startsWith('/products/')) {
-      entityType = 'product';
-      pageKey = 'products';
-      slug = normalizeSlug(targetPath.slice('/products/'.length));
-      const product = slug
-        ? ctx.dbReady
-          ? ((await Product.findOne({ slug, published: true }).lean()) as Record<
-              string,
-              unknown
-            > | null)
-          : ((DEFAULT_PRODUCTS.find((p) => p.slug === slug) as Record<string, unknown> | undefined) ??
-            null)
-        : null;
+      },
+      buildBreadcrumbJsonLd(ctx.baseUrl, [
+        { name: 'Home', path: '/' },
+        { name: 'Products', path: '/products' },
+      ]),
+    ];
+  } else if (targetPath.startsWith('/products/')) {
+    entityType = 'product';
+    pageKey = 'products';
+    slug = normalizeSlug(targetPath.slice('/products/'.length));
+    const product = slug
+      ? ctx.dbReady
+        ? ((await Product.findOne({ slug, published: true }).lean()) as Record<
+            string,
+            unknown
+          > | null)
+        : ((DEFAULT_PRODUCTS.find((p) => p.slug === slug) as Record<string, unknown> | undefined) ??
+          null)
+      : null;
 
-      if (!product) {
-        found = false;
-        entityType = 'not_found';
-        title = `Product Not Found | ${ctx.titleSuffix}`;
-        description = 'The requested product could not be found in the NexaFlow catalog.';
-        noIndex = true;
-      } else {
-        const productName = cleanText(product.name, 160);
-        const images = Array.isArray(product.images) ? product.images : [];
-        const firstImage = typeof images[0] === 'string' ? images[0] : '';
-        title = cleanText(product.seoTitle, 200) || `${productName} | ${ctx.titleSuffix}`;
-        description =
-          cleanText(product.seoDescription, 400) ||
-          cleanText(product.shortDescription, 400) ||
-          ctx.globalDescription;
-        canonicalUrl = resolveEffectiveCanonical(
-          typeof product.canonicalUrl === 'string' ? product.canonicalUrl : '',
-          ctx.baseUrl,
-          targetPath
-        );
-        ogImage =
-          typeof product.ogImage === 'string' && product.ogImage.trim()
-            ? resolveAbsoluteAssetUrl(product.ogImage, ctx.baseUrl, '/og-image.png')
-            : firstImage.trim()
-              ? resolveAbsoluteAssetUrl(firstImage, ctx.baseUrl, '/og-image.png')
-              : ctx.globalOgImage;
-        keywords =
-          normalizeKeywords(
-            typeof product.focusKeyword === 'string' ? product.focusKeyword : '',
-            typeof product.category === 'string' ? product.category : '',
-            ctx.globalKeywords
-          ) || ctx.globalKeywords;
-        noIndex = product.noIndex !== undefined ? Boolean(product.noIndex) : ctx.globalNoIndex;
-        updatedAt = product.updatedAt
-          ? new Date(product.updatedAt as string | Date).toISOString()
-          : null;
-        entitySummary = {
-          name: productName,
-          slug: String(product.slug || slug),
-          category: cleanText(product.category, 100),
-          pricingStatus: cleanText(product.pricingStatus, 120),
-        };
-        structuredData = buildProductJsonLd({
+    if (!product) {
+      found = false;
+      entityType = 'not_found';
+      title = `Product Not Found | ${ctx.titleSuffix}`;
+      heading = 'Product Not Found';
+      description = 'The requested product could not be found in the NexaFlow catalog.';
+      noIndex = true;
+    } else {
+      const productName = cleanText(product.name, 160);
+      heading = productName;
+      const images = Array.isArray(product.images) ? product.images : [];
+      const firstImage = typeof images[0] === 'string' ? images[0] : '';
+      title = cleanText(product.seoTitle, 200) || `${productName} | ${ctx.titleSuffix}`;
+      description =
+        cleanText(product.seoDescription, 400) ||
+        cleanText(product.shortDescription, 400) ||
+        ctx.globalDescription;
+      canonicalUrl = resolveEffectiveCanonical(
+        typeof product.canonicalUrl === 'string' ? product.canonicalUrl : '',
+        ctx.baseUrl,
+        targetPath
+      );
+      ogImage =
+        typeof product.ogImage === 'string' && product.ogImage.trim()
+          ? resolveAbsoluteAssetUrl(product.ogImage, ctx.baseUrl, '/og-image.png')
+          : firstImage.trim()
+            ? resolveAbsoluteAssetUrl(firstImage, ctx.baseUrl, '/og-image.png')
+            : ctx.globalOgImage;
+      keywords =
+        normalizeKeywords(
+          typeof product.focusKeyword === 'string' ? product.focusKeyword : '',
+          typeof product.category === 'string' ? product.category : '',
+          ctx.globalKeywords
+        ) || ctx.globalKeywords;
+      noIndex = product.noIndex !== undefined ? Boolean(product.noIndex) : ctx.globalNoIndex;
+      updatedAt = product.updatedAt
+        ? new Date(product.updatedAt as string | Date).toISOString()
+        : null;
+      entitySummary = {
+        name: productName,
+        slug: String(product.slug || slug),
+        category: cleanText(product.category, 100),
+        pricingStatus: cleanText(product.pricingStatus, 120),
+      };
+      structuredData = [
+        buildProductJsonLd({
           product,
           canonicalUrl,
           siteName: ctx.siteName,
           description,
           ogImage,
-        });
-      }
-    } else if (targetPath === '/solutions') {
-      entityType = 'service_catalog';
-      pageKey = 'solutions';
-      const [seoDoc, publishedServices] = await Promise.all([
-        lookupPageSeo('solutions'),
-        ctx.dbReady
-          ? Service.find({ published: true })
-              .sort({ order: 1, createdAt: 1 })
-              .select('name slug shortDescription coverImage noIndex updatedAt')
-              .lean()
-          : Promise.resolve(DEFAULT_SERVICES),
-      ]);
-      const serviceList = (publishedServices as Array<Record<string, unknown>>).filter(
-        (s) => s.noIndex !== true
-      );
-      applyPageSeoRecord(seoDoc, `Solutions & Services | ${ctx.titleSuffix}`, ctx.globalDescription);
-      entitySummary = { totalPublishedServices: serviceList.length };
-      structuredData = {
+        }),
+        buildBreadcrumbJsonLd(ctx.baseUrl, [
+          { name: 'Home', path: '/' },
+          { name: 'Products', path: '/products' },
+          { name: productName, path: `/products/${String(product.slug || slug)}` },
+        ]),
+      ];
+    }
+  } else if (targetPath === '/solutions') {
+    entityType = 'service_catalog';
+    pageKey = 'solutions';
+    heading = 'Engineering & Analytics Solutions';
+    const [seoDoc, publishedServices] = await Promise.all([
+      lookupPageSeo('solutions'),
+      ctx.dbReady
+        ? Service.find({ published: true })
+            .sort({ order: 1, createdAt: 1 })
+            .select('name slug shortDescription coverImage noIndex updatedAt')
+            .lean()
+        : Promise.resolve(DEFAULT_SERVICES),
+    ]);
+    const serviceList = (publishedServices as Array<Record<string, unknown>>).filter(
+      (s) => s.noIndex !== true
+    );
+    applyPageSeoRecord(seoDoc, `Solutions & Services | ${ctx.titleSuffix}`, ctx.globalDescription);
+    entitySummary = { totalPublishedServices: serviceList.length };
+    for (const s of serviceList) {
+      crawlerLinks.push({
+        href: `/solutions/${String(s.slug || '')}`,
+        label: cleanText(s.name, 140),
+      });
+    }
+    structuredData = [
+      {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
         name: title,
@@ -922,56 +936,64 @@ router.get('/api/seo/metadata', async (req, res) => {
             },
           })),
         },
-      };
-    } else if (targetPath.startsWith('/solutions/')) {
-      entityType = 'service';
-      pageKey = 'solutions';
-      slug = normalizeSlug(targetPath.slice('/solutions/'.length));
-      const service = slug
-        ? ctx.dbReady
-          ? ((await Service.findOne({ slug, published: true }).lean()) as Record<
-              string,
-              unknown
-            > | null)
-          : ((DEFAULT_SERVICES.find((s) => s.slug === slug) as Record<string, unknown> | undefined) ??
-            null)
-        : null;
+      },
+      buildBreadcrumbJsonLd(ctx.baseUrl, [
+        { name: 'Home', path: '/' },
+        { name: 'Solutions', path: '/solutions' },
+      ]),
+    ];
+  } else if (targetPath.startsWith('/solutions/')) {
+    entityType = 'service';
+    pageKey = 'solutions';
+    slug = normalizeSlug(targetPath.slice('/solutions/'.length));
+    const service = slug
+      ? ctx.dbReady
+        ? ((await Service.findOne({ slug, published: true }).lean()) as Record<
+            string,
+            unknown
+          > | null)
+        : ((DEFAULT_SERVICES.find((s) => s.slug === slug) as Record<string, unknown> | undefined) ??
+          null)
+      : null;
 
-      if (!service) {
-        found = false;
-        entityType = 'not_found';
-        title = `Solution Not Found | ${ctx.titleSuffix}`;
-        description = 'The requested solution page could not be found.';
-        noIndex = true;
-      } else {
-        const serviceName = cleanText(service.name, 160);
-        title = cleanText(service.seoTitle, 200) || `${serviceName} | ${ctx.titleSuffix}`;
-        description =
-          cleanText(service.seoDescription, 400) ||
-          cleanText(service.shortDescription, 400) ||
-          ctx.globalDescription;
-        canonicalUrl = resolveEffectiveCanonical(
-          typeof service.canonicalUrl === 'string' ? service.canonicalUrl : '',
-          ctx.baseUrl,
-          targetPath
-        );
-        ogImage =
-          typeof service.ogImage === 'string' && service.ogImage.trim()
-            ? resolveAbsoluteAssetUrl(service.ogImage, ctx.baseUrl, '/og-image.png')
-            : typeof service.coverImage === 'string' && service.coverImage.trim()
-              ? resolveAbsoluteAssetUrl(service.coverImage, ctx.baseUrl, '/og-image.png')
-              : ctx.globalOgImage;
-        keywords =
-          normalizeKeywords(
-            typeof service.focusKeyword === 'string' ? service.focusKeyword : '',
-            ctx.globalKeywords
-          ) || ctx.globalKeywords;
-        noIndex = service.noIndex !== undefined ? Boolean(service.noIndex) : ctx.globalNoIndex;
-        updatedAt = service.updatedAt
-          ? new Date(service.updatedAt as string | Date).toISOString()
-          : null;
-        entitySummary = { name: serviceName, slug: String(service.slug || slug) };
-        structuredData = {
+    if (!service) {
+      found = false;
+      entityType = 'not_found';
+      title = `Solution Not Found | ${ctx.titleSuffix}`;
+      heading = 'Solution Not Found';
+      description = 'The requested solution page could not be found.';
+      noIndex = true;
+    } else {
+      const serviceName = cleanText(service.name, 160);
+      heading = serviceName;
+      title = cleanText(service.seoTitle, 200) || `${serviceName} | ${ctx.titleSuffix}`;
+      description =
+        cleanText(service.seoDescription, 400) ||
+        cleanText(service.shortDescription, 400) ||
+        ctx.globalDescription;
+      canonicalUrl = resolveEffectiveCanonical(
+        typeof service.canonicalUrl === 'string' ? service.canonicalUrl : '',
+        ctx.baseUrl,
+        targetPath
+      );
+      ogImage =
+        typeof service.ogImage === 'string' && service.ogImage.trim()
+          ? resolveAbsoluteAssetUrl(service.ogImage, ctx.baseUrl, '/og-image.png')
+          : typeof service.coverImage === 'string' && service.coverImage.trim()
+            ? resolveAbsoluteAssetUrl(service.coverImage, ctx.baseUrl, '/og-image.png')
+            : ctx.globalOgImage;
+      keywords =
+        normalizeKeywords(
+          typeof service.focusKeyword === 'string' ? service.focusKeyword : '',
+          ctx.globalKeywords
+        ) || ctx.globalKeywords;
+      noIndex = service.noIndex !== undefined ? Boolean(service.noIndex) : ctx.globalNoIndex;
+      updatedAt = service.updatedAt
+        ? new Date(service.updatedAt as string | Date).toISOString()
+        : null;
+      entitySummary = { name: serviceName, slug: String(service.slug || slug) };
+      structuredData = [
+        {
           '@context': 'https://schema.org',
           '@type': 'Service',
           name: serviceName,
@@ -984,31 +1006,45 @@ router.get('/api/seo/metadata', async (req, res) => {
             name: ctx.siteName,
             url: ctx.baseUrl,
           },
-        };
-      }
-    } else if (targetPath === '/insights') {
-      entityType = 'article_catalog';
-      pageKey = 'insights';
-      const [seoDoc, publishedArticles] = await Promise.all([
-        lookupPageSeo('insights'),
-        ctx.dbReady
-          ? Article.find({ status: 'published' })
-              .sort({ publishedAt: -1, createdAt: -1 })
-              .limit(20)
-              .select('title slug excerpt featuredImage authorName noIndex publishedAt updatedAt')
-              .lean()
-          : Promise.resolve([]),
-      ]);
-      const articleList = (publishedArticles as Array<Record<string, unknown>>).filter(
-        (a) => a.noIndex !== true
-      );
-      applyPageSeoRecord(
-        seoDoc,
-        `Insights & Engineering Articles | ${ctx.titleSuffix}`,
-        ctx.globalDescription
-      );
-      entitySummary = { totalPublishedArticles: articleList.length };
-      structuredData = {
+        },
+        buildBreadcrumbJsonLd(ctx.baseUrl, [
+          { name: 'Home', path: '/' },
+          { name: 'Solutions', path: '/solutions' },
+          { name: serviceName, path: `/solutions/${String(service.slug || slug)}` },
+        ]),
+      ];
+    }
+  } else if (targetPath === '/insights') {
+    entityType = 'article_catalog';
+    pageKey = 'insights';
+    heading = 'Insights & Technical Resources';
+    const [seoDoc, publishedArticles] = await Promise.all([
+      lookupPageSeo('insights'),
+      ctx.dbReady
+        ? Article.find({ status: 'published' })
+            .sort({ publishedAt: -1, createdAt: -1 })
+            .limit(20)
+            .select('title slug excerpt featuredImage authorName noIndex publishedAt updatedAt')
+            .lean()
+        : Promise.resolve([]),
+    ]);
+    const articleList = (publishedArticles as Array<Record<string, unknown>>).filter(
+      (a) => a.noIndex !== true
+    );
+    applyPageSeoRecord(
+      seoDoc,
+      `Insights & Engineering Articles | ${ctx.titleSuffix}`,
+      ctx.globalDescription
+    );
+    entitySummary = { totalPublishedArticles: articleList.length };
+    for (const a of articleList) {
+      crawlerLinks.push({
+        href: `/insights/${String(a.slug || '')}`,
+        label: cleanText(a.title, 140),
+      });
+    }
+    structuredData = [
+      {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
         name: title,
@@ -1024,66 +1060,74 @@ router.get('/api/seo/metadata', async (req, res) => {
             name: cleanText(a.title, 200),
           })),
         },
-      };
-    } else if (targetPath.startsWith('/insights/')) {
-      entityType = 'article';
-      pageKey = 'insights';
-      ogType = 'article';
-      slug = normalizeSlug(targetPath.slice('/insights/'.length));
-      const article =
-        ctx.dbReady && slug
-          ? ((await Article.findOne({ slug, status: 'published' }).lean()) as Record<
-              string,
-              unknown
-            > | null)
-          : null;
+      },
+      buildBreadcrumbJsonLd(ctx.baseUrl, [
+        { name: 'Home', path: '/' },
+        { name: 'Insights', path: '/insights' },
+      ]),
+    ];
+  } else if (targetPath.startsWith('/insights/')) {
+    entityType = 'article';
+    pageKey = 'insights';
+    ogType = 'article';
+    slug = normalizeSlug(targetPath.slice('/insights/'.length));
+    const article =
+      ctx.dbReady && slug
+        ? ((await Article.findOne({ slug, status: 'published' }).lean()) as Record<
+            string,
+            unknown
+          > | null)
+        : null;
 
-      if (!article) {
-        found = false;
-        entityType = 'not_found';
-        ogType = 'website';
-        title = `Article Not Found | ${ctx.titleSuffix}`;
-        description = 'The requested engineering article could not be found.';
-        noIndex = true;
-      } else {
-        const articleTitle = cleanText(article.title, 200);
-        const tags = Array.isArray(article.tags) ? article.tags.map(String) : [];
-        title = cleanText(article.seoTitle, 200) || `${articleTitle} | NexaFlow Insights`;
-        description =
-          cleanText(article.seoDescription, 400) ||
-          cleanText(article.excerpt, 400) ||
-          ctx.globalDescription;
-        canonicalUrl = resolveEffectiveCanonical(
-          typeof article.canonicalUrl === 'string' ? article.canonicalUrl : '',
-          ctx.baseUrl,
-          targetPath
-        );
-        ogImage =
-          typeof article.ogImage === 'string' && article.ogImage.trim()
-            ? resolveAbsoluteAssetUrl(article.ogImage, ctx.baseUrl, '/og-image.png')
-            : typeof article.featuredImage === 'string' && article.featuredImage.trim()
-              ? resolveAbsoluteAssetUrl(article.featuredImage, ctx.baseUrl, '/og-image.png')
-              : ctx.globalOgImage;
-        keywords =
-          normalizeKeywords(
-            typeof article.focusKeyword === 'string' ? article.focusKeyword : '',
-            tags
-          ) || ctx.globalKeywords;
-        noIndex = article.noIndex !== undefined ? Boolean(article.noIndex) : ctx.globalNoIndex;
-        const publishedAtIso = article.publishedAt
-          ? new Date(article.publishedAt as string | Date).toISOString()
-          : undefined;
-        updatedAt = article.updatedAt
-          ? new Date(article.updatedAt as string | Date).toISOString()
-          : publishedAtIso || null;
-        entitySummary = {
-          title: articleTitle,
-          slug: String(article.slug || slug),
-          category: cleanText(article.category, 80),
-          authorName: cleanText(article.authorName, 120),
-          publishedAt: publishedAtIso || null,
-        };
-        structuredData = {
+    if (!article) {
+      found = false;
+      entityType = 'not_found';
+      ogType = 'website';
+      title = `Article Not Found | ${ctx.titleSuffix}`;
+      heading = 'Article Not Found';
+      description = 'The requested engineering article could not be found.';
+      noIndex = true;
+    } else {
+      const articleTitle = cleanText(article.title, 200);
+      heading = articleTitle;
+      const tags = Array.isArray(article.tags) ? article.tags.map(String) : [];
+      title = cleanText(article.seoTitle, 200) || `${articleTitle} | NexaFlow Insights`;
+      description =
+        cleanText(article.seoDescription, 400) ||
+        cleanText(article.excerpt, 400) ||
+        ctx.globalDescription;
+      canonicalUrl = resolveEffectiveCanonical(
+        typeof article.canonicalUrl === 'string' ? article.canonicalUrl : '',
+        ctx.baseUrl,
+        targetPath
+      );
+      ogImage =
+        typeof article.ogImage === 'string' && article.ogImage.trim()
+          ? resolveAbsoluteAssetUrl(article.ogImage, ctx.baseUrl, '/og-image.png')
+          : typeof article.featuredImage === 'string' && article.featuredImage.trim()
+            ? resolveAbsoluteAssetUrl(article.featuredImage, ctx.baseUrl, '/og-image.png')
+            : ctx.globalOgImage;
+      keywords =
+        normalizeKeywords(
+          typeof article.focusKeyword === 'string' ? article.focusKeyword : '',
+          tags
+        ) || ctx.globalKeywords;
+      noIndex = article.noIndex !== undefined ? Boolean(article.noIndex) : ctx.globalNoIndex;
+      const publishedAtIso = article.publishedAt
+        ? new Date(article.publishedAt as string | Date).toISOString()
+        : undefined;
+      updatedAt = article.updatedAt
+        ? new Date(article.updatedAt as string | Date).toISOString()
+        : publishedAtIso || null;
+      entitySummary = {
+        title: articleTitle,
+        slug: String(article.slug || slug),
+        category: cleanText(article.category, 80),
+        authorName: cleanText(article.authorName, 120),
+        publishedAt: publishedAtIso || null,
+      };
+      structuredData = [
+        {
           '@context': 'https://schema.org',
           '@type': 'Article',
           headline: articleTitle,
@@ -1104,101 +1148,562 @@ router.get('/api/seo/metadata', async (req, res) => {
               url: resolveAbsoluteAssetUrl('/favicon.svg', ctx.baseUrl, '/favicon.svg'),
             },
           },
-        };
-      }
-    } else if (targetPath.startsWith('/legal/')) {
-      const legalType = normalizeSlug(targetPath.slice('/legal/'.length));
-      const label = LEGAL_PAGE_LABELS[legalType];
-      if (!label) {
-        found = false;
-        entityType = 'not_found';
-        title = `Page Not Found | ${ctx.titleSuffix}`;
-        description = `The requested page on ${ctx.siteName} could not be found.`;
-        noIndex = true;
-      } else {
-        entityType = 'legal';
-        pageKey = `legal/${legalType}`;
-        const seoDoc = await lookupPageSeo(pageKey);
-        applyPageSeoRecord(
-          seoDoc,
-          `${label} | ${ctx.titleSuffix}`,
-          `Review the official ${label} for ${ctx.siteName} and NexaFlow Learn.`
-        );
-        structuredData = {
+        },
+        buildBreadcrumbJsonLd(ctx.baseUrl, [
+          { name: 'Home', path: '/' },
+          { name: 'Insights', path: '/insights' },
+          { name: articleTitle, path: `/insights/${String(article.slug || slug)}` },
+        ]),
+      ];
+    }
+  } else if (targetPath.startsWith('/legal/')) {
+    const legalType = normalizeSlug(targetPath.slice('/legal/'.length));
+    const label = LEGAL_PAGE_LABELS[legalType];
+    if (!label) {
+      found = false;
+      entityType = 'not_found';
+      title = `Page Not Found | ${ctx.titleSuffix}`;
+      heading = 'Page Not Found';
+      description = `The requested page on ${ctx.siteName} could not be found.`;
+      noIndex = true;
+    } else {
+      entityType = 'legal';
+      pageKey = `legal/${legalType}`;
+      heading = label;
+      const seoDoc = await lookupPageSeo(pageKey);
+      applyPageSeoRecord(
+        seoDoc,
+        `${label} | ${ctx.titleSuffix}`,
+        `Review the official ${label} for ${ctx.siteName} and NexaFlow Learn.`
+      );
+      structuredData = [
+        {
           '@context': 'https://schema.org',
           '@type': 'WebPage',
           name: title,
           description,
           url: canonicalUrl,
-        };
-      }
+        },
+        buildBreadcrumbJsonLd(ctx.baseUrl, [
+          { name: 'Home', path: '/' },
+          { name: label, path: `/legal/${legalType}` },
+        ]),
+      ];
+    }
+  } else {
+    const staticKey = targetPath.replace(/^\//, '');
+    const staticConfig = STATIC_PAGE_DEFAULTS[staticKey];
+    if (!staticConfig) {
+      found = false;
+      entityType = 'not_found';
+      title = `Page Not Found | ${ctx.titleSuffix}`;
+      heading = 'Page Not Found';
+      description = `The requested page on ${ctx.siteName} could not be found.`;
+      noIndex = true;
     } else {
-      const staticKey = targetPath.replace(/^\//, '');
-      const staticConfig = STATIC_PAGE_DEFAULTS[staticKey];
-      if (!staticConfig) {
-        found = false;
-        entityType = 'not_found';
-        title = `Page Not Found | ${ctx.titleSuffix}`;
-        description = `The requested page on ${ctx.siteName} could not be found.`;
-        noIndex = true;
-      } else {
-        entityType = 'page';
-        pageKey = staticKey;
-        const seoDoc = await lookupPageSeo(staticKey);
-        const fallbackTitle =
-          staticKey === 'about'
-            ? `About ${ctx.siteName} | ${ctx.titleSuffix}`
-            : `${staticConfig.titleSuffixLabel} | ${ctx.titleSuffix}`;
-        applyPageSeoRecord(seoDoc, fallbackTitle, ctx.globalDescription);
-        structuredData = {
+      entityType = 'page';
+      pageKey = staticKey;
+      heading = staticConfig.titleSuffixLabel;
+      const seoDoc = await lookupPageSeo(staticKey);
+      const fallbackTitle =
+        staticKey === 'about'
+          ? `About ${ctx.siteName} | ${ctx.titleSuffix}`
+          : `${staticConfig.titleSuffixLabel} | ${ctx.titleSuffix}`;
+      applyPageSeoRecord(seoDoc, fallbackTitle, ctx.globalDescription);
+      structuredData = [
+        {
           '@context': 'https://schema.org',
           '@type': staticConfig.schemaType || 'WebPage',
           name: title,
           description,
           url: canonicalUrl,
-        };
-      }
+        },
+        buildBreadcrumbJsonLd(ctx.baseUrl, [
+          { name: 'Home', path: '/' },
+          { name: staticConfig.titleSuffixLabel, path: targetPath },
+        ]),
+      ];
     }
+  }
 
-    const finalOgTitle = ogTitle || title;
-    const finalOgDescription = ogDescription || description;
-    const robots = noIndex ? 'noindex, nofollow' : 'index, follow';
-    const finalStructuredData =
-      ctx.structuredDataEnabled && !noIndex ? structuredData : null;
+  const finalOgTitle = ogTitle || title;
+  const finalOgDescription = ogDescription || description;
+  const robots = noIndex
+    ? 'noindex, nofollow'
+    : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+  const finalStructuredData =
+    ctx.structuredDataEnabled && !noIndex ? structuredData : null;
 
-    if (!found || entityType === 'private' || noIndex) {
+  return {
+    found,
+    entityType,
+    path: targetPath,
+    pageKey,
+    slug,
+    updatedAt,
+    heading,
+    crawlerLinks: Array.from(new Map(crawlerLinks.map((l) => [l.href, l])).values()),
+    ctx,
+    entitySummary,
+    meta: {
+      title,
+      description,
+      canonicalUrl,
+      ogTitle: finalOgTitle,
+      ogDescription: finalOgDescription,
+      ogImage,
+      ogType,
+      twitterCard: ctx.twitterCard,
+      twitterSite: ctx.twitterSite,
+      siteName: ctx.siteName,
+      keywords,
+      noIndex,
+      robots,
+      gscVerificationTag: ctx.gscVerificationTag,
+      structuredData: finalStructuredData,
+    },
+  };
+}
+
+function upsertHeadMetaTag(
+  html: string,
+  attr: 'name' | 'property',
+  key: string,
+  content: string
+): string {
+  const escaped = escapeHtml(content);
+  const pattern = new RegExp(
+    `<meta\\b[^>]*\\b${attr}=["']${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*\\/?>`,
+    'i'
+  );
+  const tag = `<meta ${attr}="${key}" content="${escaped}" />`;
+  if (pattern.test(html)) {
+    return html.replace(pattern, tag);
+  }
+  return html.replace(/<\/head>/i, `    ${tag}\n  </head>`);
+}
+
+function upsertHeadLinkTag(html: string, rel: string, href: string): string {
+  const escaped = escapeHtml(href);
+  const pattern = new RegExp(
+    `<link\\b[^>]*\\brel=["']${rel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*\\/?>`,
+    'i'
+  );
+  const tag = `<link rel="${rel}" href="${escaped}" />`;
+  if (pattern.test(html)) {
+    return html.replace(pattern, tag);
+  }
+  return html.replace(/<\/head>/i, `    ${tag}\n  </head>`);
+}
+
+function buildSsrRootMarkup(params: {
+  heading: string;
+  description: string;
+  ogImage: string;
+  siteName: string;
+  crawlerLinks: Array<{ href: string; label: string }>;
+  noIndex: boolean;
+}): string {
+  const { heading, description, ogImage, siteName, crawlerLinks, noIndex } = params;
+  if (noIndex) {
+    return `<main data-ssr-seo="true"><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(description)}</p></main>`;
+  }
+  const navLinksHtml = crawlerLinks
+    .slice(0, 24)
+    .map(
+      (link) =>
+        `<li><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a></li>`
+    )
+    .join('');
+
+  return `<main data-ssr-seo="true" style="max-width:960px;margin:0 auto;padding:48px 20px;font-family:system-ui,sans-serif;">
+      <p style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#00D4FF;">${escapeHtml(siteName)}</p>
+      <h1 style="font-size:32px;line-height:1.2;margin:12px 0;">${escapeHtml(heading)}</h1>
+      <p style="font-size:16px;line-height:1.6;max-width:680px;">${escapeHtml(description)}</p>
+      ${ogImage ? `<img src="${escapeHtml(ogImage)}" alt="${escapeHtml(heading)}" style="max-width:100%;height:auto;margin-top:20px;border-radius:12px;" />` : ''}
+      <nav aria-label="Explore ${escapeHtml(siteName)}" style="margin-top:28px;">
+        <ul style="display:flex;flex-wrap:wrap;gap:14px;list-style:none;padding:0;">${navLinksHtml}</ul>
+      </nav>
+    </main>`;
+}
+
+export async function renderSeoInjectedHtml(
+  req: Request,
+  res: Response,
+  distHtmlPath?: string
+): Promise<void> {
+  try {
+    const resolved = await resolveSeoMetadataForPath(req, req.path || '/');
+    const { meta, found, entityType, heading, crawlerLinks } = resolved;
+
+    if (!found || entityType === 'private' || meta.noIndex) {
       res.setHeader('Cache-Control', 'no-store');
     } else {
       res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     }
 
-    return res.status(found ? 200 : 404).json({
+    let template = '';
+    if (distHtmlPath) {
+      template = htmlTemplateCache.get(distHtmlPath) || '';
+      if (!template && fs.existsSync(distHtmlPath)) {
+        template = fs.readFileSync(distHtmlPath, 'utf8');
+        htmlTemplateCache.set(distHtmlPath, template);
+      }
+    }
+
+    const ssrMarkup = buildSsrRootMarkup({
+      heading,
+      description: meta.description,
+      ogImage: meta.ogImage,
+      siteName: meta.siteName,
+      crawlerLinks,
+      noIndex: meta.noIndex,
+    });
+
+    if (!template) {
+      const jsonLdBlock = meta.structuredData
+        ? `<script id="nf-jsonld" type="application/ld+json">${safeJsonLdStringify(meta.structuredData)}</script>`
+        : '';
+      const fallbackHtml = `<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${escapeHtml(meta.title)}</title>
+    <meta name="description" content="${escapeHtml(meta.description)}" />
+    <meta name="robots" content="${escapeHtml(meta.robots)}" />
+    ${meta.keywords ? `<meta name="keywords" content="${escapeHtml(meta.keywords)}" />` : ''}
+    ${meta.gscVerificationTag ? `<meta name="google-site-verification" content="${escapeHtml(meta.gscVerificationTag)}" />` : ''}
+    <link rel="canonical" href="${escapeHtml(meta.canonicalUrl)}" />
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+    <meta property="og:type" content="${escapeHtml(meta.ogType)}" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="${escapeHtml(meta.siteName)}" />
+    <meta property="og:title" content="${escapeHtml(meta.ogTitle)}" />
+    <meta property="og:description" content="${escapeHtml(meta.ogDescription)}" />
+    <meta property="og:url" content="${escapeHtml(meta.canonicalUrl)}" />
+    <meta property="og:image" content="${escapeHtml(meta.ogImage)}" />
+    <meta property="og:image:alt" content="${escapeHtml(meta.ogTitle)}" />
+    <meta name="twitter:card" content="${escapeHtml(meta.twitterCard)}" />
+    <meta name="twitter:title" content="${escapeHtml(meta.ogTitle)}" />
+    <meta name="twitter:description" content="${escapeHtml(meta.ogDescription)}" />
+    <meta name="twitter:image" content="${escapeHtml(meta.ogImage)}" />
+    ${meta.twitterSite ? `<meta name="twitter:site" content="${escapeHtml(meta.twitterSite.startsWith('@') ? meta.twitterSite : `@${meta.twitterSite}`)}" />` : ''}
+    ${jsonLdBlock}
+  </head>
+  <body style="background:#03051B;color:#F7F8FF;">
+    <div id="root">${ssrMarkup}</div>
+  </body>
+</html>`;
+      res.status(found ? 200 : 404).type('text/html').send(fallbackHtml);
+      return;
+    }
+
+    let html = template.replace(
+      /<title>[\s\S]*?<\/title>/i,
+      `<title>${escapeHtml(meta.title)}</title>`
+    );
+    html = upsertHeadMetaTag(html, 'name', 'description', meta.description);
+    html = upsertHeadMetaTag(html, 'name', 'robots', meta.robots);
+    if (meta.keywords) {
+      html = upsertHeadMetaTag(html, 'name', 'keywords', meta.keywords);
+    }
+    if (meta.gscVerificationTag) {
+      html = upsertHeadMetaTag(html, 'name', 'google-site-verification', meta.gscVerificationTag);
+    }
+    html = upsertHeadLinkTag(html, 'canonical', meta.canonicalUrl);
+    html = upsertHeadMetaTag(html, 'property', 'og:type', meta.ogType);
+    html = upsertHeadMetaTag(html, 'property', 'og:site_name', meta.siteName);
+    html = upsertHeadMetaTag(html, 'property', 'og:title', meta.ogTitle);
+    html = upsertHeadMetaTag(html, 'property', 'og:description', meta.ogDescription);
+    html = upsertHeadMetaTag(html, 'property', 'og:url', meta.canonicalUrl);
+    html = upsertHeadMetaTag(html, 'property', 'og:image', meta.ogImage);
+    html = upsertHeadMetaTag(html, 'property', 'og:image:alt', meta.ogTitle);
+    html = upsertHeadMetaTag(html, 'name', 'twitter:card', meta.twitterCard);
+    html = upsertHeadMetaTag(html, 'name', 'twitter:title', meta.ogTitle);
+    html = upsertHeadMetaTag(html, 'name', 'twitter:description', meta.ogDescription);
+    html = upsertHeadMetaTag(html, 'name', 'twitter:image', meta.ogImage);
+    if (meta.twitterSite) {
+      const handle = meta.twitterSite.startsWith('@') ? meta.twitterSite : `@${meta.twitterSite}`;
+      html = upsertHeadMetaTag(html, 'name', 'twitter:site', handle);
+    }
+
+    const jsonLdTag = meta.structuredData
+      ? `<script id="nf-jsonld" type="application/ld+json">${safeJsonLdStringify(meta.structuredData)}</script>`
+      : '';
+    if (/<script\b[^>]*id=["']nf-jsonld["'][^>]*>[\s\S]*?<\/script>/i.test(html)) {
+      html = html.replace(
+        /<script\b[^>]*id=["']nf-jsonld["'][^>]*>[\s\S]*?<\/script>/i,
+        jsonLdTag
+      );
+    } else if (jsonLdTag) {
+      html = html.replace(/<\/head>/i, `    ${jsonLdTag}\n  </head>`);
+    }
+
+    html = html.replace(
+      /<div id="root"><\/div>/i,
+      `<div id="root">${ssrMarkup}</div>`
+    );
+
+    res.status(found ? 200 : 404).type('text/html').send(html);
+  } catch (err) {
+    console.error('[SEO] Failed to render SEO-injected HTML:', err);
+    if (distHtmlPath && fs.existsSync(distHtmlPath)) {
+      res.sendFile(distHtmlPath);
+      return;
+    }
+    res.status(500).type('text/html').send('<!doctype html><html><body><h1>NexaFlow Technologies</h1></body></html>');
+  }
+}
+
+router.get('/robots.txt', async (req, res) => {
+  let canonicalOverride = '';
+  if (isDBConfigured() && (await connectDB())) {
+    const s = (await SiteSettings.findOne({ key: 'main' })
+      .select('seoCanonicalBaseUrl')
+      .lean()) as { seoCanonicalBaseUrl?: string } | null;
+    canonicalOverride = s?.seoCanonicalBaseUrl || '';
+  }
+  const baseUrl = getBaseUrl(req, canonicalOverride);
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.type('text/plain').send(
+    [
+      'User-agent: *',
+      'Allow: /',
+      'Disallow: /portal-admin',
+      'Disallow: /learner',
+      'Disallow: /auth',
+      'Disallow: /api/',
+      '',
+      `Sitemap: ${baseUrl}/sitemap.xml`,
+    ].join('\n')
+  );
+});
+
+router.get('/sitemap.xml', async (req, res) => {
+  let baseUrl = getBaseUrl(req);
+
+  const staticPaths = [
+    '/',
+    '/about',
+    '/solutions',
+    '/products',
+    '/learn',
+    '/insights',
+    '/contact',
+    '/legal/privacy',
+    '/legal/terms',
+    '/legal/cookies',
+    '/legal/refund',
+  ];
+
+  interface SitemapUrlEntry {
+    loc: string;
+    lastmod?: string;
+    changefreq: 'daily' | 'weekly' | 'monthly';
+    priority: string;
+    image?: { loc: string; title?: string };
+  }
+
+  const urls: SitemapUrlEntry[] = [];
+
+  let noIndexKeys = new Set<string>();
+  let services: Array<{
+    name?: string;
+    slug: string;
+    coverImage?: string;
+    updatedAt?: Date;
+    noIndex?: boolean;
+  }> = DEFAULT_SERVICES;
+  let products: Array<{
+    name?: string;
+    slug: string;
+    images?: string[];
+    updatedAt?: Date;
+    noIndex?: boolean;
+  }> = DEFAULT_PRODUCTS;
+  let courses: Array<{
+    title?: string;
+    slug: string;
+    coverImage?: string;
+    updatedAt?: Date;
+    noIndex?: boolean;
+  }> = [];
+  let articles: Array<{
+    title?: string;
+    slug: string;
+    featuredImage?: string;
+    updatedAt?: Date;
+    publishedAt?: Date;
+    noIndex?: boolean;
+  }> = [];
+
+  if (isDBConfigured() && (await connectDB())) {
+    const [siteSettings, dbSeo, dbServices, dbProducts, dbCourses, dbArticles] = await Promise.all([
+      SiteSettings.findOne({ key: 'main' }).select('seoCanonicalBaseUrl').lean(),
+      SEOSettings.find({ noIndex: true }).select('pageKey').lean(),
+      Service.find({ published: true }).select('name slug coverImage updatedAt noIndex').lean(),
+      Product.find({ published: true }).select('name slug images updatedAt noIndex').lean(),
+      Course.find({ published: true }).select('title slug coverImage updatedAt noIndex').lean(),
+      Article.find({ status: 'published' })
+        .select('title slug featuredImage updatedAt publishedAt noIndex')
+        .lean(),
+    ]);
+    const canonicalOverride = (siteSettings as { seoCanonicalBaseUrl?: string } | null)
+      ?.seoCanonicalBaseUrl;
+    if (canonicalOverride?.trim()) {
+      baseUrl = getBaseUrl(req, canonicalOverride);
+    }
+    noIndexKeys = new Set(dbSeo.map((s: Record<string, unknown>) => String(s.pageKey)));
+    services = (dbServices as typeof services).filter((s) => s.noIndex !== true);
+    products = (dbProducts as typeof products).filter((p) => p.noIndex !== true);
+    courses = (dbCourses as typeof courses).filter((c) => c.noIndex !== true);
+    articles = (dbArticles as typeof articles).filter((a) => a.noIndex !== true);
+  }
+
+  for (const path of staticPaths) {
+    const key = path === '/' ? 'home' : path.replace(/^\//, '');
+    if (!noIndexKeys.has(key)) {
+      const isFresh = path === '/' || path === '/learn' || path === '/insights';
+      const isMonthly = path.startsWith('/legal/') || path === '/about' || path === '/contact';
+      urls.push({
+        loc: `${baseUrl}${path}`,
+        changefreq: isFresh ? 'daily' : isMonthly ? 'monthly' : 'weekly',
+        priority: path === '/' ? '1.0' : path === '/learn' || path === '/solutions' ? '0.9' : '0.8',
+      });
+    }
+  }
+
+  for (const s of services) {
+    urls.push({
+      loc: `${baseUrl}/solutions/${s.slug}`,
+      lastmod: s.updatedAt ? new Date(s.updatedAt).toISOString() : undefined,
+      changefreq: 'weekly',
+      priority: '0.85',
+      ...(s.coverImage?.trim()
+        ? {
+            image: {
+              loc: resolveAbsoluteAssetUrl(s.coverImage, baseUrl, '/og-image.png'),
+              title: cleanText(s.name, 140),
+            },
+          }
+        : {}),
+    });
+  }
+
+  for (const p of products) {
+    const firstImg = Array.isArray(p.images) && typeof p.images[0] === 'string' ? p.images[0] : '';
+    urls.push({
+      loc: `${baseUrl}/products/${p.slug}`,
+      lastmod: p.updatedAt ? new Date(p.updatedAt).toISOString() : undefined,
+      changefreq: 'weekly',
+      priority: '0.8',
+      ...(firstImg.trim()
+        ? {
+            image: {
+              loc: resolveAbsoluteAssetUrl(firstImg, baseUrl, '/og-image.png'),
+              title: cleanText(p.name, 140),
+            },
+          }
+        : {}),
+    });
+  }
+
+  for (const c of courses) {
+    urls.push({
+      loc: `${baseUrl}/learn/${c.slug}`,
+      lastmod: c.updatedAt ? new Date(c.updatedAt).toISOString() : undefined,
+      changefreq: 'weekly',
+      priority: '0.85',
+      ...(c.coverImage?.trim()
+        ? {
+            image: {
+              loc: resolveAbsoluteAssetUrl(c.coverImage, baseUrl, '/og-image.png'),
+              title: cleanText(c.title, 140),
+            },
+          }
+        : {}),
+    });
+  }
+
+  for (const a of articles) {
+    const dt = a.updatedAt || a.publishedAt;
+    urls.push({
+      loc: `${baseUrl}/insights/${a.slug}`,
+      lastmod: dt ? new Date(dt).toISOString() : undefined,
+      changefreq: 'weekly',
+      priority: '0.75',
+      ...(a.featuredImage?.trim()
+        ? {
+            image: {
+              loc: resolveAbsoluteAssetUrl(a.featuredImage, baseUrl, '/og-image.png'),
+              title: cleanText(a.title, 140),
+            },
+          }
+        : {}),
+    });
+  }
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+${urls
+  .map(
+    (u) => `  <url>
+    <loc>${escapeXml(u.loc)}</loc>${u.lastmod ? `\n    <lastmod>${escapeXml(u.lastmod)}</lastmod>` : ''}
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>${
+      u.image
+        ? `\n    <image:image>\n      <image:loc>${escapeXml(u.image.loc)}</image:loc>${
+            u.image.title ? `\n      <image:title>${escapeXml(u.image.title)}</image:title>` : ''
+          }\n    </image:image>`
+        : ''
+    }
+  </url>`
+  )
+  .join('\n')}
+</urlset>`;
+
+  res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+  res.type('application/xml').send(xml);
+});
+
+/**
+ * GET /api/seo/metadata
+ * Dynamically resolves page, LMS course, product, service, or article SEO metadata
+ * and Schema.org JSON-LD directly from MongoDB (with graceful defaults when DB is offline).
+ */
+router.get('/api/seo/metadata', async (req, res) => {
+  try {
+    const rawType = typeof req.query.type === 'string' ? req.query.type.trim().toLowerCase() : '';
+    if (rawType && !ALLOWED_QUERY_TYPES.has(rawType as SeoQueryType)) {
+      return res.status(400).json({
+        error: 'Invalid SEO metadata type. Allowed values: page, course, product, service, article.',
+      });
+    }
+
+    const resolved = await resolveSeoMetadataForPath(req, req.query.path, {
+      type: rawType,
+      slug: typeof req.query.slug === 'string' ? req.query.slug : undefined,
+      pageKey: typeof req.query.pageKey === 'string' ? req.query.pageKey : undefined,
+    });
+
+    if (!resolved.found || resolved.entityType === 'private' || resolved.meta.noIndex) {
+      res.setHeader('Cache-Control', 'no-store');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    }
+
+    return res.status(resolved.found ? 200 : 404).json({
       ok: true,
-      found,
-      dbConnected: ctx.dbReady,
-      entityType,
-      path: targetPath,
-      pageKey,
-      slug,
-      updatedAt,
-      meta: {
-        title,
-        description,
-        canonicalUrl,
-        ogTitle: finalOgTitle,
-        ogDescription: finalOgDescription,
-        ogImage,
-        ogType,
-        twitterCard: ctx.twitterCard,
-        twitterSite: ctx.twitterSite,
-        siteName: ctx.siteName,
-        keywords,
-        noIndex,
-        robots,
-        gscVerificationTag: ctx.gscVerificationTag,
-        structuredData: finalStructuredData,
-      },
-      ...(entitySummary ? { entity: entitySummary } : {}),
+      found: resolved.found,
+      dbConnected: resolved.ctx.dbReady,
+      entityType: resolved.entityType,
+      path: resolved.path,
+      pageKey: resolved.pageKey,
+      slug: resolved.slug,
+      updatedAt: resolved.updatedAt,
+      meta: resolved.meta,
+      ...(resolved.entitySummary ? { entity: resolved.entitySummary } : {}),
     });
   } catch (err) {
     console.error('[SEO] Failed to resolve dynamic metadata:', err);

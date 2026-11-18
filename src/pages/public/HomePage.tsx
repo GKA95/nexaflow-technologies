@@ -1,4 +1,5 @@
 import { ArrowRight, BookOpen, Briefcase, Check, Compass, Cpu, ExternalLink, FileText, Quote } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { CouponApplyBar } from '../../components/CouponApplyBar';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
@@ -9,7 +10,6 @@ import { formatMoneyAmount, getCourseDiscountPricing } from '../../utils/pricing
 
 export function HomePage() {
   const {
-    navigate,
     settings,
     services,
     products,
@@ -41,6 +41,11 @@ export function HomePage() {
       '@type': 'WebSite',
       name: settings?.businessName || 'NexaFlow Technologies',
       url: origin,
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: `${origin}/learn?q={search_term_string}`,
+        'query-input': 'required name=search_term_string',
+      },
     },
   ];
 
@@ -101,37 +106,33 @@ export function HomePage() {
                   'NexaFlow Technologies partners with organisations to build AI automation, custom web platforms, data analytics, applied machine learning, and structured technical training.'}
               </p>
 
-              {/* Primary CTA + clean balanced exploration buttons */}
+              {/* Primary CTA + clean balanced exploration links */}
               <div className="mt-7 sm:mt-8 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => navigate('/contact?type=consultation')}
+                <AppLink
+                  to="/contact?type=consultation"
                   className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-colors whitespace-nowrap"
                 >
                   Request a Consultation
                   <ArrowRight className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/solutions')}
+                </AppLink>
+                <AppLink
+                  to="/solutions"
                   className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
                 >
                   Explore Solutions
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/products')}
+                </AppLink>
+                <AppLink
+                  to="/products"
                   className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
                 >
                   Explore Products
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/learn')}
+                </AppLink>
+                <AppLink
+                  to="/learn"
                   className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
                 >
                   Explore Courses
-                </button>
+                </AppLink>
               </div>
             </div>
 
@@ -165,14 +166,13 @@ export function HomePage() {
                 Focused capabilities built around operational reliability, clean data, and measurable execution.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/solutions')}
+            <AppLink
+              to="/solutions"
               className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               View all solutions
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </AppLink>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -195,14 +195,13 @@ export function HomePage() {
                 </div>
 
                 <div className="mt-6 pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550] flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/solutions/${service.slug}`)}
+                  <AppLink
+                    to={`/solutions/${service.slug}`}
                     className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                   >
                     Explore {service.name}
                     <ArrowRight className="w-4 h-4" />
-                  </button>
+                  </AppLink>
                 </div>
               </article>
             ))}
@@ -222,14 +221,13 @@ export function HomePage() {
                 Software products engineered and maintained by NexaFlow Technologies.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/products')}
+            <AppLink
+              to="/products"
               className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               Browse product catalogue
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </AppLink>
           </div>
 
           {products.length === 0 ? (
@@ -271,14 +269,13 @@ export function HomePage() {
                       </p>
                     </div>
                     <div className="mt-4">
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/products/${product.slug}`)}
+                      <AppLink
+                        to={`/products/${product.slug}`}
                         className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                       >
                         View product details
                         <ArrowRight className="w-4 h-4" />
-                      </button>
+                      </AppLink>
                     </div>
                   </div>
                 </article>
@@ -300,14 +297,13 @@ export function HomePage() {
                 Structured video courses, progress tracking, and direct instructor support for learners.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/learn')}
+            <AppLink
+              to="/learn"
               className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               Explore course catalogue
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </AppLink>
           </div>
 
           {/* Front-page Coupon Code Input */}
@@ -330,13 +326,12 @@ export function HomePage() {
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate('/contact?type=course')}
-                className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2.5 text-sm font-medium text-[#070B24] dark:text-[#F7F8FF] hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] whitespace-nowrap shrink-0"
+              <AppLink
+                to="/contact?type=course"
+                className="min-h-[44px] inline-flex items-center justify-center rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2.5 text-sm font-medium text-[#070B24] dark:text-[#F7F8FF] hover:bg-[#EEF2FA] dark:hover:bg-[#10183A] whitespace-nowrap shrink-0"
               >
                 Enquire About Training
-              </button>
+              </AppLink>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -404,13 +399,12 @@ export function HomePage() {
                       </div>
                     </div>
                     <div className="px-5 sm:px-6 pb-5 sm:pb-6">
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/learn/${course.slug}`)}
-                        className="w-full min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
+                      <AppLink
+                        to={`/learn/${course.slug}`}
+                        className="w-full min-h-[44px] inline-flex items-center justify-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
                       >
                         View Course
-                      </button>
+                      </AppLink>
                     </div>
                   </article>
                 );
@@ -432,14 +426,13 @@ export function HomePage() {
                 Real systems, automation pipelines, and digital platforms delivered for client teams.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/contact?type=consultation')}
+            <AppLink
+              to="/contact?type=consultation"
               className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               Discuss a similar project
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </AppLink>
           </div>
 
           {workItems.length === 0 ? (
@@ -648,14 +641,13 @@ export function HomePage() {
                 Technical notes and practical guides from NexaFlow Technologies.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/insights')}
+            <AppLink
+              to="/insights"
               className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline whitespace-nowrap shrink-0"
             >
               Read all insights
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </AppLink>
           </div>
 
           {featuredArticles.length === 0 ? (
@@ -691,14 +683,13 @@ export function HomePage() {
                     </p>
                   </div>
                   <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/insights/${art.slug}`)}
+                    <AppLink
+                      to={`/insights/${art.slug}`}
                       className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
                     >
                       Read article
                       <ArrowRight className="w-4 h-4" />
-                    </button>
+                    </AppLink>
                   </div>
                 </article>
               ))}

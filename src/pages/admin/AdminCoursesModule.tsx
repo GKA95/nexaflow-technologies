@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Edit2, Eye, EyeOff, Plus, Trash2, Video } from 'lucide-react';
+import { Edit2, Eye, EyeOff, Plus, RefreshCw, Trash2, Video } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { FieldError } from '../../components/FieldError';
+import { MediaImage } from '../../components/MediaImage';
 import { useApp } from '../../context/AppContext';
 import type { CourseItem, LessonItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
+import { needsServerImageResolution, normalizeImageUrl } from '../../utils/media';
 import {
   bulkLessonsWriteSchema,
   courseWriteSchema,
@@ -72,6 +74,41 @@ export function AdminCoursesModule() {
     loadCourses();
   }, [loadCourses]);
 
+  const [resolvingCover, setResolvingCover] = useState(false);
+
+  const resolveCoverLink = async (rawValue: string, silent = false) => {
+    const trimmed = String(rawValue || '').trim();
+    if (!trimmed) return;
+    const quick = normalizeImageUrl(trimmed);
+    if (quick && quick !== trimmed && !needsServerImageResolution(trimmed)) {
+      setEditingCourse((prev) => (prev ? { ...prev, coverImage: quick } : prev));
+      if (!silent) showToast('Imgur/external URL normalized to direct image link.', 'success');
+      return;
+    }
+    if (!needsServerImageResolution(trimmed) && silent) return;
+
+    setResolvingCover(true);
+    try {
+      const res = await apiFetch('/api/admin/resolve-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { resolvedUrl?: string; error?: string };
+      if (res.ok && data.resolvedUrl) {
+        setEditingCourse((prev) => (prev ? { ...prev, coverImage: data.resolvedUrl } : prev));
+        if (!silent) showToast('Resolved direct cover image URL.', 'success');
+      } else if (!silent) {
+        showToast(data.error || 'Could not resolve external link; proxy fallback will still attempt to load it.', 'info');
+      }
+    } catch {
+      if (!silent) showToast('Could not reach resolver right now.', 'error');
+    } finally {
+      setResolvingCover(false);
+    }
+  };
+
   const saveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCourse || savingCourse) return;
@@ -80,7 +117,7 @@ export function AdminCoursesModule() {
       slug: editingCourse.slug || '',
       shortDescription: editingCourse.shortDescription || '',
       fullDescription: editingCourse.fullDescription || '',
-      coverImage: editingCourse.coverImage || '',
+      coverImage: normalizeImageUrl(editingCourse.coverImage || ''),
       price: Number(editingCourse.price ?? 0),
       currency: (editingCourse.currency || 'GHS').trim().toUpperCase(),
       objectives: editingCourse.objectives || [],
@@ -413,23 +450,63 @@ export function AdminCoursesModule() {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">Cover Image URL</label>
-              <input
-                type="text"
-                value={editingCourse.coverImage || ''}
-                onChange={(e) => {
-                  setEditingCourse({ ...editingCourse, coverImage: e.target.value });
-                  setCourseErrors((p) => ({ ...p, coverImage: '' }));
-                }}
-                placeholder="/assets/images/..."
-                aria-invalid={Boolean(courseErrors.coverImage)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  courseErrors.coverImage
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={editingCourse.coverImage || ''}
+                  onChange={(e) => {
+                    setEditingCourse({ ...editingCourse, coverImage: e.target.value });
+                    setCourseErrors((p) => ({ ...p, coverImage: '' }));
+                  }}
+                  onBlur={(e) => {
+                    void resolveCoverLink(e.target.value, true);
+                  }}
+                  placeholder="https://i.imgur.com/... or https://imgur.com/... or /assets/images/..."
+                  aria-invalid={Boolean(courseErrors.coverImage)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    courseErrors.coverImage
+                  )}
+                />
+                {editingCourse.coverImage?.trim() && (
+                  <button
+                    type="button"
+                    disabled={resolvingCover}
+                    onClick={() => void resolveCoverLink(editingCourse.coverImage || '', false)}
+                    title="Resolve Imgur / external link"
+                    className="shrink-0 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-2.5 py-2 text-xs font-medium hover:border-[#00D4FF] disabled:opacity-60 inline-flex items-center gap-1"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${resolvingCover ? 'animate-spin' : ''}`} />
+                  </button>
                 )}
-              />
+              </div>
+              <p className="mt-1 text-[11px] text-[#4A5578] dark:text-[#AEB8D4]">
+                Imgur links (direct, page, or album), Google Drive links, and local paths are normalized automatically.
+              </p>
               <FieldError message={courseErrors.coverImage} />
             </div>
           </div>
+
+          {editingCourse.coverImage?.trim() && (
+            <div className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] p-3 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="w-full sm:w-44 aspect-video rounded-lg overflow-hidden border border-[#DCE3F2] dark:border-[#1A2550] bg-[#080D2B] shrink-0">
+                <MediaImage
+                  src={editingCourse.coverImage}
+                  alt={editingCourse.title || 'Course cover preview'}
+                  fallbackLabel="Preview unavailable"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="min-w-0 text-xs space-y-1">
+                <p className="font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                  Live Cover Preview
+                </p>
+                <p className="font-mono text-[11px] text-[#4A5578] dark:text-[#AEB8D4] break-all">
+                  {normalizeImageUrl(editingCourse.coverImage)}
+                </p>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium mb-1">Short Summary *</label>
@@ -828,17 +905,27 @@ export function AdminCoursesModule() {
               className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#DCE3F2] dark:border-[#1A2550] pb-4">
-                <div className="max-w-2xl">
-                  <p className="text-xs font-mono text-[#4A5578] dark:text-[#AEB8D4]">
-                    {course.published ? 'Published' : 'Draft'} · {course.currency} {course.price} ·{' '}
-                    {course.lessonCount ?? 0} videos · {course.enrolmentsCount ?? 0} learners
-                  </p>
-                  <h2 className="mt-1 text-xl font-bold">{course.title}</h2>
-                  {(course.fullDescription || course.shortDescription) && (
-                    <p className="mt-1.5 text-xs text-[#4A5578] dark:text-[#AEB8D4] line-clamp-2">
-                      {course.fullDescription || course.shortDescription}
+                <div className="flex items-start gap-4 max-w-2xl">
+                  <div className="hidden sm:block w-24 aspect-video rounded-lg overflow-hidden border border-[#DCE3F2] dark:border-[#1A2550] bg-[#03051B] shrink-0">
+                    <MediaImage
+                      src={course.coverImage}
+                      alt={course.title}
+                      fallbackLabel={course.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-mono text-[#4A5578] dark:text-[#AEB8D4]">
+                      {course.published ? 'Published' : 'Draft'} · {course.currency} {course.price} ·{' '}
+                      {course.lessonCount ?? 0} videos · {course.enrolmentsCount ?? 0} learners
                     </p>
-                  )}
+                    <h2 className="mt-1 text-xl font-bold">{course.title}</h2>
+                    {(course.fullDescription || course.shortDescription) && (
+                      <p className="mt-1.5 text-xs text-[#4A5578] dark:text-[#AEB8D4] line-clamp-2">
+                        {course.fullDescription || course.shortDescription}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, CheckCircle2, Lock, PlayCircle } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { CouponApplyBar } from '../../components/CouponApplyBar';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
@@ -9,6 +10,7 @@ import { useApp } from '../../context/AppContext';
 import type { CourseItem, CourseReviewItem, ModuleItem } from '../../types';
 import { trackEvent } from '../../utils/analytics';
 import { apiFetch } from '../../utils/authSession';
+import { normalizeImageUrl } from '../../utils/media';
 import { formatMoneyAmount, getCourseDiscountPricing } from '../../utils/pricing';
 
 export function CourseDetailPage({ slug }: { slug: string }) {
@@ -141,43 +143,68 @@ export function CourseDetailPage({ slug }: { slug: string }) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-20 text-center">
         <h1 className="text-2xl font-bold">Course Not Found</h1>
-        <button
-          type="button"
-          onClick={() => navigate('/learn')}
-          className="mt-4 text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+        <AppLink
+          to="/learn"
+          className="mt-4 inline-flex items-center text-sm font-medium text-[#176BFF] dark:text-[#00D4FF] hover:underline"
         >
           Back to Course Catalogue
-        </button>
+        </AppLink>
       </div>
     );
   }
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const structuredData = {
-    '@context': 'https://schema.org',
-    '@type': 'Course',
-    name: course.title,
-    description: course.shortDescription,
-    provider: {
-      '@type': 'Organization',
-      name: 'NexaFlow Technologies',
-      sameAs: origin,
+  const courseCanonical = `${origin}/learn/${course.slug}`;
+  const rawCover = normalizeImageUrl(course.ogImage || course.coverImage);
+  const resolvedCover = rawCover
+    ? /^https?:\/\//i.test(rawCover)
+      ? rawCover
+      : `${origin}${rawCover.startsWith('/') ? '' : '/'}${rawCover}`
+    : `${origin}/og-image.png`;
+  const structuredData = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Course',
+      name: course.title,
+      description: course.seoDescription || course.shortDescription,
+      url: courseCanonical,
+      image: resolvedCover,
+      inLanguage: 'en',
+      provider: {
+        '@type': 'Organization',
+        name: 'NexaFlow Technologies',
+        url: origin,
+        sameAs: origin,
+      },
+      offers: {
+        '@type': 'Offer',
+        price: course.price,
+        priceCurrency: course.currency || 'GHS',
+        availability: 'https://schema.org/InStock',
+        url: courseCanonical,
+      },
+      ...((course.reviewCount || 0) > 0
+        ? {
+            aggregateRating: {
+              '@type': 'AggregateRating',
+              ratingValue: course.averageRating,
+              reviewCount: course.reviewCount,
+              bestRating: 5,
+              worstRating: 1,
+            },
+          }
+        : {}),
     },
-    offers: {
-      '@type': 'Offer',
-      price: course.price,
-      priceCurrency: course.currency || 'GHS',
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: `${origin}/` },
+        { '@type': 'ListItem', position: 2, name: 'Learn', item: `${origin}/learn` },
+        { '@type': 'ListItem', position: 3, name: course.title, item: courseCanonical },
+      ],
     },
-    ...((course.reviewCount || 0) > 0
-      ? {
-          aggregateRating: {
-            '@type': 'AggregateRating',
-            ratingValue: course.averageRating,
-            reviewCount: course.reviewCount,
-          },
-        }
-      : {}),
-  };
+  ];
 
   const pricing = getCourseDiscountPricing(course, appliedCoupon);
 
@@ -195,14 +222,13 @@ export function CourseDetailPage({ slug }: { slug: string }) {
 
       <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-14 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={() => navigate('/learn')}
+          <AppLink
+            to="/learn"
             className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-medium text-[#AEB8D4] hover:text-[#00D4FF] mb-4"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             All Courses
-          </button>
+          </AppLink>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-center">

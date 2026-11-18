@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { createExpressApp } from './server/app.js';
 import { connectDB, isDBConfigured } from './server/db.js';
+import { renderSeoInjectedHtml } from './server/routes/seo.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,9 +50,8 @@ async function startServer() {
         },
       })
     );
-    app.get('*', (_req, res) => {
-      res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get('*', (req, res) => {
+      void renderSeoInjectedHtml(req, res, path.join(distPath, 'index.html'));
     });
   }
 

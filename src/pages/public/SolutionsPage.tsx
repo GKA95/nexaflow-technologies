@@ -1,11 +1,12 @@
 import { ArrowRight } from 'lucide-react';
+import { AppLink } from '../../components/AppLink';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 
 export function SolutionsPage() {
-  const { services, seoPages, navigate } = useApp();
+  const { services, seoPages } = useApp();
   const seo = seoPages.find((p) => p.pageKey === 'solutions');
 
   return (
@@ -72,14 +73,13 @@ export function SolutionsPage() {
                     </p>
                   </div>
                   <div className="mt-6 flex flex-wrap items-center gap-4">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/solutions/${service.slug}`)}
+                    <AppLink
+                      to={`/solutions/${service.slug}`}
                       className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2.5 text-sm font-semibold text-white transition-colors"
                     >
                       View {service.name} Details
                       <ArrowRight className="w-4 h-4" />
-                    </button>
+                    </AppLink>
                   </div>
                 </div>
               </article>

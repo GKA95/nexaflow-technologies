@@ -1,5 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Layers } from 'lucide-react';
+import {
+  buildImageProxyPath,
+  needsServerImageResolution,
+  normalizeImageUrl,
+  parseImgurUrl,
+} from '../utils/media';
 
 interface MediaImageProps {
   src?: string;
@@ -36,9 +42,53 @@ export function MediaImage({
   width,
   height,
 }: MediaImageProps) {
-  const [errored, setErrored] = useState(false);
+  const [attemptIndex, setAttemptIndex] = useState(0);
 
-  if (!src || errored) {
+  useEffect(() => {
+    setAttemptIndex(0);
+  }, [src]);
+
+  const candidates = useMemo(() => {
+    const raw = String(src || '').trim();
+    if (!raw) return [];
+
+    // Local app asset paths
+    if (raw.startsWith('/') && !raw.startsWith('//')) {
+      return [raw];
+    }
+
+    const normalized = normalizeImageUrl(raw);
+    const list: string[] = [];
+
+    if (needsServerImageResolution(raw)) {
+      // Imgur album/gallery or wrapper URL -> resolve & proxy directly via backend
+      list.push(buildImageProxyPath(raw));
+      return list;
+    }
+
+    if (normalized) {
+      list.push(normalized);
+    }
+
+    // For Imgur single-ID URLs without an explicit extension, also include png/webp/proxy fallbacks
+    const imgur = parseImgurUrl(raw);
+    if (imgur.isImgur && imgur.id && imgur.kind === 'single') {
+      const pngUrl = `https://i.imgur.com/${imgur.id}.png`;
+      if (!list.includes(pngUrl)) list.push(pngUrl);
+    }
+
+    // Same-origin SSRF-safe proxy fallback bypasses Imgur / CDN browser hotlink or referer blocks
+    const proxyTarget = normalized || raw;
+    if (/^https?:\/\//i.test(proxyTarget)) {
+      list.push(buildImageProxyPath(proxyTarget));
+    }
+
+    return list;
+  }, [src]);
+
+  const activeSrc = candidates[attemptIndex];
+
+  if (!activeSrc) {
     return (
       <div
         className={`flex flex-col items-center justify-center bg-gradient-to-br from-[#080D2B] via-[#10183A] to-[#03051B] border border-[#1A2550] text-[#AEB8D4] p-6 ${className}`}
@@ -53,12 +103,16 @@ export function MediaImage({
     );
   }
 
-  const normalizedSrc = src.split('?')[0];
-  const isResponsiveLocal = LOCAL_RESPONSIVE_IMAGES.has(normalizedSrc);
-  const isSingleLocalWebp = LOCAL_SINGLE_WEBP.has(normalizedSrc);
+  const normalizedLocalPath = activeSrc.split('?')[0];
+  const isResponsiveLocal = LOCAL_RESPONSIVE_IMAGES.has(normalizedLocalPath);
+  const isSingleLocalWebp = LOCAL_SINGLE_WEBP.has(normalizedLocalPath);
+
+  const handleError = () => {
+    setAttemptIndex((prev) => prev + 1);
+  };
 
   if (isResponsiveLocal) {
-    const base = normalizedSrc.replace(/\.jpg$/i, '');
+    const base = normalizedLocalPath.replace(/\.jpg$/i, '');
     return (
       <picture className="block w-full h-full">
         <source
@@ -67,7 +121,7 @@ export function MediaImage({
           sizes={sizes}
         />
         <img
-          src={src}
+          src={activeSrc}
           alt={alt}
           width={width}
           height={height}
@@ -75,7 +129,7 @@ export function MediaImage({
           decoding={loading === 'eager' ? 'sync' : 'async'}
           fetchPriority={fetchPriority}
           referrerPolicy="no-referrer"
-          onError={() => setErrored(true)}
+          onError={handleError}
           className={className}
         />
       </picture>
@@ -83,12 +137,12 @@ export function MediaImage({
   }
 
   if (isSingleLocalWebp) {
-    const webpSrc = normalizedSrc.replace(/\.png$/i, '.webp');
+    const webpSrc = normalizedLocalPath.replace(/\.png$/i, '.webp');
     return (
       <picture>
         <source type="image/webp" srcSet={webpSrc} />
         <img
-          src={src}
+          src={activeSrc}
           alt={alt}
           width={width}
           height={height}
@@ -96,7 +150,7 @@ export function MediaImage({
           decoding={loading === 'eager' ? 'sync' : 'async'}
           fetchPriority={fetchPriority}
           referrerPolicy="no-referrer"
-          onError={() => setErrored(true)}
+          onError={handleError}
           className={className}
         />
       </picture>
@@ -105,7 +159,7 @@ export function MediaImage({
 
   return (
     <img
-      src={src}
+      src={activeSrc}
       alt={alt}
       width={width}
       height={height}
@@ -113,7 +167,7 @@ export function MediaImage({
       decoding={loading === 'eager' ? 'sync' : 'async'}
       fetchPriority={fetchPriority}
       referrerPolicy="no-referrer"
-      onError={() => setErrored(true)}
+      onError={handleError}
       className={className}
     />
   );

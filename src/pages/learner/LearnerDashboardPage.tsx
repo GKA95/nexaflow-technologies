@@ -13,6 +13,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { FieldError } from '../../components/FieldError';
+import { MediaImage } from '../../components/MediaImage';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import type { SupportTicketItem } from '../../types';
@@ -526,29 +527,41 @@ export function LearnerDashboardPage() {
                         {courses.map((item) => (
                           <div
                             key={item.enrolmentId}
-                            className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] p-5 flex flex-col justify-between"
+                            className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] overflow-hidden flex flex-col justify-between"
                           >
                             <div>
-                              <h2 className="text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                                {item.course.title}
-                              </h2>
-                              <p className="mt-1.5 text-sm text-[#4A5578] dark:text-[#AEB8D4]">
-                                {item.course.shortDescription}
-                              </p>
-                              <div className="mt-4 text-xs text-[#4A5578] dark:text-[#AEB8D4] tabular-nums">
+                              <div className="aspect-video bg-[#03051B]">
+                                <MediaImage
+                                  src={item.course.coverImage}
+                                  alt={item.course.title}
+                                  fallbackLabel={item.course.title}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="p-5 pb-0">
+                                <h2 className="text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                                  {item.course.title}
+                                </h2>
+                                <p className="mt-1.5 text-sm text-[#4A5578] dark:text-[#AEB8D4]">
+                                  {item.course.shortDescription}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="p-5 pt-4">
+                              <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] tabular-nums">
                                 Completed: {item.completedCount} · Remaining: {item.remainingCount} · {item.percent}%
                               </div>
                               <div className="mt-2 h-2 w-full rounded-full bg-[#EEF2FA] dark:bg-[#10183A] overflow-hidden">
                                 <div className="h-full bg-[#00D4FF]" style={{ width: `${item.percent}%` }} />
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/learner/courses/${item.course.slug}`)}
+                                className="mt-5 w-full min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white"
+                              >
+                                Open Course Classroom
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/learner/courses/${item.course.slug}`)}
-                              className="mt-5 w-full min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white"
-                            >
-                              Open Course Classroom
-                            </button>
                           </div>
                         ))}
                       </div>

@@ -34,6 +34,7 @@ import {
 import { couponValidateSchema, leadFormSchema, zodToFieldErrors } from '../shared/validation.js';
 import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
 import { sendTransactionalEmail } from '../utils/email.js';
+import { fetchSafeExternalImage } from '../utils/imageResolver.js';
 import { getPaystackMode, isPaystackConfigured } from '../utils/paystack.js';
 
 const router = createAsyncRouter();
@@ -85,11 +86,34 @@ router.use((req, res, next) => {
   if (req.method === 'GET') {
     if (req.path === '/health') {
       res.setHeader('Cache-Control', 'no-store');
+    } else if (req.path === '/image-proxy') {
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
     } else {
       res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     }
   }
   next();
+});
+
+router.get('/image-proxy', async (req, res) => {
+  const rawUrl = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+  if (!rawUrl || rawUrl.length > 600) {
+    return res.status(400).json({ error: 'Valid image URL is required.' });
+  }
+  try {
+    const payload = await fetchSafeExternalImage(rawUrl);
+    res.setHeader('Content-Type', payload.contentType);
+    res.setHeader('Content-Length', String(payload.buffer.byteLength));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'");
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    return res.send(payload.buffer);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unable to load external image.';
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(400).json({ error: message });
+  }
 });
 
 router.get('/health', async (_req, res) => {

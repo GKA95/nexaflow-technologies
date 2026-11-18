@@ -70,6 +70,8 @@ import {
   zodToFieldErrors,
 } from '../shared/validation.js';
 import { isEmailConfigured, sendTransactionalEmail } from '../utils/email.js';
+import { resolveImageUrlForStorage } from '../utils/imageResolver.js';
+import { normalizeImageUrl } from '../shared/media.js';
 import {
   getPaystackMode,
   isPaystackConfigured,
@@ -292,6 +294,21 @@ router.post('/setup', authLimiter, requireDatabase, async (req, res) => {
 // All routes below strictly require MongoDB + Authenticated Admin Role
 router.use(requireDatabase, requireAuth, requireAdmin);
 
+router.post('/resolve-image', async (req, res) => {
+  const rawUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+  if (!rawUrl || rawUrl.length > 600) {
+    return res.status(400).json({ error: 'Please enter a valid image URL.' });
+  }
+  try {
+    const resolvedUrl = await resolveImageUrlForStorage(rawUrl);
+    return res.json({ ok: true, resolvedUrl });
+  } catch (err) {
+    return res.status(400).json({
+      error: err instanceof Error ? err.message : 'Unable to resolve image URL.',
+    });
+  }
+});
+
 // 1. Admin Dashboard Overview (Real metrics only)
 router.get('/overview', async (_req, res) => {
   const [
@@ -418,6 +435,8 @@ router.post('/courses', async (req, res) => {
   const raw = req.body || {};
   const parsed = courseWriteSchema.safeParse({
     ...raw,
+    ...(typeof raw.coverImage === 'string' ? { coverImage: normalizeImageUrl(raw.coverImage) } : {}),
+    ...(typeof raw.ogImage === 'string' ? { ogImage: normalizeImageUrl(raw.ogImage) } : {}),
     price: Number(raw.price ?? 0),
     order: Number(raw.order ?? 0),
   });
@@ -437,12 +456,17 @@ router.post('/courses', async (req, res) => {
     return res.status(409).json({ error: `A course with slug "${slug}" already exists.` });
   }
 
+  const [resolvedCoverImage, resolvedOgImage] = await Promise.all([
+    resolveImageUrlForStorage(d.coverImage),
+    resolveImageUrlForStorage(d.ogImage),
+  ]);
+
   const course = await Course.create({
     title: stripHtmlTags(d.title),
     slug,
     shortDescription: stripHtmlTags(d.shortDescription),
     fullDescription: d.fullDescription,
-    coverImage: d.coverImage,
+    coverImage: resolvedCoverImage,
     price: d.price,
     currency: d.currency,
     objectives: d.objectives.map(stripHtmlTags).filter(Boolean),
@@ -452,7 +476,7 @@ router.post('/courses', async (req, res) => {
     seoTitle: stripHtmlTags(d.seoTitle),
     seoDescription: stripHtmlTags(d.seoDescription),
     canonicalUrl: d.canonicalUrl,
-    ogImage: d.ogImage,
+    ogImage: resolvedOgImage,
     noIndex: d.noIndex,
     focusKeyword: stripHtmlTags(d.focusKeyword),
   });
@@ -469,6 +493,8 @@ router.patch('/courses/:id', async (req, res) => {
   const candidate: Record<string, unknown> = { ...raw };
   if (raw.price !== undefined) candidate.price = Number(raw.price);
   if (raw.order !== undefined) candidate.order = Number(raw.order);
+  if (typeof raw.coverImage === 'string') candidate.coverImage = normalizeImageUrl(raw.coverImage);
+  if (typeof raw.ogImage === 'string') candidate.ogImage = normalizeImageUrl(raw.ogImage);
 
   const parsed = coursePatchSchema.safeParse(candidate);
   if (!parsed.success) {
@@ -484,7 +510,7 @@ router.patch('/courses/:id', async (req, res) => {
   if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
   if (d.shortDescription !== undefined) update.shortDescription = stripHtmlTags(d.shortDescription);
   if (d.fullDescription !== undefined) update.fullDescription = d.fullDescription;
-  if (d.coverImage !== undefined) update.coverImage = d.coverImage;
+  if (d.coverImage !== undefined) update.coverImage = await resolveImageUrlForStorage(d.coverImage);
   if (d.price !== undefined) update.price = d.price;
   if (d.currency !== undefined) update.currency = d.currency;
   if (d.objectives !== undefined) update.objectives = d.objectives.map(stripHtmlTags).filter(Boolean);
@@ -494,7 +520,7 @@ router.patch('/courses/:id', async (req, res) => {
   if (d.seoTitle !== undefined) update.seoTitle = stripHtmlTags(d.seoTitle);
   if (d.seoDescription !== undefined) update.seoDescription = stripHtmlTags(d.seoDescription);
   if (d.canonicalUrl !== undefined) update.canonicalUrl = d.canonicalUrl;
-  if (d.ogImage !== undefined) update.ogImage = d.ogImage;
+  if (d.ogImage !== undefined) update.ogImage = await resolveImageUrlForStorage(d.ogImage);
   if (d.noIndex !== undefined) update.noIndex = d.noIndex;
   if (d.focusKeyword !== undefined) update.focusKeyword = stripHtmlTags(d.focusKeyword);
 
@@ -1287,6 +1313,9 @@ router.post('/products', async (req, res) => {
   const raw = req.body || {};
   const parsed = productWriteSchema.safeParse({
     ...raw,
+    ...(Array.isArray(raw.images)
+      ? { images: raw.images.map((img: unknown) => (typeof img === 'string' ? normalizeImageUrl(img) : img)) }
+      : {}),
     order: Number(raw.order ?? 0),
   });
   if (!parsed.success) {
@@ -1302,6 +1331,10 @@ router.post('/products', async (req, res) => {
   const clash = await Product.findOne({ slug }).lean();
   if (clash) return res.status(409).json({ error: `Product slug "${slug}" already exists.` });
 
+  const resolvedImages = await Promise.all(
+    d.images.filter(Boolean).map((img) => resolveImageUrlForStorage(img))
+  );
+
   const product = await Product.create({
     name,
     slug,
@@ -1310,7 +1343,7 @@ router.post('/products', async (req, res) => {
     fullDescription: d.fullDescription,
     features: d.features.map(stripHtmlTags).filter(Boolean),
     benefits: d.benefits.map(stripHtmlTags).filter(Boolean),
-    images: d.images.filter(Boolean),
+    images: resolvedImages.filter(Boolean),
     demoLink: d.demoLink,
     pricingStatus: stripHtmlTags(d.pricingStatus),
     published: d.published,
@@ -1327,6 +1360,11 @@ router.patch('/products/:id', async (req, res) => {
   const raw = req.body || {};
   const candidate: Record<string, unknown> = { ...raw };
   if (raw.order !== undefined) candidate.order = Number(raw.order);
+  if (Array.isArray(raw.images)) {
+    candidate.images = raw.images.map((img: unknown) =>
+      typeof img === 'string' ? normalizeImageUrl(img) : img
+    );
+  }
   const parsed = productPatchSchema.safeParse(candidate);
   if (!parsed.success) {
     return res.status(400).json({
@@ -1344,7 +1382,12 @@ router.patch('/products/:id', async (req, res) => {
   if (d.fullDescription !== undefined) update.fullDescription = d.fullDescription;
   if (d.features !== undefined) update.features = d.features.map(stripHtmlTags).filter(Boolean);
   if (d.benefits !== undefined) update.benefits = d.benefits.map(stripHtmlTags).filter(Boolean);
-  if (d.images !== undefined) update.images = d.images.filter(Boolean);
+  if (d.images !== undefined) {
+    const resolvedImages = await Promise.all(
+      d.images.filter(Boolean).map((img) => resolveImageUrlForStorage(img))
+    );
+    update.images = resolvedImages.filter(Boolean);
+  }
   if (d.demoLink !== undefined) update.demoLink = d.demoLink;
   if (d.pricingStatus !== undefined) update.pricingStatus = stripHtmlTags(d.pricingStatus);
   if (d.published !== undefined) update.published = d.published;
@@ -1375,6 +1418,7 @@ router.post('/services', async (req, res) => {
   const raw = req.body || {};
   const parsed = serviceWriteSchema.safeParse({
     ...raw,
+    ...(typeof raw.coverImage === 'string' ? { coverImage: normalizeImageUrl(raw.coverImage) } : {}),
     order: Number(raw.order ?? 0),
   });
   if (!parsed.success) {
@@ -1398,7 +1442,7 @@ router.post('/services', async (req, res) => {
     problemsAddressed: d.problemsAddressed.map(stripHtmlTags).filter(Boolean),
     deliverables: d.deliverables.map(stripHtmlTags).filter(Boolean),
     ctaLabel: stripHtmlTags(d.ctaLabel),
-    coverImage: d.coverImage,
+    coverImage: await resolveImageUrlForStorage(d.coverImage),
     published: d.published,
     order: d.order,
   });
@@ -1413,6 +1457,7 @@ router.patch('/services/:id', async (req, res) => {
   const raw = req.body || {};
   const candidate: Record<string, unknown> = { ...raw };
   if (raw.order !== undefined) candidate.order = Number(raw.order);
+  if (typeof raw.coverImage === 'string') candidate.coverImage = normalizeImageUrl(raw.coverImage);
   const parsed = servicePatchSchema.safeParse(candidate);
   if (!parsed.success) {
     return res.status(400).json({
@@ -1431,7 +1476,7 @@ router.patch('/services/:id', async (req, res) => {
     update.problemsAddressed = d.problemsAddressed.map(stripHtmlTags).filter(Boolean);
   if (d.deliverables !== undefined) update.deliverables = d.deliverables.map(stripHtmlTags).filter(Boolean);
   if (d.ctaLabel !== undefined) update.ctaLabel = stripHtmlTags(d.ctaLabel);
-  if (d.coverImage !== undefined) update.coverImage = d.coverImage;
+  if (d.coverImage !== undefined) update.coverImage = await resolveImageUrlForStorage(d.coverImage);
   if (d.published !== undefined) update.published = d.published;
   if (d.order !== undefined) update.order = d.order;
 
@@ -1457,7 +1502,13 @@ router.get('/articles', async (_req, res) => {
 });
 
 router.post('/articles', async (req, res) => {
-  const parsed = articleWriteSchema.safeParse(req.body);
+  const raw = req.body || {};
+  const parsed = articleWriteSchema.safeParse({
+    ...raw,
+    ...(typeof raw.featuredImage === 'string'
+      ? { featuredImage: normalizeImageUrl(raw.featuredImage) }
+      : {}),
+  });
   if (!parsed.success) {
     return res.status(400).json({
       error: parsed.error.issues[0]?.message || 'Invalid article payload.',
@@ -1479,7 +1530,7 @@ router.post('/articles', async (req, res) => {
     slug,
     excerpt: stripHtmlTags(d.excerpt),
     content: d.content,
-    featuredImage: d.featuredImage,
+    featuredImage: await resolveImageUrlForStorage(d.featuredImage),
     category: stripHtmlTags(d.category),
     tags: d.tags.map(stripHtmlTags).filter(Boolean),
     authorName: stripHtmlTags(d.authorName),
@@ -1498,7 +1549,12 @@ router.patch('/articles/:id', async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: 'Invalid article identifier.' });
   }
-  const parsed = articlePatchSchema.safeParse(req.body);
+  const raw = req.body || {};
+  const candidate: Record<string, unknown> = { ...raw };
+  if (typeof raw.featuredImage === 'string') {
+    candidate.featuredImage = normalizeImageUrl(raw.featuredImage);
+  }
+  const parsed = articlePatchSchema.safeParse(candidate);
   if (!parsed.success) {
     return res.status(400).json({
       error: parsed.error.issues[0]?.message || 'Invalid article update.',
@@ -1516,7 +1572,9 @@ router.patch('/articles/:id', async (req, res) => {
     const words = d.content.trim().split(/\s+/).filter(Boolean).length;
     update.readingTimeMinutes = Math.max(1, Math.ceil(words / 200));
   }
-  if (d.featuredImage !== undefined) update.featuredImage = d.featuredImage;
+  if (d.featuredImage !== undefined) {
+    update.featuredImage = await resolveImageUrlForStorage(d.featuredImage);
+  }
   if (d.category !== undefined) update.category = stripHtmlTags(d.category);
   if (d.tags !== undefined) update.tags = d.tags.map(stripHtmlTags).filter(Boolean);
   if (d.authorName !== undefined) update.authorName = stripHtmlTags(d.authorName);
@@ -1730,7 +1788,11 @@ router.get('/seo', async (_req, res) => {
 
 router.put('/seo/:pageKey', async (req, res) => {
   const pageKey = slugify(req.params.pageKey) || req.params.pageKey.trim().toLowerCase();
-  const parsed = seoPageUpdateSchema.safeParse(req.body);
+  const raw = req.body || {};
+  const parsed = seoPageUpdateSchema.safeParse({
+    ...raw,
+    ...(typeof raw.ogImage === 'string' ? { ogImage: normalizeImageUrl(raw.ogImage) } : {}),
+  });
   if (!parsed.success) {
     return res.status(400).json({
       error: parsed.error.issues[0]?.message || 'Invalid SEO settings payload.',
@@ -1744,7 +1806,7 @@ router.put('/seo/:pageKey', async (req, res) => {
     canonicalUrl: parsed.data.canonicalUrl,
     ogTitle: stripHtmlTags(parsed.data.ogTitle),
     ogDescription: stripHtmlTags(parsed.data.ogDescription),
-    ogImage: parsed.data.ogImage,
+    ogImage: await resolveImageUrlForStorage(parsed.data.ogImage),
     focusKeyword: stripHtmlTags(parsed.data.focusKeyword),
     noIndex: parsed.data.noIndex,
   };
@@ -2116,6 +2178,7 @@ router.post('/work', async (req, res) => {
   const raw = req.body || {};
   const parsed = workShowcaseWriteSchema.safeParse({
     ...raw,
+    ...(typeof raw.imageUrl === 'string' ? { imageUrl: normalizeImageUrl(raw.imageUrl) } : {}),
     order: Number(raw.order ?? 0),
   });
   if (!parsed.success) {
@@ -2134,7 +2197,7 @@ router.post('/work', async (req, res) => {
     summary: stripHtmlTags(d.summary),
     outcomes: d.outcomes.map(stripHtmlTags).filter(Boolean),
     technologies: d.technologies.map(stripHtmlTags).filter(Boolean),
-    imageUrl: d.imageUrl,
+    imageUrl: await resolveImageUrlForStorage(d.imageUrl),
     projectUrl: d.projectUrl,
     featured: d.featured,
     published: d.published,
@@ -2151,6 +2214,7 @@ router.patch('/work/:id', async (req, res) => {
   const raw = req.body || {};
   const candidate: Record<string, unknown> = { ...raw };
   if (raw.order !== undefined) candidate.order = Number(raw.order);
+  if (typeof raw.imageUrl === 'string') candidate.imageUrl = normalizeImageUrl(raw.imageUrl);
   const parsed = workShowcasePatchSchema.safeParse(candidate);
   if (!parsed.success) {
     return res.status(400).json({
@@ -2169,7 +2233,7 @@ router.patch('/work/:id', async (req, res) => {
   if (d.outcomes !== undefined) update.outcomes = d.outcomes.map(stripHtmlTags).filter(Boolean);
   if (d.technologies !== undefined)
     update.technologies = d.technologies.map(stripHtmlTags).filter(Boolean);
-  if (d.imageUrl !== undefined) update.imageUrl = d.imageUrl;
+  if (d.imageUrl !== undefined) update.imageUrl = await resolveImageUrlForStorage(d.imageUrl);
   if (d.projectUrl !== undefined) update.projectUrl = d.projectUrl;
   if (d.featured !== undefined) update.featured = d.featured;
   if (d.published !== undefined) update.published = d.published;

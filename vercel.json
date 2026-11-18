@@ -6,7 +6,7 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 30,
-      "includeFiles": "server/**"
+      "includeFiles": "{server/**,dist/index.html}"
     }
   },
   "rewrites": [
@@ -20,6 +20,17 @@
     },
     {
       "source": "/robots.txt",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/((?!api/|assets/|fonts/|sitemap\\.xml|robots\\.txt|.*\\.).*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*([Gg]ooglebot|[Bb]ingbot|[Dd]uck[Dd]uck[Bb]ot|[Yy]andex[Bb]ot|[Bb]aiduspider|[Ff]acebookexternalhit|[Tt]witterbot|[Ll]inked[Ii]n[Bb]ot|[Ww]hats[Aa]pp|[Tt]elegram[Bb]ot|[Dd]iscordbot|[Ss]lackbot|[Aa]pplebot|[Gg][Pp][Tt][Bb]ot|[Oo][Aa][Ii]-[Ss]earch[Bb]ot|[Cc]hat[Gg][Pp][Tt]-[Uu]ser|[Pp]erplexity[Bb]ot|[Cc]laude[Bb]ot|[Aa]nthropic-[Aa][Ii]|[Cc][Cc][Bb]ot).*"
+        }
+      ],
       "destination": "/api/index"
     },
     {
