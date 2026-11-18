@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import { NextFunction, Request, RequestHandler, Response, Router } from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
@@ -7,6 +7,40 @@ import { connectDB, getLastDBError, isDBConfigured } from '../db.js';
 import { User } from '../models.js';
 
 export const SESSION_COOKIE_NAME = 'nf_session';
+
+export function asyncHandler(
+  fn: (req: Request, res: Response, next: NextFunction) => unknown
+): RequestHandler {
+  return (req, res, next) => {
+    try {
+      Promise.resolve(fn(req, res, next)).catch(next);
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+function wrapRouterArg(arg: unknown): unknown {
+  if (Array.isArray(arg)) {
+    return arg.map(wrapRouterArg);
+  }
+  if (typeof arg === 'function' && arg.length < 4) {
+    return asyncHandler(arg as (req: Request, res: Response, next: NextFunction) => unknown);
+  }
+  return arg;
+}
+
+export function createAsyncRouter() {
+  const router = Router();
+  const methods = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all', 'use'] as const;
+  for (const method of methods) {
+    const original = (router[method] as (...args: unknown[]) => unknown).bind(router);
+    (router as unknown as Record<string, (...args: unknown[]) => unknown>)[method] = (
+      ...args: unknown[]
+    ) => original(...args.map(wrapRouterArg));
+  }
+  return router;
+}
 
 const EPHEMERAL_DEV_SECRET = crypto.randomBytes(32).toString('hex');
 
@@ -146,99 +180,117 @@ export function clearSessionCookie(req: Request, res: Response) {
 }
 
 export async function requireDatabase(req: Request, res: Response, next: NextFunction) {
-  const isProd = process.env.NODE_ENV === 'production';
-  if (!isDBConfigured()) {
-    const lastErr = getLastDBError();
-    return res.status(503).json({
-      error:
-        (!isProd || lastErr.code !== 'UNKNOWN' ? lastErr.message : null) ||
-        'MongoDB Atlas is not configured yet. Configure MONGODB_URI in environment secrets.',
-      code: lastErr.code === 'INVALID_URI' ? 'DB_INVALID_URI' : 'DB_NOT_CONFIGURED',
-    });
+  try {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (!isDBConfigured()) {
+      const lastErr = getLastDBError();
+      return res.status(503).json({
+        error:
+          (!isProd || lastErr.code !== 'UNKNOWN' ? lastErr.message : null) ||
+          'MongoDB Atlas is not configured yet. Configure MONGODB_URI in environment secrets.',
+        code: lastErr.code === 'INVALID_URI' ? 'DB_INVALID_URI' : 'DB_NOT_CONFIGURED',
+      });
+    }
+    const conn = await connectDB();
+    if (!conn) {
+      const lastErr = getLastDBError();
+      return res.status(503).json({
+        error:
+          (!isProd || lastErr.code !== 'UNKNOWN' ? lastErr.message : null) ||
+          'Unable to reach MongoDB Atlas right now. Verify MONGODB_URI and IP access rules.',
+        code: lastErr.code || 'DB_CONNECTION_FAILED',
+      });
+    }
+    next();
+  } catch (err) {
+    next(err);
   }
-  const conn = await connectDB();
-  if (!conn) {
-    const lastErr = getLastDBError();
-    return res.status(503).json({
-      error:
-        (!isProd || lastErr.code !== 'UNKNOWN' ? lastErr.message : null) ||
-        'Unable to reach MongoDB Atlas right now. Verify MONGODB_URI and IP access rules.',
-      code: lastErr.code || 'DB_CONNECTION_FAILED',
-    });
-  }
-  next();
 }
 
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
-  const token = extractSessionToken(req);
-  if (!token) return next();
-  const decoded = verifySessionToken(token);
-  if (!decoded) return next();
+  try {
+    const token = extractSessionToken(req);
+    if (!token) return next();
+    const decoded = verifySessionToken(token);
+    if (!decoded) return next();
 
-  if (isDBConfigured()) {
-    try {
-      const conn = await connectDB();
-      if (conn) {
-        const user = await User.findById(decoded.id).select('_id email name role active').lean();
-        if (!user || !(user as { active?: boolean }).active) {
+    if (isDBConfigured()) {
+      try {
+        const conn = await connectDB();
+        if (conn) {
+          const user = await User.findById(decoded.id).select('_id email name role active').lean();
+          if (!user || !(user as { active?: boolean }).active) {
+            return next();
+          }
+          const u = user as unknown as {
+            _id: { toString(): string };
+            email: string;
+            name: string;
+            role: AuthUser['role'];
+          };
+          req.user = {
+            id: u._id.toString(),
+            email: u.email,
+            name: u.name,
+            role: u.role,
+          };
           return next();
         }
-        const u = user as unknown as {
-          _id: { toString(): string };
-          email: string;
-          name: string;
-          role: AuthUser['role'];
-        };
-        req.user = {
-          id: u._id.toString(),
-          email: u.email,
-          name: u.name,
-          role: u.role,
-        };
-        return next();
+      } catch {
+        // fall back to decoded JWT if transient DB hiccup
       }
-    } catch {
-      // fall back to decoded JWT if transient DB hiccup
     }
-  }
 
-  req.user = decoded;
-  next();
+    req.user = decoded;
+    next();
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractSessionToken(req);
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required.' });
-  }
-  const decoded = verifySessionToken(token);
-  if (!decoded) {
-    return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
-  }
-
-  if (isDBConfigured()) {
-    await connectDB();
-    const user = await User.findById(decoded.id).select('_id email name role active').lean();
-    if (!user || !(user as { active?: boolean }).active) {
-      return res.status(401).json({ error: 'Account unavailable.' });
+  try {
+    const token = extractSessionToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required.' });
     }
-    const u = user as unknown as {
-      _id: { toString(): string };
-      email: string;
-      name: string;
-      role: AuthUser['role'];
-    };
-    req.user = {
-      id: u._id.toString(),
-      email: u.email,
-      name: u.name,
-      role: u.role,
-    };
-  } else {
-    req.user = decoded;
-  }
+    const decoded = verifySessionToken(token);
+    if (!decoded) {
+      return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
+    }
 
-  next();
+    if (isDBConfigured()) {
+      const conn = await connectDB();
+      if (!conn) {
+        return res.status(503).json({
+          error: 'Unable to reach MongoDB Atlas right now. Please try again shortly.',
+          code: 'DB_CONNECTION_FAILED',
+        });
+      }
+      const user = await User.findById(decoded.id).select('_id email name role active').lean();
+      if (!user || !(user as { active?: boolean }).active) {
+        return res.status(401).json({ error: 'Account unavailable.' });
+      }
+      const u = user as unknown as {
+        _id: { toString(): string };
+        email: string;
+        name: string;
+        role: AuthUser['role'];
+      };
+      req.user = {
+        id: u._id.toString(),
+        email: u.email,
+        name: u.name,
+        role: u.role,
+      };
+    } else {
+      req.user = decoded;
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {

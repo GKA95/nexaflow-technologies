@@ -174,10 +174,26 @@ export function createExpressApp() {
       if (err instanceof Error && err.message === 'CORS origin rejected') {
         return res.status(403).json({ error: 'Cross-origin request rejected.' });
       }
-      console.error('[Server] Unhandled request error:', isProd ? (err instanceof Error ? err.message : 'Error') : err);
-      if (req.path.startsWith('/api')) {
-        const message =
-          !isProd && err instanceof Error ? err.message : 'Internal server error.';
+      const errName = err instanceof Error ? err.name : '';
+      const errMsg = err instanceof Error ? err.message : 'Error';
+      console.error('[Server] Unhandled request error:', isProd ? `${errName}: ${errMsg}` : err);
+      if (req.originalUrl.startsWith('/api') || req.path.startsWith('/api')) {
+        if (
+          errName === 'MongoServerSelectionError' ||
+          errName === 'MongoNetworkTimeoutError' ||
+          errName === 'MongoNotConnectedError'
+        ) {
+          return res.status(503).json({
+            error: 'Database service temporarily unavailable. Please retry shortly.',
+            code: 'DB_UNAVAILABLE',
+          });
+        }
+        if (errName === 'ValidationError') {
+          return res.status(400).json({
+            error: !isProd ? errMsg : 'Invalid request payload.',
+          });
+        }
+        const message = !isProd && errMsg ? errMsg : 'Internal server error.';
         return res.status(500).json({ error: message });
       }
       next(err);

@@ -1,10 +1,11 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { Router } from 'express';
+import mongoose from 'mongoose';
 import { connectDB, getLastDBError, isDBConfigured } from '../db.js';
 import { DEFAULT_SEO_PAGES, DEFAULT_SITE_SETTINGS } from '../defaults.js';
 import {
   authLimiter,
+  createAsyncRouter,
   isGoogleOAuthConfigured,
   isJwtSecretConfigured,
   isValidObjectId,
@@ -76,7 +77,7 @@ import {
 } from '../utils/paystack.js';
 import { serializePayment } from './payments.js';
 
-const router = Router();
+const router = createAsyncRouter();
 
 const coursePatchSchema = courseWriteSchema.partial();
 const modulePatchSchema = moduleWriteSchema.partial();
@@ -116,28 +117,62 @@ router.get('/setup-status', async (req, res) => {
   const emailConfigured = isEmailConfigured();
   const isProduction = process.env.NODE_ENV === 'production';
 
-  if (!dbConfigured) {
-    const lastErr = getLastDBError();
-    return res.json({
-      dbConfigured: false,
-      dbConnected: false,
-      dbErrorCode: lastErr.code || 'NOT_CONFIGURED',
-      dbError: isProduction && lastErr.code === 'UNKNOWN' ? 'Database unavailable' : lastErr.message || null,
-      adminExists: false,
-      setupTokenConfigured,
-      googleConfigured,
-      emailConfigured,
-      isProduction,
+  try {
+    if (!dbConfigured) {
+      const lastErr = getLastDBError();
+      return res.json({
+        dbConfigured: false,
+        dbConnected: false,
+        dbErrorCode: lastErr.code || 'NOT_CONFIGURED',
+        dbError: isProduction && lastErr.code === 'UNKNOWN' ? 'Database unavailable' : lastErr.message || null,
+        adminExists: false,
+        setupTokenConfigured,
+        googleConfigured,
+        emailConfigured,
+        isProduction,
+      });
+    }
+    const conn = await connectDB({ force: req.query.retry === '1' });
+    if (!conn) {
+      const lastErr = getLastDBError();
+      return res.json({
+        dbConfigured: true,
+        dbConnected: false,
+        dbErrorCode: lastErr.code || 'UNKNOWN',
+        dbError: isProduction && lastErr.code === 'UNKNOWN' ? 'Database unavailable' : lastErr.message || null,
+        adminExists: false,
+        setupTokenConfigured,
+        googleConfigured,
+        emailConfigured,
+        isProduction,
+      });
+    }
+
+    const adminCount = await User.countDocuments({
+      role: mongoose.trusted({ $in: ['admin', 'super_admin'] }),
     });
-  }
-  const conn = await connectDB({ force: req.query.retry === '1' });
-  if (!conn) {
-    const lastErr = getLastDBError();
     return res.json({
       dbConfigured: true,
+      dbConnected: true,
+      dbErrorCode: null,
+      dbError: null,
+      adminExists: adminCount > 0,
+      setupTokenConfigured,
+      googleConfigured,
+      emailConfigured,
+      isProduction,
+    });
+  } catch (err) {
+    console.error('[Admin Setup-Status] Error checking setup status:', err instanceof Error ? err.message : err);
+    return res.status(503).json({
+      dbConfigured,
       dbConnected: false,
-      dbErrorCode: lastErr.code || 'UNKNOWN',
-      dbError: isProduction && lastErr.code === 'UNKNOWN' ? 'Database unavailable' : lastErr.message || null,
+      dbErrorCode: 'UNKNOWN',
+      dbError: isProduction
+        ? 'Unable to verify administrator setup status right now.'
+        : err instanceof Error
+          ? err.message
+          : 'Database query failed.',
       adminExists: false,
       setupTokenConfigured,
       googleConfigured,
@@ -145,25 +180,14 @@ router.get('/setup-status', async (req, res) => {
       isProduction,
     });
   }
-
-  const adminCount = await User.countDocuments({ role: { $in: ['admin', 'super_admin'] } });
-  res.json({
-    dbConfigured: true,
-    dbConnected: true,
-    dbErrorCode: null,
-    dbError: null,
-    adminExists: adminCount > 0,
-    setupTokenConfigured,
-    googleConfigured,
-    emailConfigured,
-    isProduction,
-  });
 });
 
 // One-time secure Super Admin creation — disabled permanently after first admin exists
 router.post('/setup', authLimiter, requireDatabase, async (req, res) => {
   try {
-    const adminCount = await User.countDocuments({ role: { $in: ['admin', 'super_admin'] } });
+    const adminCount = await User.countDocuments({
+      role: mongoose.trusted({ $in: ['admin', 'super_admin'] }),
+    });
     if (adminCount > 0) {
       return res.status(403).json({
         error: 'Administrator setup is permanently locked because an administrator already exists.',
@@ -206,10 +230,11 @@ router.post('/setup', authLimiter, requireDatabase, async (req, res) => {
     const secondaryEmails = Array.from(
       new Set(parsed.data.secondaryEmails.map((e) => e.toLowerCase()).filter((e) => e !== normalizedEmail))
     );
+    const emailCandidates = [normalizedEmail, ...secondaryEmails];
     const existing = await User.findOne({
       $or: [
-        { email: { $in: [normalizedEmail, ...secondaryEmails] } },
-        { secondaryEmails: { $in: [normalizedEmail, ...secondaryEmails] } },
+        { email: mongoose.trusted({ $in: emailCandidates }) },
+        { secondaryEmails: mongoose.trusted({ $in: emailCandidates }) },
       ],
     }).lean();
     if (existing) {
@@ -302,7 +327,7 @@ router.get('/overview', async (_req, res) => {
     Lead.countDocuments({ status: 'New' }),
     Lead.countDocuments({ status: 'Qualified' }),
     Lead.countDocuments({ status: 'Converted' }),
-    SupportTicket.countDocuments({ status: { $in: ['Open', 'In Progress'] } }),
+    SupportTicket.countDocuments({ status: mongoose.trusted({ $in: ['Open', 'In Progress'] }) }),
     AdminActivity.find().sort({ createdAt: -1 }).limit(8).lean(),
     Lead.find().sort({ createdAt: -1 }).limit(5).lean(),
     Notification.countDocuments({ targetRole: 'admin', read: false }),
@@ -336,24 +361,56 @@ router.get('/overview', async (_req, res) => {
 
 // 2. Course, Module & Lesson Management
 router.get('/courses', async (_req, res) => {
-  const courses = await Course.find().sort({ order: 1, createdAt: -1 }).lean();
-  const enriched = await Promise.all(
-    courses.map(async (c: Record<string, unknown>) => {
-      const modules = await Module.find({ courseId: c._id }).sort({ order: 1 }).lean();
-      const lessons = await Lesson.find({ courseId: c._id }).sort({ order: 1 }).lean();
-      const enrolmentsCount = await Enrolment.countDocuments({ courseId: c._id, status: 'active' });
-      return {
-        ...c,
-        moduleCount: modules.length,
-        lessonCount: lessons.length,
-        enrolmentsCount,
-        modules: modules.map((m: Record<string, unknown>) => ({
-          ...m,
-          lessons: lessons.filter((l: Record<string, unknown>) => String(l.moduleId) === String(m._id)),
-        })),
-      };
-    })
-  );
+  const [courses, allModules, allLessons, enrolmentAgg] = await Promise.all([
+    Course.find().sort({ order: 1, createdAt: -1 }).lean(),
+    Module.find().sort({ order: 1 }).lean(),
+    Lesson.find().sort({ order: 1 }).lean(),
+    Enrolment.aggregate([
+      { $match: { status: 'active' } },
+      { $group: { _id: '$courseId', count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const lessonsByModule = new Map<string, Array<Record<string, unknown>>>();
+  const lessonCountByCourse = new Map<string, number>();
+  for (const lesson of allLessons as Array<Record<string, unknown>>) {
+    const cId = String(lesson.courseId);
+    const mId = String(lesson.moduleId);
+    lessonCountByCourse.set(cId, (lessonCountByCourse.get(cId) || 0) + 1);
+    const list = lessonsByModule.get(mId);
+    if (list) list.push(lesson);
+    else lessonsByModule.set(mId, [lesson]);
+  }
+
+  const modulesByCourse = new Map<string, Array<Record<string, unknown>>>();
+  for (const mod of allModules as Array<Record<string, unknown>>) {
+    const cId = String(mod.courseId);
+    const modWithLessons = {
+      ...mod,
+      lessons: lessonsByModule.get(String(mod._id)) || [],
+    };
+    const list = modulesByCourse.get(cId);
+    if (list) list.push(modWithLessons);
+    else modulesByCourse.set(cId, [modWithLessons]);
+  }
+
+  const enrolmentCountByCourse = new Map<string, number>();
+  for (const row of enrolmentAgg as Array<{ _id: unknown; count: number }>) {
+    enrolmentCountByCourse.set(String(row._id), Number(row.count || 0));
+  }
+
+  const enriched = (courses as Array<Record<string, unknown>>).map((c) => {
+    const cId = String(c._id);
+    const modules = modulesByCourse.get(cId) || [];
+    return {
+      ...c,
+      moduleCount: modules.length,
+      lessonCount: lessonCountByCourse.get(cId) || 0,
+      enrolmentsCount: enrolmentCountByCourse.get(cId) || 0,
+      modules,
+    };
+  });
+
   res.json({ courses: enriched });
 });
 
@@ -693,15 +750,44 @@ router.get('/learners', async (req, res) => {
       )
     : learners;
 
-  const enriched = await Promise.all(
-    filtered.map(async (l: Record<string, unknown>) => {
-      const [enrolments, completedLessons] = await Promise.all([
-        Enrolment.find({ userId: l._id, status: 'active' }).populate('courseId', 'title slug').lean(),
-        LessonProgress.countDocuments({ userId: l._id, completed: true }),
-      ]);
-      return { ...l, enrolments, completedLessons };
-    })
-  );
+  const learnerIds = filtered.map((l: Record<string, unknown>) => l._id);
+  const [allEnrolments, progressCounts] =
+    learnerIds.length > 0
+      ? await Promise.all([
+          Enrolment.find({
+            userId: mongoose.trusted({ $in: learnerIds }),
+            status: 'active',
+          })
+            .populate('courseId', 'title slug')
+            .lean(),
+          LessonProgress.aggregate([
+            { $match: { userId: { $in: learnerIds }, completed: true } },
+            { $group: { _id: '$userId', count: { $sum: 1 } } },
+          ]),
+        ])
+      : [[], []];
+
+  const enrolmentsByUser = new Map<string, Array<Record<string, unknown>>>();
+  for (const enr of allEnrolments as Array<Record<string, unknown>>) {
+    const uId = String(enr.userId);
+    const list = enrolmentsByUser.get(uId);
+    if (list) list.push(enr);
+    else enrolmentsByUser.set(uId, [enr]);
+  }
+
+  const completedCountByUser = new Map<string, number>();
+  for (const row of progressCounts as Array<{ _id: unknown; count: number }>) {
+    completedCountByUser.set(String(row._id), Number(row.count || 0));
+  }
+
+  const enriched = filtered.map((l: Record<string, unknown>) => {
+    const uId = String(l._id);
+    return {
+      ...l,
+      enrolments: enrolmentsByUser.get(uId) || [],
+      completedLessons: completedCountByUser.get(uId) || 0,
+    };
+  });
 
   res.json({ learners: enriched, courses });
 });
@@ -837,7 +923,9 @@ router.delete('/learners/:id', async (req, res) => {
     LessonProgress.deleteMany({ userId: l._id }),
     PasswordResetToken.deleteMany({ userId: l._id }),
     Notification.deleteMany({ userId: l._id }),
-    ...(ticketIds.length > 0 ? [SupportMessage.deleteMany({ ticketId: { $in: ticketIds } })] : []),
+    ...(ticketIds.length > 0
+      ? [SupportMessage.deleteMany({ ticketId: mongoose.trusted({ $in: ticketIds }) })]
+      : []),
     SupportTicket.deleteMany({ userId: l._id }),
     User.deleteOne({ _id: l._id, role: 'learner' }),
   ]);
@@ -992,7 +1080,7 @@ router.get('/leads', async (req, res) => {
       const dt = new Date(`${dateTo}T23:59:59.999Z`);
       if (!Number.isNaN(dt.getTime())) createdAt.$lte = dt;
     }
-    if (Object.keys(createdAt).length > 0) filter.createdAt = createdAt;
+    if (Object.keys(createdAt).length > 0) filter.createdAt = mongoose.trusted(createdAt);
   }
 
   let leads = await Lead.find(filter).sort({ createdAt: -1 }).lean();
@@ -1060,7 +1148,7 @@ router.get('/leads/export.csv', async (req, res) => {
   if (typeof req.query.ids === 'string' && req.query.ids && (!rawIds || rawIds.length === 0)) {
     return res.status(400).json({ error: 'Invalid lead identifiers.' });
   }
-  const filter = rawIds ? { _id: { $in: rawIds } } : {};
+  const filter = rawIds ? { _id: mongoose.trusted({ $in: rawIds }) } : {};
   const leads = await Lead.find(filter).sort({ createdAt: -1 }).lean();
 
   const headers = [
@@ -1456,8 +1544,9 @@ router.delete('/articles/:id', async (req, res) => {
 
 // 9. Support Management
 router.get('/tickets', async (req, res) => {
-  const status = String(req.query.status || '');
-  const filter = status && status !== 'All' ? { status } : {};
+  const status = String(req.query.status || '').trim();
+  const allowedStatuses = new Set(['Open', 'In Progress', 'Answered', 'Closed']);
+  const filter = status && status !== 'All' && allowedStatuses.has(status) ? { status } : {};
   const tickets = await SupportTicket.find(filter)
     .populate('userId', 'name email')
     .populate('courseId', 'title slug')
@@ -1715,7 +1804,7 @@ router.get('/audit-logs', async (_req, res) => {
 // 14. Admin Access & Role Management (Super Admin only)
 router.get('/admins', requireSuperAdmin, async (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();
-  const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } })
+  const admins = await User.find({ role: mongoose.trusted({ $in: ['admin', 'super_admin'] }) })
     .select(
       '_id name email secondaryEmails role active authProviders googleId passwordHash createdAt updatedAt'
     )
@@ -1764,10 +1853,11 @@ router.post('/admins', requireSuperAdmin, async (req, res) => {
     )
   );
 
+  const emailCandidates = [normalizedEmail, ...secondaryEmails];
   const existing = await User.findOne({
     $or: [
-      { email: { $in: [normalizedEmail, ...secondaryEmails] } },
-      { secondaryEmails: { $in: [normalizedEmail, ...secondaryEmails] } },
+      { email: mongoose.trusted({ $in: emailCandidates }) },
+      { secondaryEmails: mongoose.trusted({ $in: emailCandidates }) },
     ],
   });
 
@@ -1874,7 +1964,7 @@ router.patch('/admins/:id', requireSuperAdmin, async (req, res) => {
 
   const target = await User.findOne({
     _id: req.params.id,
-    role: { $in: ['admin', 'super_admin'] },
+    role: mongoose.trusted({ $in: ['admin', 'super_admin'] }),
   });
   if (!target) return res.status(404).json({ error: 'Administrator not found.' });
 
@@ -1890,7 +1980,7 @@ router.patch('/admins/:id', requireSuperAdmin, async (req, res) => {
     (parsed.data.role === 'admin' || parsed.data.active === false)
   ) {
     const otherSuperAdmins = await User.countDocuments({
-      _id: { $ne: target._id },
+      _id: mongoose.trusted({ $ne: target._id }),
       role: 'super_admin',
       active: true,
     });
@@ -1912,11 +2002,12 @@ router.patch('/admins/:id', requireSuperAdmin, async (req, res) => {
           .filter((e: string) => e && e !== nextPrimary)
       )
     );
+    const emailCandidates = [nextPrimary, ...nextSecondary];
     const conflict = await User.findOne({
-      _id: { $ne: target._id },
+      _id: mongoose.trusted({ $ne: target._id }),
       $or: [
-        { email: { $in: [nextPrimary, ...nextSecondary] } },
-        { secondaryEmails: { $in: [nextPrimary, ...nextSecondary] } },
+        { email: mongoose.trusted({ $in: emailCandidates }) },
+        { secondaryEmails: mongoose.trusted({ $in: emailCandidates }) },
       ],
     }).lean();
     if (conflict) {
@@ -1970,7 +2061,7 @@ router.post('/admins/:id/revoke', requireSuperAdmin, async (req, res) => {
   const mode = req.body?.mode === 'suspend' ? 'suspend' : 'demote';
   const target = await User.findOne({
     _id: req.params.id,
-    role: { $in: ['admin', 'super_admin'] },
+    role: mongoose.trusted({ $in: ['admin', 'super_admin'] }),
   });
   if (!target) {
     return res.status(404).json({ error: 'Administrator account not found.' });
@@ -1982,7 +2073,7 @@ router.post('/admins/:id/revoke', requireSuperAdmin, async (req, res) => {
 
   if (target.role === 'super_admin' && target.active) {
     const remainingSuperAdmins = await User.countDocuments({
-      _id: { $ne: target._id },
+      _id: mongoose.trusted({ $ne: target._id }),
       role: 'super_admin',
       active: true,
     });
@@ -2377,7 +2468,10 @@ router.patch('/coupons/:id', async (req, res) => {
 
     if (d.code !== undefined) {
       const cleanCode = d.code.trim().toUpperCase();
-      const clash = await Coupon.findOne({ code: cleanCode, _id: { $ne: req.params.id } }).lean();
+      const clash = await Coupon.findOne({
+        code: cleanCode,
+        _id: mongoose.trusted({ $ne: req.params.id }),
+      }).lean();
       if (clash) {
         return res.status(409).json({ error: `Coupon code "${cleanCode}" is already used.` });
       }

@@ -1,10 +1,11 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { Router } from 'express';
+import mongoose from 'mongoose';
 import { connectDB, getLastDBError, isDBConfigured } from '../db.js';
 import {
   authLimiter,
   clearSessionCookie,
+  createAsyncRouter,
   getBaseUrl,
   isGoogleOAuthConfigured,
   isJwtSecretConfigured,
@@ -32,7 +33,7 @@ import {
 } from '../shared/validation.js';
 import { isEmailConfigured, sendTransactionalEmail } from '../utils/email.js';
 
-const router = Router();
+const router = createAsyncRouter();
 
 function escapeHtml(input: string): string {
   return input
@@ -578,7 +579,7 @@ router.get(['/google/callback', '/google/callback/'], async (req, res) => {
 
     if (portal === 'admin') {
       const adminCount = await User.countDocuments({
-        role: { $in: ['admin', 'super_admin'] },
+        role: mongoose.trusted({ $in: ['admin', 'super_admin'] }),
       });
       if (adminCount === 0) {
         return res.status(403).send(
@@ -839,7 +840,7 @@ router.post('/reset-password', authLimiter, requireDatabase, async (req, res) =>
   const resetDoc = await PasswordResetToken.findOne({
     tokenHash,
     usedAt: null,
-    expiresAt: { $gt: new Date() },
+    expiresAt: mongoose.trusted({ $gt: new Date() }),
   });
 
   if (!resetDoc) {
@@ -913,7 +914,7 @@ router.post('/admin-recovery-reset', authLimiter, requireDatabase, async (req, r
   const normalizedEmail = parsed.data.email.toLowerCase();
   const adminUser = await User.findOne({
     $or: [{ email: normalizedEmail }, { secondaryEmails: normalizedEmail }],
-    role: { $in: ['admin', 'super_admin'] },
+    role: mongoose.trusted({ $in: ['admin', 'super_admin'] }),
   });
 
   if (!adminUser) {
@@ -1040,10 +1041,10 @@ router.patch('/account-emails', requireDatabase, requireAuth, async (req, res) =
 
   const allEmailsToCheck = [primaryEmail, ...cleanedSecondary];
   const conflict = await User.findOne({
-    _id: { $ne: req.user!.id },
+    _id: mongoose.trusted({ $ne: req.user!.id }),
     $or: [
-      { email: { $in: allEmailsToCheck } },
-      { secondaryEmails: { $in: allEmailsToCheck } },
+      { email: mongoose.trusted({ $in: allEmailsToCheck }) },
+      { secondaryEmails: mongoose.trusted({ $in: allEmailsToCheck }) },
     ],
   }).lean();
 

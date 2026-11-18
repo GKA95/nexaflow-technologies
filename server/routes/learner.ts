@@ -1,7 +1,8 @@
 import crypto from 'crypto';
-import { Router } from 'express';
+import mongoose from 'mongoose';
 import {
   blockDownloadManagers,
+  createAsyncRouter,
   extractYouTubeId,
   isValidObjectId,
   requireAuth,
@@ -31,7 +32,7 @@ import {
 } from '../shared/validation.js';
 import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
 
-const router = Router();
+const router = createAsyncRouter();
 
 router.use(blockDownloadManagers);
 router.use(requireDatabase);
@@ -147,7 +148,10 @@ router.post('/enrol-free', async (req, res) => {
         {
           _id: check.coupon.couponId,
           active: true,
-          $or: [{ maxUses: { $lte: 0 } }, { $expr: { $lt: ['$usedCount', '$maxUses'] } }],
+          $or: [
+            { maxUses: mongoose.trusted({ $lte: 0 }) },
+            { $expr: mongoose.trusted({ $lt: ['$usedCount', '$maxUses'] }) },
+          ],
         },
         { $inc: { usedCount: 1 } },
         { new: true }

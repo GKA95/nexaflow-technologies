@@ -1,7 +1,9 @@
 import crypto from 'crypto';
-import { Request, Router } from 'express';
+import { Request } from 'express';
+import mongoose from 'mongoose';
 import { connectDB, isDBConfigured } from '../db.js';
 import {
+  createAsyncRouter,
   getBaseUrl,
   isValidObjectId,
   paymentLimiter,
@@ -20,7 +22,7 @@ import {
   verifyPaystackWebhookSignature,
 } from '../utils/paystack.js';
 
-const router = Router();
+const router = createAsyncRouter();
 
 export function serializePayment(doc: unknown): Record<string, unknown> {
   const raw =
@@ -47,10 +49,10 @@ async function activateEnrolmentFromVerifiedPayment(params: {
 
   const guardFilter: Record<string, unknown> = {
     _id: paymentId,
-    status: { $nin: ['success', 'refunded'] },
+    status: mongoose.trusted({ $nin: ['success', 'refunded'] }),
   };
   if (eventKey) {
-    guardFilter.processedEvents = { $ne: eventKey };
+    guardFilter.processedEvents = mongoose.trusted({ $ne: eventKey });
   }
 
   // Atomic state transition: only one concurrent caller (verify OR webhook) can win the transition to 'success'
@@ -67,7 +69,7 @@ async function activateEnrolmentFromVerifiedPayment(params: {
     // Still record idempotent event key if already success and eventKey is new
     if (eventKey) {
       await Payment.updateOne(
-        { _id: paymentId, processedEvents: { $ne: eventKey } },
+        { _id: paymentId, processedEvents: mongoose.trusted({ $ne: eventKey }) },
         { $addToSet: { processedEvents: eventKey } }
       );
     }
@@ -84,7 +86,10 @@ async function activateEnrolmentFromVerifiedPayment(params: {
     await Coupon.findOneAndUpdate(
       {
         code: transitioned.couponCode,
-        $or: [{ maxUses: { $lte: 0 } }, { $expr: { $lt: ['$usedCount', '$maxUses'] } }],
+        $or: [
+          { maxUses: mongoose.trusted({ $lte: 0 }) },
+          { $expr: mongoose.trusted({ $lt: ['$usedCount', '$maxUses'] }) },
+        ],
       },
       { $inc: { usedCount: 1 } }
     );
@@ -473,7 +478,7 @@ router.post('/webhook', async (req: Request & { rawBody?: Buffer }, res) => {
     });
   } else if (eventName === 'refund.processed') {
     const updated = await Payment.findOneAndUpdate(
-      { _id: payment._id, processedEvents: { $ne: eventKey } },
+      { _id: payment._id, processedEvents: mongoose.trusted({ $ne: eventKey }) },
       {
         $set: {
           status: 'refunded',
@@ -499,7 +504,7 @@ router.post('/webhook', async (req: Request & { rawBody?: Buffer }, res) => {
     }
   } else if (eventName === 'refund.failed') {
     const updated = await Payment.findOneAndUpdate(
-      { _id: payment._id, processedEvents: { $ne: eventKey } },
+      { _id: payment._id, processedEvents: mongoose.trusted({ $ne: eventKey }) },
       { $addToSet: { processedEvents: eventKey } },
       { new: true }
     );

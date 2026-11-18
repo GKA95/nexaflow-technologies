@@ -13,6 +13,7 @@ interface MongooseCache {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
   bootstrapped: boolean;
+  listenersAttached: boolean;
   lastErrorCode: DBErrorCode | null;
   lastErrorMessage: string | null;
   lastAttemptAt: number;
@@ -27,12 +28,36 @@ const cached: MongooseCache = global.__nfMongooseCache || {
   conn: null,
   promise: null,
   bootstrapped: false,
+  listenersAttached: false,
   lastErrorCode: null,
   lastErrorMessage: null,
   lastAttemptAt: 0,
   lastUriSignature: '',
 };
 global.__nfMongooseCache = cached;
+
+function attachConnectionListeners() {
+  if (cached.listenersAttached) return;
+  cached.listenersAttached = true;
+
+  mongoose.connection.on('disconnected', () => {
+    cached.conn = null;
+    cached.promise = null;
+  });
+
+  mongoose.connection.on('close', () => {
+    cached.conn = null;
+    cached.promise = null;
+  });
+
+  mongoose.connection.on('error', (err) => {
+    cached.conn = null;
+    cached.promise = null;
+    const classified = classifyDBError(err);
+    cached.lastErrorCode = classified.code;
+    cached.lastErrorMessage = classified.message;
+  });
+}
 
 function stripWrappingQuotes(raw: string): string {
   const trimmed = raw.trim();
@@ -201,24 +226,21 @@ function classifyDBError(err: unknown): { code: DBErrorCode; message: string } {
 async function ensureStructuralDefaults() {
   if (cached.bootstrapped) return;
   try {
-    const settingsCount = await SiteSettings.countDocuments();
-    if (settingsCount === 0) {
-      await SiteSettings.create(DEFAULT_SITE_SETTINGS);
-    }
+    const [settingsCount, servicesCount, productsCount, seoCount] = await Promise.all([
+      SiteSettings.countDocuments(),
+      Service.countDocuments(),
+      Product.countDocuments(),
+      SEOSettings.countDocuments(),
+    ]);
 
-    const servicesCount = await Service.countDocuments();
-    if (servicesCount === 0) {
-      await Service.insertMany(DEFAULT_SERVICES);
-    }
+    const seedOps: Array<Promise<unknown>> = [];
+    if (settingsCount === 0) seedOps.push(SiteSettings.create(DEFAULT_SITE_SETTINGS));
+    if (servicesCount === 0) seedOps.push(Service.insertMany(DEFAULT_SERVICES));
+    if (productsCount === 0) seedOps.push(Product.insertMany(DEFAULT_PRODUCTS));
+    if (seoCount === 0) seedOps.push(SEOSettings.insertMany(DEFAULT_SEO_PAGES));
 
-    const productsCount = await Product.countDocuments();
-    if (productsCount === 0) {
-      await Product.insertMany(DEFAULT_PRODUCTS);
-    }
-
-    const seoCount = await SEOSettings.countDocuments();
-    if (seoCount === 0) {
-      await SEOSettings.insertMany(DEFAULT_SEO_PAGES);
+    if (seedOps.length > 0) {
+      await Promise.all(seedOps);
     }
 
     cached.bootstrapped = true;
@@ -227,7 +249,25 @@ async function ensureStructuralDefaults() {
   }
 }
 
+async function pingActiveConnection(timeoutMs = 3000): Promise<boolean> {
+  try {
+    const adminDb = mongoose.connection.db?.admin();
+    if (!adminDb) return false;
+    await Promise.race([
+      adminDb.ping(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('MongoDB ping timed out')), timeoutMs)
+      ),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function connectDB(options?: { force?: boolean }): Promise<typeof mongoose | null> {
+  attachConnectionListeners();
+
   const rawUri = stripWrappingQuotes(process.env.MONGODB_URI || '');
   if (!rawUri) {
     cached.lastErrorCode = 'NOT_CONFIGURED';
@@ -242,14 +282,32 @@ export async function connectDB(options?: { force?: boolean }): Promise<typeof m
     return null;
   }
 
-  if (cached.conn && mongoose.connection.readyState === 1 && cached.lastUriSignature === rawUri) {
-    cached.lastErrorCode = null;
-    cached.lastErrorMessage = null;
-    return cached.conn;
+  const uriChanged = cached.lastUriSignature !== rawUri;
+
+  if (cached.conn && mongoose.connection.readyState === 1 && !uriChanged) {
+    if (options?.force) {
+      const alive = await pingActiveConnection(3000);
+      if (!alive) {
+        cached.conn = null;
+        cached.promise = null;
+        await mongoose.disconnect().catch(() => {});
+      } else {
+        cached.lastErrorCode = null;
+        cached.lastErrorMessage = null;
+        return cached.conn;
+      }
+    } else {
+      cached.lastErrorCode = null;
+      cached.lastErrorMessage = null;
+      return cached.conn;
+    }
+  }
+
+  if (options?.force) {
+    cached.lastAttemptAt = 0;
   }
 
   const now = Date.now();
-  const uriChanged = cached.lastUriSignature !== rawUri;
   // Avoid hammering Atlas on parallel page-load calls if the same URI just failed within 4s
   if (
     !options?.force &&
@@ -267,17 +325,24 @@ export async function connectDB(options?: { force?: boolean }): Promise<typeof m
     cached.lastAttemptAt = now;
 
     cached.promise = (async () => {
-      if (uriChanged && mongoose.connection.readyState !== 0) {
+      if ((uriChanged || options?.force) && mongoose.connection.readyState !== 0) {
         await mongoose.disconnect().catch(() => {});
       }
+      // Keep strict global filter sanitization active to defend against NoSQL operator injection.
+      // Developer-authored query operator objects must be explicitly wrapped with mongoose.trusted().
       mongoose.set('sanitizeFilter', true);
       const isLocalMongo = /^mongodb(?:\+srv)?:\/\/(?:[^/@]*@)?(?:localhost|127\.0\.0\.1)(?:[:/?]|$)/i.test(
         normalizedUri
       );
       const m = await mongoose.connect(normalizedUri, {
         bufferCommands: false,
-        maxPoolSize: 10,
-        serverSelectionTimeoutMS: 6000,
+        maxPoolSize: 5,
+        minPoolSize: 0,
+        maxIdleTimeMS: 10000,
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 6000,
+        socketTimeoutMS: 12000,
+        family: 4,
         ...(isLocalMongo ? {} : { tls: true, tlsAllowInvalidCertificates: false }),
       });
       cached.conn = m;

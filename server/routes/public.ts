@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { Router } from 'express';
+import mongoose from 'mongoose';
 import { connectDB, getLastDBError, isDBConfigured } from '../db.js';
 import {
   DEFAULT_PRODUCTS,
@@ -9,6 +9,7 @@ import {
 } from '../defaults.js';
 import {
   couponLimiter,
+  createAsyncRouter,
   isValidObjectId,
   leadLimiter,
   requireDatabase,
@@ -35,7 +36,7 @@ import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coup
 import { sendTransactionalEmail } from '../utils/email.js';
 import { getPaystackMode, isPaystackConfigured } from '../utils/paystack.js';
 
-const router = Router();
+const router = createAsyncRouter();
 
 async function getCourseCountMaps(courseIds: unknown[]) {
   const moduleMap = new Map<string, number>();
@@ -545,7 +546,7 @@ router.get('/articles/:slug', async (req, res) => {
   const artObj = article as Record<string, unknown>;
   const related = await Article.find({
     status: 'published',
-    _id: { $ne: artObj._id },
+    _id: mongoose.trusted({ $ne: artObj._id }),
     category: artObj.category,
   })
     .sort({ publishedAt: -1 })
@@ -583,7 +584,7 @@ router.post('/leads', leadLimiter, requireDatabase, async (req, res) => {
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
   const duplicate = await Lead.findOne({
     fingerprint,
-    createdAt: { $gte: tenMinutesAgo },
+    createdAt: mongoose.trusted({ $gte: tenMinutesAgo }),
   }).lean();
 
   if (duplicate) {

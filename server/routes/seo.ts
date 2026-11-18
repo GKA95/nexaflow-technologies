@@ -1,4 +1,4 @@
-import { Request, Router } from 'express';
+import { Request } from 'express';
 import { connectDB, isDBConfigured } from '../db.js';
 import {
   DEFAULT_PRODUCTS,
@@ -6,7 +6,11 @@ import {
   DEFAULT_SERVICES,
   DEFAULT_SITE_SETTINGS,
 } from '../defaults.js';
-import { getBaseUrl as resolveRequestBaseUrl, stripHtmlTags } from '../middleware/auth.js';
+import {
+  createAsyncRouter,
+  getBaseUrl as resolveRequestBaseUrl,
+  stripHtmlTags,
+} from '../middleware/auth.js';
 import {
   Article,
   Course,
@@ -19,7 +23,7 @@ import {
   SiteSettings,
 } from '../models.js';
 
-const router = Router();
+const router = createAsyncRouter();
 
 type SeoEntityType =
   | 'home'
