@@ -3,6 +3,8 @@ import { ArrowLeft, Check } from 'lucide-react';
 import { AppLink } from '../../components/AppLink';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
+import { HeroEntrance, Reveal } from '../../components/MotionPrimitives';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import type { ServiceItem } from '../../types';
@@ -91,7 +93,7 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
         structuredData={structuredData}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
+      <section className="bg-[#03051B] nf-hero-ambient text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <AppLink
             to="/solutions"
@@ -102,7 +104,7 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
           </AppLink>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
-            <div className="lg:col-span-7 flex flex-col justify-center">
+            <HeroEntrance delay={0.04} className="lg:col-span-7 flex flex-col justify-center">
               <h1 className="text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
                 {service.name}
               </h1>
@@ -117,8 +119,8 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
                   {service.ctaLabel || `Enquire About ${service.name}`}
                 </a>
               </div>
-            </div>
-            <div className="lg:col-span-5">
+            </HeroEntrance>
+            <HeroEntrance delay={0.12} className="lg:col-span-5">
               <div className="h-full min-h-[220px] sm:min-h-[260px] rounded-xl overflow-hidden border border-[#1A2550] bg-[#080D2B]">
                 <MediaImage
                   src={service.coverImage}
@@ -131,7 +133,7 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
                   className="w-full h-full object-cover"
                 />
               </div>
-            </div>
+            </HeroEntrance>
           </div>
         </div>
       </section>
@@ -139,15 +141,15 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
       <section className="py-16 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-7 space-y-10">
-            <div>
+            <Reveal>
               <h2 className="text-2xl font-bold text-[#070B24] dark:text-[#F7F8FF]">Overview</h2>
-              <p className="mt-3 text-base text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed whitespace-pre-line">
-                {service.overview}
-              </p>
-            </div>
+              <div className="mt-3">
+                <RichContentRenderer content={service.overview} />
+              </div>
+            </Reveal>
 
             {service.problemsAddressed?.length > 0 && (
-              <div>
+              <Reveal delay={0.05}>
                 <h2 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                   Problems Addressed
                 </h2>
@@ -159,11 +161,11 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Reveal>
             )}
 
             {service.deliverables?.length > 0 && (
-              <div>
+              <Reveal delay={0.08}>
                 <h2 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                   What We Deliver
                 </h2>
@@ -171,27 +173,29 @@ export function ServiceDetailPage({ slug }: { slug: string }) {
                   {service.deliverables.map((d) => (
                     <div
                       key={d}
-                      className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-4 text-sm text-[#070B24] dark:text-[#F7F8FF]"
+                      className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-4 text-sm text-[#070B24] dark:text-[#F7F8FF] nf-card-interactive"
                     >
                       {d}
                     </div>
                   ))}
                 </div>
-              </div>
+              </Reveal>
             )}
           </div>
 
-          <div id="service-enquiry" className="lg:col-span-5 scroll-mt-20">
-            <LeadForm
-              interestType="service"
-              interestSlug={service.slug}
-              interestName={service.name}
-              showBudget
-              heading={`Enquire About ${service.name}`}
-              subheading="Share your requirements and preferred contact method."
-              submitLabel={service.ctaLabel || 'Submit Service Enquiry'}
-            />
-          </div>
+          <Reveal delay={0.1} className="lg:col-span-5">
+            <div id="service-enquiry" className="scroll-mt-20">
+              <LeadForm
+                interestType="service"
+                interestSlug={service.slug}
+                interestName={service.name}
+                showBudget
+                heading={`Enquire About ${service.name}`}
+                subheading="Share your requirements and preferred contact method."
+                submitLabel={service.ctaLabel || 'Submit Service Enquiry'}
+              />
+            </div>
+          </Reveal>
         </div>
       </section>
     </>

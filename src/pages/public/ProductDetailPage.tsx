@@ -3,6 +3,8 @@ import { ArrowLeft, Check, ExternalLink } from 'lucide-react';
 import { AppLink } from '../../components/AppLink';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
+import { HeroEntrance, Reveal } from '../../components/MotionPrimitives';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 import type { ProductItem } from '../../types';
@@ -108,7 +110,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
         structuredData={structuredData}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
+      <section className="bg-[#03051B] nf-hero-ambient text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <AppLink
             to="/products"
@@ -119,7 +121,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
           </AppLink>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
-            <div className="lg:col-span-7 flex flex-col justify-center">
+            <HeroEntrance delay={0.04} className="lg:col-span-7 flex flex-col justify-center">
               <div className="text-xs text-[#00D4FF] flex flex-wrap items-center gap-2 mb-2">
                 <span>{product.category}</span>
                 <span aria-hidden="true">·</span>
@@ -150,8 +152,8 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                   </a>
                 )}
               </div>
-            </div>
-            <div className="lg:col-span-5">
+            </HeroEntrance>
+            <HeroEntrance delay={0.12} className="lg:col-span-5">
               <div className="h-full min-h-[220px] sm:min-h-[260px] rounded-xl overflow-hidden border border-[#1A2550] bg-[#080D2B]">
                 <MediaImage
                   src={product.images?.[0] || '/assets/images/product_gridmind_ai.jpg'}
@@ -164,7 +166,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                   className="w-full h-full object-cover"
                 />
               </div>
-            </div>
+            </HeroEntrance>
           </div>
         </div>
       </section>
@@ -172,17 +174,17 @@ export function ProductDetailPage({ slug }: { slug: string }) {
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-7 space-y-8">
-            <div>
+            <Reveal>
               <h2 className="text-2xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                 Product Overview
               </h2>
-              <p className="mt-3 text-base text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed whitespace-pre-line">
-                {product.fullDescription || product.shortDescription}
-              </p>
-            </div>
+              <div className="mt-3">
+                <RichContentRenderer content={product.fullDescription || product.shortDescription} />
+              </div>
+            </Reveal>
 
             {product.features?.length > 0 && (
-              <div>
+              <Reveal delay={0.05}>
                 <h2 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                   Features
                 </h2>
@@ -194,11 +196,11 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Reveal>
             )}
 
             {product.benefits?.length > 0 && (
-              <div>
+              <Reveal delay={0.08}>
                 <h2 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                   Operational Benefits
                 </h2>
@@ -210,19 +212,21 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Reveal>
             )}
           </div>
 
-          <div id="product-enquiry" className="lg:col-span-5 scroll-mt-20">
-            <LeadForm
-              interestType="product"
-              interestSlug={product.slug}
-              interestName={product.name}
-              heading={`Enquire About ${product.name}`}
-              subheading="Request updates, pricing information, or a product briefing."
-            />
-          </div>
+          <Reveal delay={0.1} className="lg:col-span-5">
+            <div id="product-enquiry" className="scroll-mt-20">
+              <LeadForm
+                interestType="product"
+                interestSlug={product.slug}
+                interestName={product.name}
+                heading={`Enquire About ${product.name}`}
+                subheading="Request updates, pricing information, or a product briefing."
+              />
+            </div>
+          </Reveal>
         </div>
       </section>
     </>

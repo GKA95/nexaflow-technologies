@@ -28,6 +28,7 @@ import {
   needsServerImageResolution,
   normalizeImageUrl,
 } from '../shared/media.js';
+import { extractPlainText } from '../shared/richText.js';
 
 const router = createAsyncRouter();
 
@@ -86,7 +87,7 @@ function getBaseUrl(req: Request, canonicalOverride?: string): string {
 
 function cleanText(value: unknown, maxLen = 500): string {
   if (typeof value !== 'string') return '';
-  return stripHtmlTags(value).replace(/\s+/g, ' ').trim().slice(0, maxLen);
+  return stripHtmlTags(extractPlainText(value)).replace(/\s+/g, ' ').trim().slice(0, maxLen);
 }
 
 function escapeXml(value: string): string {

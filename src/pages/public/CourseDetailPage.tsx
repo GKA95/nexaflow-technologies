@@ -4,6 +4,8 @@ import { AppLink } from '../../components/AppLink';
 import { CouponApplyBar } from '../../components/CouponApplyBar';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
+import { HeroEntrance, Reveal } from '../../components/MotionPrimitives';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 import { SEOHead } from '../../components/SEOHead';
 import { StarRatingDisplay } from '../../components/StarRating';
 import { useApp } from '../../context/AppContext';
@@ -220,7 +222,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
         structuredData={structuredData}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-14 lg:py-20">
+      <section className="bg-[#03051B] nf-hero-ambient text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-14 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <AppLink
             to="/learn"
@@ -231,7 +233,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
           </AppLink>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
-            <div className="lg:col-span-7 flex flex-col justify-center">
+            <HeroEntrance delay={0.04} className="lg:col-span-7 flex flex-col justify-center">
               <div className="text-xs text-[#00D4FF] flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums mb-2">
                 <span>{course.moduleCount ?? 0} Modules</span>
                 <span aria-hidden="true">·</span>
@@ -304,9 +306,9 @@ export function CourseDetailPage({ slug }: { slug: string }) {
                   </span>
                 )}
               </div>
-            </div>
+            </HeroEntrance>
 
-            <div className="lg:col-span-5">
+            <HeroEntrance delay={0.12} className="lg:col-span-5">
               <div className="h-full min-h-[220px] sm:min-h-[240px] rounded-xl overflow-hidden border border-[#1A2550]">
                 <MediaImage
                   src={course.coverImage}
@@ -317,7 +319,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
                   className="w-full h-full object-cover"
                 />
               </div>
-            </div>
+            </HeroEntrance>
           </div>
         </div>
       </section>
@@ -326,14 +328,14 @@ export function CourseDetailPage({ slug }: { slug: string }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-7 space-y-10">
             {course.fullDescription && (
-              <div>
+              <Reveal>
                 <h2 className="text-2xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                   Course Overview
                 </h2>
-                <p className="mt-3 text-base text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed whitespace-pre-line">
-                  {course.fullDescription}
-                </p>
-              </div>
+                <div className="mt-3">
+                  <RichContentRenderer content={course.fullDescription} />
+                </div>
+              </Reveal>
             )}
 
             {course.objectives?.length > 0 && (
@@ -542,7 +544,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
             )}
           </div>
 
-          <div className="lg:col-span-5">
+          <Reveal delay={0.08} className="lg:col-span-5">
             <LeadForm
               interestType="course"
               interestSlug={course.slug}
@@ -551,7 +553,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
               heading="Questions About This Course?"
               subheading="Ask about prerequisites, group enrolments, or syllabus details."
             />
-          </div>
+          </Reveal>
         </div>
       </section>
     </>

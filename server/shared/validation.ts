@@ -281,7 +281,7 @@ export const courseWriteSchema = z.object({
     .trim()
     .min(10, 'Short description must be at least 10 characters.')
     .max(500),
-  fullDescription: z.string().trim().max(15000).optional().default(''),
+  fullDescription: z.string().trim().max(60000).optional().default(''),
   coverImage: safeUrlOrPathSchema.optional().default(''),
   price: z.number().finite('Enter a valid numeric price.').min(0, 'Price cannot be negative.').max(1000000),
   currency: z.enum(['GHS', 'USD', 'NGN', 'KES', 'EUR', 'GBP']).default('GHS'),
@@ -306,7 +306,7 @@ export const moduleWriteSchema = z.object({
 
 export const lessonWriteSchema = z.object({
   title: z.string().trim().min(2, 'Lesson title must be at least 2 characters.').max(200),
-  notes: z.string().trim().max(15000).optional().default(''),
+  notes: z.string().trim().max(40000).optional().default(''),
   youtubeUrl: z
     .string()
     .trim()
@@ -355,7 +355,7 @@ export const productWriteSchema = z.object({
   slug: z.string().trim().max(200).optional().default(''),
   category: z.string().trim().min(2, 'Category is required.').max(100).default('Software Product'),
   shortDescription: z.string().trim().min(10, 'Short description is required (min 10 chars).').max(500),
-  fullDescription: z.string().trim().max(15000).optional().default(''),
+  fullDescription: z.string().trim().max(60000).optional().default(''),
   features: z.array(z.string().trim().max(300)).max(30).optional().default([]),
   benefits: z.array(z.string().trim().max(300)).max(30).optional().default([]),
   images: z.array(safeUrlOrPathSchema).max(20).optional().default([]),
@@ -369,7 +369,7 @@ export const serviceWriteSchema = z.object({
   name: z.string().trim().min(2, 'Service name must be at least 2 characters.').max(160),
   slug: z.string().trim().max(200).optional().default(''),
   shortDescription: z.string().trim().min(10, 'Short description is required (min 10 chars).').max(500),
-  overview: z.string().trim().max(15000).optional().default(''),
+  overview: z.string().trim().max(60000).optional().default(''),
   problemsAddressed: z.array(z.string().trim().max(300)).max(30).optional().default([]),
   deliverables: z.array(z.string().trim().max(300)).max(30).optional().default([]),
   ctaLabel: z.string().trim().max(80).optional().default('Request Consultation'),
@@ -382,7 +382,14 @@ export const articleWriteSchema = z.object({
   title: z.string().trim().min(3, 'Article title must be at least 3 characters.').max(200),
   slug: z.string().trim().max(220).optional().default(''),
   excerpt: z.string().trim().max(500).optional().default(''),
-  content: z.string().trim().min(20, 'Article content must be at least 20 characters.').max(60000),
+  content: z
+    .string()
+    .trim()
+    .max(150000, 'Article content cannot exceed 150,000 characters.')
+    .refine(
+      (v) => stripHtmlForValidation(v).length >= 20,
+      'Article content must contain at least 20 characters of readable text.'
+    ),
   featuredImage: safeUrlOrPathSchema.optional().default(''),
   category: z.string().trim().min(2, 'Category is required.').max(80).default('Engineering'),
   tags: z.array(z.string().trim().max(60)).max(20).optional().default([]),
@@ -397,7 +404,14 @@ export const workShowcaseWriteSchema = z.object({
   clientName: z.string().trim().max(140).optional().default(''),
   industry: z.string().trim().max(100).optional().default(''),
   category: z.string().trim().min(2, 'Category is required.').max(100).default('AI Automation'),
-  summary: z.string().trim().min(10, 'Summary must be at least 10 characters.').max(1500),
+  summary: z
+    .string()
+    .trim()
+    .max(12000, 'Project summary is too long.')
+    .refine(
+      (v) => stripHtmlForValidation(v).length >= 10,
+      'Project summary must contain at least 10 readable characters.'
+    ),
   outcomes: z.array(z.string().trim().max(300)).max(20).optional().default([]),
   technologies: z.array(z.string().trim().max(80)).max(25).optional().default([]),
   imageUrl: safeUrlOrPathSchema.optional().default(''),
@@ -506,14 +520,14 @@ export const siteSettingsWriteSchema = z.object({
   googleBusinessProfileUrl: safeExternalHttpUrlSchema.optional(),
   heroHeadline: z.string().trim().max(240).optional(),
   heroSubheadline: z.string().trim().max(600).optional(),
-  aboutIntro: z.string().trim().max(3000).optional(),
-  mission: z.string().trim().max(2000).optional(),
-  vision: z.string().trim().max(2000).optional(),
+  aboutIntro: z.string().trim().max(25000).optional(),
+  mission: z.string().trim().max(20000).optional(),
+  vision: z.string().trim().max(20000).optional(),
   values: z.array(z.string().trim().max(240)).max(20).optional(),
-  legalPrivacy: z.string().trim().max(40000).optional(),
-  legalTerms: z.string().trim().max(40000).optional(),
-  legalCookies: z.string().trim().max(40000).optional(),
-  legalRefund: z.string().trim().max(40000).optional(),
+  legalPrivacy: z.string().trim().max(150000).optional(),
+  legalTerms: z.string().trim().max(150000).optional(),
+  legalCookies: z.string().trim().max(150000).optional(),
+  legalRefund: z.string().trim().max(150000).optional(),
   gaMeasurementId: z
     .string()
     .trim()

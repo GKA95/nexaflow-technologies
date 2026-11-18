@@ -130,6 +130,9 @@ export function createExpressApp() {
 
   app.use(cookieParser());
 
+  // Route-scoped 8MB limit for base64 admin image uploads (max 5MB binary image)
+  app.use('/api/admin/media/upload', express.json({ limit: '8mb' }));
+
   // Preserve rawBody for Paystack webhook HMAC-SHA512 verification
   app.use(
     express.json({

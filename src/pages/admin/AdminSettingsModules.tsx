@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Check, KeyRound, Mail, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 import { z } from 'zod';
 import { FieldError } from '../../components/FieldError';
+import { LazyRichTextEditor } from '../../components/admin/LazyRichTextEditor';
+import { StructuredListEditor } from '../../components/admin/StructuredListEditor';
 import { useApp } from '../../context/AppContext';
 import type { SEOPageItem, SiteSettings } from '../../types';
 import { apiFetch } from '../../utils/authSession';
@@ -18,19 +20,44 @@ import {
 export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | 'legal' }) {
   const { showToast, refreshBootstrap } = useApp();
   const [form, setForm] = useState<SiteSettings | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     apiFetch('/api/admin/settings', { credentials: 'include' })
       .then((r) => r.json())
-      .then((d) => setForm(d.settings));
+      .then((d) => {
+        setForm(d.settings);
+        setDirty(false);
+      });
   }, []);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
+
+  const updateForm = (patch: Partial<SiteSettings>) => {
+    setForm((prev) => (prev ? { ...prev, ...patch } : prev));
+    setDirty(true);
+    setSavedNotice(false);
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form || saving) return;
-    const check = validateWithSchema(siteSettingsWriteSchema, form);
+    const sanitizedForm: SiteSettings = {
+      ...form,
+      values: (form.values || []).map((v) => v.trim()).filter(Boolean),
+    };
+    const check = validateWithSchema(siteSettingsWriteSchema, sanitizedForm);
     if (!check.ok) {
       setErrors(check.fieldErrors);
       showToast(check.message, 'error');
@@ -47,6 +74,8 @@ export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | '
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
+        setDirty(false);
+        setSavedNotice(true);
         showToast('Settings saved.', 'success');
         refreshBootstrap();
       } else {
@@ -236,12 +265,12 @@ export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | '
       )}
 
       {mode === 'website' && (
-        <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4">
+        <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-5">
           <div>
             <label className="block text-xs font-medium mb-1">Hero Headline</label>
             <input
               value={form.heroHeadline}
-              onChange={(e) => setForm({ ...form, heroHeadline: e.target.value })}
+              onChange={(e) => updateForm({ heroHeadline: e.target.value })}
               className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
             />
           </div>
@@ -250,101 +279,119 @@ export function AdminSettingsModule({ mode }: { mode: 'business' | 'website' | '
             <textarea
               rows={3}
               value={form.heroSubheadline}
-              onChange={(e) => setForm({ ...form, heroSubheadline: e.target.value })}
+              onChange={(e) => updateForm({ heroSubheadline: e.target.value })}
               className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium mb-1">About Introduction</label>
-            <textarea
-              rows={3}
-              value={form.aboutIntro}
-              onChange={(e) => setForm({ ...form, aboutIntro: e.target.value })}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
+
+          <LazyRichTextEditor
+            label="About Introduction"
+            compact
+            enableMedia={false}
+            minHeightClass="min-h-[150px]"
+            value={form.aboutIntro}
+            onChange={(html) => updateForm({ aboutIntro: html })}
+            placeholder="Write the company introduction shown on the About page..."
+            saveStatus={saving ? 'saving' : dirty ? 'dirty' : savedNotice ? 'saved' : 'idle'}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <LazyRichTextEditor
+              label="Mission"
+              compact
+              enableMedia={false}
+              minHeightClass="min-h-[150px]"
+              value={form.mission}
+              onChange={(html) => updateForm({ mission: html })}
+              placeholder="Write NexaFlow's mission statement..."
+              saveStatus={saving ? 'saving' : dirty ? 'dirty' : savedNotice ? 'saved' : 'idle'}
+            />
+            <LazyRichTextEditor
+              label="Vision"
+              compact
+              enableMedia={false}
+              minHeightClass="min-h-[150px]"
+              value={form.vision}
+              onChange={(html) => updateForm({ vision: html })}
+              placeholder="Write NexaFlow's vision statement..."
+              saveStatus={saving ? 'saving' : dirty ? 'dirty' : savedNotice ? 'saved' : 'idle'}
             />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium mb-1">Mission</label>
-              <textarea
-                rows={3}
-                value={form.mission}
-                onChange={(e) => setForm({ ...form, mission: e.target.value })}
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Vision</label>
-              <textarea
-                rows={3}
-                value={form.vision}
-                onChange={(e) => setForm({ ...form, vision: e.target.value })}
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1">Values (one per line)</label>
-            <textarea
-              rows={4}
-              value={(form.values || []).join('\n')}
-              onChange={(e) =>
-                setForm({ ...form, values: e.target.value.split('\n').filter(Boolean) })
-              }
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-          </div>
+
+          <StructuredListEditor
+            label="Core Values"
+            items={form.values || []}
+            onChange={(next) => updateForm({ values: next })}
+            placeholder="Add a company value..."
+            emptyHint="No company values listed yet."
+          />
         </div>
       )}
 
       {mode === 'legal' && (
-        <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-5">
-          <div>
-            <label className="block text-xs font-medium mb-1">Privacy Policy</label>
-            <textarea
-              rows={6}
-              value={form.legalPrivacy}
-              onChange={(e) => setForm({ ...form, legalPrivacy: e.target.value })}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1">Terms of Service</label>
-            <textarea
-              rows={6}
-              value={form.legalTerms}
-              onChange={(e) => setForm({ ...form, legalTerms: e.target.value })}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1">Cookie &amp; Analytics Notice</label>
-            <textarea
-              rows={4}
-              value={form.legalCookies}
-              onChange={(e) => setForm({ ...form, legalCookies: e.target.value })}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1">Course &amp; Refund Policy</label>
-            <textarea
-              rows={4}
-              value={form.legalRefund}
-              onChange={(e) => setForm({ ...form, legalRefund: e.target.value })}
-              className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-          </div>
+        <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-6">
+          <LazyRichTextEditor
+            label="Privacy Policy"
+            compact
+            enableMedia={false}
+            minHeightClass="min-h-[220px]"
+            value={form.legalPrivacy}
+            onChange={(html) => updateForm({ legalPrivacy: html })}
+            placeholder="Write your formatted Privacy Policy..."
+            saveStatus={saving ? 'saving' : dirty ? 'dirty' : savedNotice ? 'saved' : 'idle'}
+          />
+          <LazyRichTextEditor
+            label="Terms of Service"
+            compact
+            enableMedia={false}
+            minHeightClass="min-h-[220px]"
+            value={form.legalTerms}
+            onChange={(html) => updateForm({ legalTerms: html })}
+            placeholder="Write your formatted Terms of Service..."
+            saveStatus={saving ? 'saving' : dirty ? 'dirty' : savedNotice ? 'saved' : 'idle'}
+          />
+          <LazyRichTextEditor
+            label="Cookie & Analytics Notice"
+            compact
+            enableMedia={false}
+            minHeightClass="min-h-[170px]"
+            value={form.legalCookies}
+            onChange={(html) => updateForm({ legalCookies: html })}
+            placeholder="Write your Cookie & Analytics policy..."
+            saveStatus={saving ? 'saving' : dirty ? 'dirty' : savedNotice ? 'saved' : 'idle'}
+          />
+          <LazyRichTextEditor
+            label="Course & Refund Policy"
+            compact
+            enableMedia={false}
+            minHeightClass="min-h-[170px]"
+            value={form.legalRefund}
+            onChange={(html) => updateForm({ legalRefund: html })}
+            placeholder="Write your Course & Refund policy..."
+            saveStatus={saving ? 'saving' : dirty ? 'dirty' : savedNotice ? 'saved' : 'idle'}
+          />
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={saving}
-        className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white"
-      >
-        {saving ? 'Saving...' : 'Save Changes'}
-      </button>
+      <div className="flex flex-wrap items-center gap-4">
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-5 py-2.5 text-sm font-semibold text-white"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+        {dirty && (
+          <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+            You have unsaved changes
+          </span>
+        )}
+        {!dirty && savedNotice && (
+          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+            All changes saved
+          </span>
+        )}
+      </div>
     </form>
   );
 }

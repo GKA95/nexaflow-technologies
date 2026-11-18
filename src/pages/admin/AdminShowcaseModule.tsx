@@ -10,8 +10,12 @@ import {
   Quote,
   Trash2,
 } from 'lucide-react';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { FieldError } from '../../components/FieldError';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 import { StarRatingDisplay, StarRatingPicker } from '../../components/StarRating';
+import { LazyRichTextEditor } from '../../components/admin/LazyRichTextEditor';
+import { StructuredListEditor } from '../../components/admin/StructuredListEditor';
 import { useApp } from '../../context/AppContext';
 import type { TestimonialItem, WorkShowcaseItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
@@ -38,7 +42,7 @@ export function AdminShowcaseModule() {
     industry: '',
     category: 'AI Automation',
     summary: '',
-    outcomesText: '',
+    outcomes: [] as string[],
     technologiesText: '',
     imageUrl: '',
     projectUrl: '',
@@ -65,6 +69,8 @@ export function AdminShowcaseModule() {
   });
 
   const [saving, setSaving] = useState(false);
+  const [workDirty, setWorkDirty] = useState(false);
+  const [discardWorkAction, setDiscardWorkAction] = useState<(() => void) | null>(null);
   const [workErrors, setWorkErrors] = useState<FieldErrors>({});
   const [testimonialErrors, setTestimonialErrors] = useState<FieldErrors>({});
 
@@ -101,6 +107,7 @@ export function AdminShowcaseModule() {
 
   const resetWorkForm = () => {
     setEditingWorkId(null);
+    setWorkDirty(false);
     setWorkErrors({});
     setWorkForm({
       title: '',
@@ -108,7 +115,7 @@ export function AdminShowcaseModule() {
       industry: '',
       category: 'AI Automation',
       summary: '',
-      outcomesText: '',
+      outcomes: [],
       technologiesText: '',
       imageUrl: '',
       projectUrl: '',
@@ -116,6 +123,14 @@ export function AdminShowcaseModule() {
       published: true,
       order: workItems.length,
     });
+  };
+
+  const guardWorkAction = (fn: () => void) => {
+    if (showWorkForm && workDirty) {
+      setDiscardWorkAction(() => fn);
+    } else {
+      fn();
+    }
   };
 
   const resetTestimonialForm = () => {
@@ -143,10 +158,7 @@ export function AdminShowcaseModule() {
       industry: workForm.industry,
       category: workForm.category,
       summary: workForm.summary,
-      outcomes: workForm.outcomesText
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean),
+      outcomes: (workForm.outcomes || []).map((s) => s.trim()).filter(Boolean),
       technologies: workForm.technologiesText
         .split(',')
         .map((s) => s.trim())
@@ -327,10 +339,15 @@ export function AdminShowcaseModule() {
               type="button"
               onClick={() => {
                 if (showWorkForm && !editingWorkId) {
-                  setShowWorkForm(false);
+                  guardWorkAction(() => {
+                    setShowWorkForm(false);
+                    resetWorkForm();
+                  });
                 } else {
-                  resetWorkForm();
-                  setShowWorkForm(true);
+                  guardWorkAction(() => {
+                    resetWorkForm();
+                    setShowWorkForm(true);
+                  });
                 }
               }}
               className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
@@ -357,6 +374,7 @@ export function AdminShowcaseModule() {
                     value={workForm.title}
                     onChange={(e) => {
                       setWorkForm((f) => ({ ...f, title: e.target.value }));
+                      setWorkDirty(true);
                       setWorkErrors((p) => ({ ...p, title: '' }));
                     }}
                     placeholder="e.g., Automated Invoice & ERP Sync Pipeline"
@@ -374,6 +392,7 @@ export function AdminShowcaseModule() {
                     value={workForm.category}
                     onChange={(e) => {
                       setWorkForm((f) => ({ ...f, category: e.target.value }));
+                      setWorkDirty(true);
                       setWorkErrors((p) => ({ ...p, category: '' }));
                     }}
                     placeholder="AI Automation, Web Platform, Data Analytics..."
@@ -391,6 +410,7 @@ export function AdminShowcaseModule() {
                     value={workForm.clientName}
                     onChange={(e) => {
                       setWorkForm((f) => ({ ...f, clientName: e.target.value }));
+                      setWorkDirty(true);
                       setWorkErrors((p) => ({ ...p, clientName: '' }));
                     }}
                     placeholder="e.g., Apex Logistics"
@@ -408,6 +428,7 @@ export function AdminShowcaseModule() {
                     value={workForm.industry}
                     onChange={(e) => {
                       setWorkForm((f) => ({ ...f, industry: e.target.value }));
+                      setWorkDirty(true);
                       setWorkErrors((p) => ({ ...p, industry: '' }));
                     }}
                     placeholder="e.g., Logistics & Supply Chain"
@@ -421,40 +442,33 @@ export function AdminShowcaseModule() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium mb-1">
-                  Summary of Work &amp; Problem Solved *
-                </label>
-                <textarea
-                  rows={3}
-                  value={workForm.summary}
-                  onChange={(e) => {
-                    setWorkForm((f) => ({ ...f, summary: e.target.value }));
-                    setWorkErrors((p) => ({ ...p, summary: '' }));
-                  }}
-                  placeholder="Describe what was built, how it works, and the business problem addressed..."
-                  aria-invalid={Boolean(workErrors.summary)}
-                  className={fieldBorderClass(
-                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                    workErrors.summary
-                  )}
-                />
-                <FieldError message={workErrors.summary} />
-              </div>
+              <LazyRichTextEditor
+                label="Summary of Work & Problem Solved *"
+                compact
+                enableMedia={false}
+                minHeightClass="min-h-[180px]"
+                value={workForm.summary}
+                onChange={(html) => {
+                  setWorkForm((f) => ({ ...f, summary: html }));
+                  setWorkDirty(true);
+                  setWorkErrors((p) => ({ ...p, summary: '' }));
+                }}
+                placeholder="Describe what was built, how it works, and the business problem addressed..."
+                error={workErrors.summary}
+                saveStatus={saving ? 'saving' : workDirty ? 'dirty' : 'idle'}
+              />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1">
-                    Key Outcomes / Results (one per line)
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={workForm.outcomesText}
-                    onChange={(e) => setWorkForm((f) => ({ ...f, outcomesText: e.target.value }))}
-                    placeholder={'Reduced manual reporting time by 80%\nIntegrated live Paystack & ERP reconciliation'}
-                    className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-                  />
-                </div>
+                <StructuredListEditor
+                  label="Key Outcomes / Results"
+                  items={workForm.outcomes}
+                  onChange={(next) => {
+                    setWorkForm((f) => ({ ...f, outcomes: next }));
+                    setWorkDirty(true);
+                  }}
+                  placeholder="e.g., Reduced manual reporting time by 80%"
+                  emptyHint="No measurable outcomes added yet."
+                />
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-medium mb-1">
@@ -462,9 +476,10 @@ export function AdminShowcaseModule() {
                     </label>
                     <input
                       value={workForm.technologiesText}
-                      onChange={(e) =>
-                        setWorkForm((f) => ({ ...f, technologiesText: e.target.value }))
-                      }
+                      onChange={(e) => {
+                        setWorkForm((f) => ({ ...f, technologiesText: e.target.value }));
+                        setWorkDirty(true);
+                      }}
                       placeholder="React, Node.js, MongoDB, Python"
                       className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                     />
@@ -477,6 +492,7 @@ export function AdminShowcaseModule() {
                       value={workForm.projectUrl}
                       onChange={(e) => {
                         setWorkForm((f) => ({ ...f, projectUrl: e.target.value }));
+                        setWorkDirty(true);
                         setWorkErrors((p) => ({ ...p, projectUrl: '' }));
                       }}
                       placeholder="https://..."
@@ -551,10 +567,12 @@ export function AdminShowcaseModule() {
               <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowWorkForm(false);
-                    resetWorkForm();
-                  }}
+                  onClick={() =>
+                    guardWorkAction(() => {
+                      setShowWorkForm(false);
+                      resetWorkForm();
+                    })
+                  }
                   className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
                 >
                   Cancel
@@ -601,9 +619,9 @@ export function AdminShowcaseModule() {
                       </span>
                     </div>
                     <h3 className="mt-1 text-base font-bold">{item.title}</h3>
-                    <p className="mt-1.5 text-xs text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
-                      {item.summary}
-                    </p>
+                    <div className="mt-1.5">
+                      <RichContentRenderer content={item.summary} compact />
+                    </div>
                     {item.outcomes?.length > 0 && (
                       <ul className="mt-3 space-y-1 text-xs">
                         {item.outcomes.map((o) => (
@@ -647,25 +665,28 @@ export function AdminShowcaseModule() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditingWorkId(item._id);
-                        setWorkErrors({});
-                        setWorkForm({
-                          title: item.title,
-                          clientName: item.clientName || '',
-                          industry: item.industry || '',
-                          category: item.category || 'AI Automation',
-                          summary: item.summary,
-                          outcomesText: (item.outcomes || []).join('\n'),
-                          technologiesText: (item.technologies || []).join(', '),
-                          imageUrl: item.imageUrl || '',
-                          projectUrl: item.projectUrl || '',
-                          featured: item.featured,
-                          published: item.published,
-                          order: item.order || 0,
-                        });
-                        setShowWorkForm(true);
-                      }}
+                      onClick={() =>
+                        guardWorkAction(() => {
+                          setEditingWorkId(item._id);
+                          setWorkDirty(false);
+                          setWorkErrors({});
+                          setWorkForm({
+                            title: item.title,
+                            clientName: item.clientName || '',
+                            industry: item.industry || '',
+                            category: item.category || 'AI Automation',
+                            summary: item.summary,
+                            outcomes: item.outcomes || [],
+                            technologiesText: (item.technologies || []).join(', '),
+                            imageUrl: item.imageUrl || '',
+                            projectUrl: item.projectUrl || '',
+                            featured: item.featured,
+                            published: item.published,
+                            order: item.order || 0,
+                          });
+                          setShowWorkForm(true);
+                        })
+                      }
                       className="inline-flex items-center gap-1 rounded-md border border-[#DCE3F2] dark:border-[#1A2550] px-2.5 py-1.5 text-xs font-medium"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -969,6 +990,19 @@ export function AdminShowcaseModule() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(discardWorkAction)}
+        title="Discard Unsaved Project Changes?"
+        message="You have unsaved changes to this showcase project. Leave without saving?"
+        confirmLabel="Discard Changes"
+        onConfirm={() => {
+          const fn = discardWorkAction;
+          setDiscardWorkAction(null);
+          fn?.();
+        }}
+        onCancel={() => setDiscardWorkAction(null)}
+      />
     </div>
   );
 }

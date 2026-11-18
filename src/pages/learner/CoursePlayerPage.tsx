@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { FieldError } from '../../components/FieldError';
 import { ProtectedVideoPlayer } from '../../components/ProtectedVideoPlayer';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 import { SEOHead } from '../../components/SEOHead';
 import { StarRatingDisplay, StarRatingPicker } from '../../components/StarRating';
 import { useApp } from '../../context/AppContext';
@@ -410,8 +411,8 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
                   </div>
 
                   {activeLesson.notes && (
-                    <div className="mt-4 pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550] text-sm text-[#4A5578] dark:text-[#AEB8D4] whitespace-pre-line leading-relaxed">
-                      {activeLesson.notes}
+                    <div className="mt-4 pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550]">
+                      <RichContentRenderer content={activeLesson.notes} compact />
                     </div>
                   )}
 
@@ -447,9 +448,7 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
               )}
 
               {course.fullDescription && (
-                <div className="text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed whitespace-pre-line">
-                  {course.fullDescription}
-                </div>
+                <RichContentRenderer content={course.fullDescription} compact />
               )}
 
               {(course.objectives?.length > 0 || course.outcomes?.length > 0) && (

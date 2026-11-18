@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Clock, Globe, Mail, MessageSquare, Phone } from 'lucide-react';
 import { LeadForm } from '../../components/LeadForm';
+import { HeroEntrance, Reveal } from '../../components/MotionPrimitives';
 import { SEOHead } from '../../components/SEOHead';
 import { useApp } from '../../context/AppContext';
 
@@ -28,23 +29,29 @@ export function ContactPage() {
         noIndex={seo?.noIndex}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16">
+      <section className="bg-[#03051B] nf-hero-ambient text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
-            Contact &amp; Consultations
-          </p>
-          <h1 className="mt-3 text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
-            Get in Touch With NexaFlow Technologies
-          </h1>
-          <p className="mt-4 text-base text-[#AEB8D4] max-w-2xl leading-relaxed">
-            Reach out for project consultations, technical partnerships, product enquiries, or team training programmes.
-          </p>
+          <HeroEntrance delay={0}>
+            <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
+              Contact &amp; Consultations
+            </p>
+          </HeroEntrance>
+          <HeroEntrance delay={0.06}>
+            <h1 className="mt-3 text-[clamp(1.75rem,4.2vw,3rem)] font-bold tracking-tight leading-[1.12]">
+              Get in Touch With NexaFlow Technologies
+            </h1>
+          </HeroEntrance>
+          <HeroEntrance delay={0.12}>
+            <p className="mt-4 text-base text-[#AEB8D4] max-w-2xl leading-relaxed">
+              Reach out for project consultations, technical partnerships, product enquiries, or team training programmes.
+            </p>
+          </HeroEntrance>
         </div>
       </section>
 
       <section className="py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10">
-          <div className="lg:col-span-5 space-y-6">
+          <Reveal className="lg:col-span-5 space-y-6">
             <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 sm:p-8 space-y-5">
               <h2 className="text-xl font-semibold text-[#070B24] dark:text-[#F7F8FF]">
                 Business Contact Information
@@ -139,9 +146,9 @@ export function ContactPage() {
                 )}
               </div>
             </div>
-          </div>
+          </Reveal>
 
-          <div className="lg:col-span-7 space-y-4">
+          <Reveal delay={0.08} className="lg:col-span-7 space-y-4">
             <div className="grid grid-cols-1 sm:inline-flex gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-1 w-full sm:w-auto">
               <button
                 type="button"
@@ -187,7 +194,7 @@ export function ContactPage() {
                 submitLabel="Send Enquiry"
               />
             )}
-          </div>
+          </Reveal>
         </div>
       </section>
     </>

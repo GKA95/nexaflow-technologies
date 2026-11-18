@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Download,
   Menu,
@@ -12,6 +13,7 @@ import { useApp } from '../context/AppContext';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AppLink } from './AppLink';
 import { CompactHeaderSearchPanel, DesktopHeaderSearch } from './GlobalHeaderSearch';
+import { EASE_OUT_EXPO } from './MotionPrimitives';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const {
@@ -30,6 +32,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const [showIOSModal, setShowIOSModal] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   const navItems = [
     { label: 'Solutions', href: '/solutions' },
@@ -38,6 +41,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { label: 'Insights', href: '/insights' },
     { label: 'About', href: '/about' },
   ];
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // Close mobile menu and search overlay on route change
   useEffect(() => {
@@ -92,7 +102,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-[#F6F8FC] text-[#070B24] dark:bg-[#03051B] dark:text-[#F7F8FF]">
       {/* Primary Top Bar grounded in #03051B so the approved NexaFlow logo artwork blends seamlessly */}
-      <header className="sticky top-0 z-40 bg-[#03051B]/95 backdrop-blur-md border-b border-[#1A2550] text-[#F7F8FF]">
+      <header
+        className={`sticky top-0 z-40 border-b transition-shadow duration-200 text-[#F7F8FF] ${
+          scrolled
+            ? 'bg-[#03051B]/95 backdrop-blur-md border-[#1A2550] shadow-lg shadow-black/25'
+            : 'bg-[#03051B]/95 backdrop-blur-md border-[#1A2550]'
+        }`}
+      >
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-3 lg:gap-4 xl:gap-5">
           {/* Zone 1: Exact Supplied NexaFlow Brand Mark (horizontal on desktop/tablet, compact N mark on small mobile) */}
           <AppLink
@@ -136,7 +152,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </AppLink>
 
-          {/* Zone 2: 5 concise single-line text links */}
+          {/* Zone 2: 5 concise single-line text links with smooth shared-layout active indicator */}
           <nav
             aria-label="Primary Navigation"
             className="hidden lg:flex items-center gap-4 2xl:gap-6 text-sm font-medium text-[#AEB8D4]"
@@ -149,13 +165,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   to={item.href}
                   onClick={closeDrawers}
                   aria-current={active ? 'page' : undefined}
-                  className={`whitespace-nowrap shrink-0 py-1.5 transition-colors border-b-2 ${
-                    active
-                      ? 'text-[#F7F8FF] border-[#00D4FF]'
-                      : 'border-transparent hover:text-[#F7F8FF]'
+                  className={`relative whitespace-nowrap shrink-0 py-1.5 transition-colors ${
+                    active ? 'text-[#F7F8FF]' : 'hover:text-[#F7F8FF]'
                   }`}
                 >
                   {item.label}
+                  {active && (
+                    <motion.span
+                      layoutId="nf-nav-active-bar"
+                      transition={{ duration: 0.24, ease: EASE_OUT_EXPO }}
+                      className="absolute left-0 right-0 -bottom-0.5 h-0.5 rounded-full bg-[#00D4FF]"
+                    />
+                  )}
                 </AppLink>
               );
             })}
@@ -273,22 +294,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
           onClose={() => setCompactSearchOpen(false)}
         />
 
-        {/* Mobile Drawer Backdrop */}
-        {mobileOpen && (
-          <div
-            aria-hidden="true"
-            onClick={() => setMobileOpen(false)}
-            className="lg:hidden fixed inset-x-0 top-16 bottom-0 z-30 bg-black/60 backdrop-blur-[2px]"
-          />
-        )}
+        {/* Mobile Drawer & Backdrop with AnimatePresence */}
+        <AnimatePresence>
+          {mobileOpen && (
+            <>
+              <motion.div
+                key="nf-mobile-backdrop"
+                aria-hidden="true"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setMobileOpen(false)}
+                className="lg:hidden fixed inset-x-0 top-16 bottom-0 z-30 bg-black/60 backdrop-blur-[2px]"
+              />
 
-        {/* Mobile Drawer */}
-        {mobileOpen && (
-          <nav
-            id="public-mobile-drawer"
-            aria-label="Mobile Navigation"
-            className="lg:hidden relative z-40 border-t border-[#1A2550] bg-[#080D2B] px-4 py-4 space-y-1.5 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain shadow-2xl"
-          >
+              <motion.nav
+                key="nf-mobile-drawer"
+                id="public-mobile-drawer"
+                aria-label="Mobile Navigation"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.24, ease: EASE_OUT_EXPO }}
+                className="lg:hidden relative z-40 border-t border-[#1A2550] bg-[#080D2B] px-4 py-4 space-y-1.5 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain shadow-2xl"
+              >
             <button
               type="button"
               onClick={() => {
@@ -412,8 +442,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 Request Consultation
               </AppLink>
             </div>
-          </nav>
-        )}
+              </motion.nav>
+            </>
+          )}
+        </AnimatePresence>
       </header>
 
       <main className="flex-1">{children}</main>
@@ -637,62 +669,84 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </footer>
 
       {/* Consent-First Cookie & Analytics Notice */}
-      {consent === 'unset' && !currentPath.startsWith('/portal-admin') && (
-        <div
-          role="region"
-          aria-label="Analytics Cookie Consent"
-          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 sm:left-6 sm:right-auto sm:max-w-md z-40 rounded-xl bg-[#080D2B] border border-[#1A2550] p-4 shadow-2xl text-[#F7F8FF]"
-        >
-          <p className="text-xs text-[#AEB8D4] leading-relaxed">
-            NexaFlow uses essential session cookies for secure sign-in. Optional analytics cookies
-            help us measure page and course interest and only load if you accept.{' '}
-            <AppLink
-              to="/legal/cookies"
-              className="text-[#00D4FF] underline"
-            >
-              Read Cookie Notice
-            </AppLink>
-            .
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setConsentChoice('accepted')}
-              className="min-h-[44px] px-4 py-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] text-xs font-semibold text-white transition-colors"
-            >
-              Accept Analytics
-            </button>
-            <button
-              type="button"
-              onClick={() => setConsentChoice('declined')}
-              className="min-h-[44px] px-4 py-2 rounded-lg border border-[#1A2550] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] transition-colors"
-            >
-              Essential Only
-            </button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {consent === 'unset' && !currentPath.startsWith('/portal-admin') && (
+          <motion.div
+            key="nf-cookie-consent"
+            role="region"
+            aria-label="Analytics Cookie Consent"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.28, ease: EASE_OUT_EXPO }}
+            className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 sm:left-6 sm:right-auto sm:max-w-md z-40 rounded-xl bg-[#080D2B] border border-[#1A2550] p-4 shadow-2xl text-[#F7F8FF]"
+          >
+            <p className="text-xs text-[#AEB8D4] leading-relaxed">
+              NexaFlow uses essential session cookies for secure sign-in. Optional analytics cookies
+              help us measure page and course interest and only load if you accept.{' '}
+              <AppLink
+                to="/legal/cookies"
+                className="text-[#00D4FF] underline"
+              >
+                Read Cookie Notice
+              </AppLink>
+              .
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setConsentChoice('accepted')}
+                className="min-h-[44px] px-4 py-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] text-xs font-semibold text-white transition-colors"
+              >
+                Accept Analytics
+              </button>
+              <button
+                type="button"
+                onClick={() => setConsentChoice('declined')}
+                className="min-h-[44px] px-4 py-2 rounded-lg border border-[#1A2550] text-xs font-medium text-[#AEB8D4] hover:text-[#F7F8FF] transition-colors"
+              >
+                Essential Only
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* iOS Safari Install Guide */}
-      {showIOSModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-[#080D2B] border border-[#1A2550] p-6 text-[#F7F8FF]">
-            <h3 className="text-base font-semibold">Install NexaFlow App on iOS</h3>
-            <p className="mt-2 text-sm text-[#AEB8D4]">
-              1. Tap the <strong>Share</strong> icon in Safari.
-              <br />
-              2. Scroll down and tap <strong>Add to Home Screen</strong>.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowIOSModal(false)}
-              className="mt-4 w-full min-h-[44px] rounded-lg bg-[#176BFF] py-2 text-sm font-medium text-white"
+      <AnimatePresence>
+        {showIOSModal && (
+          <motion.div
+            key="nf-ios-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
+              className="w-full max-w-sm rounded-xl bg-[#080D2B] border border-[#1A2550] p-6 text-[#F7F8FF]"
             >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+              <h3 className="text-base font-semibold">Install NexaFlow App on iOS</h3>
+              <p className="mt-2 text-sm text-[#AEB8D4]">
+                1. Tap the <strong>Share</strong> icon in Safari.
+                <br />
+                2. Scroll down and tap <strong>Add to Home Screen</strong>.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowIOSModal(false)}
+                className="mt-4 w-full min-h-[44px] rounded-lg bg-[#176BFF] py-2 text-sm font-medium text-white"
+              >
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

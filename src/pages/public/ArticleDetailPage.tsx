@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { AppLink } from '../../components/AppLink';
 import { MediaImage } from '../../components/MediaImage';
+import { HeroEntrance, Reveal } from '../../components/MotionPrimitives';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 import { SEOHead } from '../../components/SEOHead';
 import type { ArticleItem } from '../../types';
 import { normalizeImageUrl } from '../../utils/media';
@@ -112,51 +114,59 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
             All Insights
           </AppLink>
 
-          <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-2">
-            <span>{article.category}</span>
-            <span aria-hidden="true">·</span>
-            <span>{article.readingTimeMinutes} min read</span>
-            {article.authorName && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>By {article.authorName}</span>
-              </>
-            )}
-            {article.publishedAt && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
-              </>
-            )}
-          </div>
+          <HeroEntrance delay={0}>
+            <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-2">
+              <span>{article.category}</span>
+              <span aria-hidden="true">·</span>
+              <span>{article.readingTimeMinutes} min read</span>
+              {article.authorName && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>By {article.authorName}</span>
+                </>
+              )}
+              {article.publishedAt && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
+                </>
+              )}
+            </div>
+          </HeroEntrance>
 
-          <h1 className="mt-3 text-[clamp(1.75rem,3.8vw,2.5rem)] font-bold tracking-tight leading-[1.15] text-[#070B24] dark:text-[#F7F8FF]">
-            {article.title}
-          </h1>
+          <HeroEntrance delay={0.05}>
+            <h1 className="mt-3 text-[clamp(1.75rem,3.8vw,2.5rem)] font-bold tracking-tight leading-[1.15] text-[#070B24] dark:text-[#F7F8FF]">
+              {article.title}
+            </h1>
+          </HeroEntrance>
 
           {article.excerpt && (
-            <p className="mt-4 text-base sm:text-lg text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
-              {article.excerpt}
-            </p>
+            <HeroEntrance delay={0.1}>
+              <p className="mt-4 text-base sm:text-lg text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
+                {article.excerpt}
+              </p>
+            </HeroEntrance>
           )}
 
           {article.featuredImage && (
-            <div className="mt-8 rounded-xl overflow-hidden border border-[#DCE3F2] dark:border-[#1A2550] aspect-video bg-[#03051B]">
-              <MediaImage
-                src={article.featuredImage}
-                alt={article.title}
-                loading="eager"
-                fetchPriority="high"
-                width={1200}
-                height={675}
-                sizes="(max-width: 767px) 100vw, 768px"
-                className="w-full h-full object-cover"
-              />
-            </div>
+            <HeroEntrance delay={0.14}>
+              <div className="mt-8 rounded-xl overflow-hidden border border-[#DCE3F2] dark:border-[#1A2550] aspect-video bg-[#03051B]">
+                <MediaImage
+                  src={article.featuredImage}
+                  alt={article.title}
+                  loading="eager"
+                  fetchPriority="high"
+                  width={1200}
+                  height={675}
+                  sizes="(max-width: 767px) 100vw, 768px"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </HeroEntrance>
           )}
 
-          <div className="mt-8 space-y-5 text-base text-[#070B24] dark:text-[#F7F8FF]/90 leading-relaxed whitespace-pre-line">
-            {article.content}
+          <div className="mt-8">
+            <RichContentRenderer content={article.content} />
           </div>
 
           {article.tags?.length > 0 && (
@@ -166,7 +176,7 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
           )}
 
           {(article.ctaLabel || (article.internalLinks && article.internalLinks.length > 0)) && (
-            <div className="mt-10 rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4">
+            <Reveal className="mt-10 rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4">
               {article.ctaLabel && article.ctaHref && (
                 <div>
                   <AppLink
@@ -196,11 +206,11 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
                   </div>
                 </div>
               )}
-            </div>
+            </Reveal>
           )}
 
           {related.length > 0 && (
-            <div className="mt-12 pt-10 border-t border-[#DCE3F2] dark:border-[#1A2550]">
+            <Reveal className="mt-12 pt-10 border-t border-[#DCE3F2] dark:border-[#1A2550]">
               <h2 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF] mb-5">
                 Related Articles
               </h2>
@@ -209,7 +219,7 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
                   <AppLink
                     key={rel.slug}
                     to={`/insights/${rel.slug}`}
-                    className="block text-left rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 hover:border-[#176BFF] transition-colors"
+                    className="block text-left rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 nf-card-interactive hover:border-[#176BFF]"
                   >
                     <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
                       {rel.category} · {rel.readingTimeMinutes} min read
@@ -220,7 +230,7 @@ export function ArticleDetailPage({ slug }: { slug: string }) {
                   </AppLink>
                 ))}
               </div>
-            </div>
+            </Reveal>
           )}
         </div>
       </article>

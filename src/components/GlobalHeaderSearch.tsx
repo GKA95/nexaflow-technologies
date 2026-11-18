@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowRight,
   Cpu,
@@ -8,8 +9,10 @@ import {
   Search,
   X,
 } from 'lucide-react';
+import { extractPlainText } from '../../server/shared/richText';
 import { useApp } from '../context/AppContext';
 import { formatMoneyAmount } from '../utils/pricing';
+import { EASE_OUT_EXPO } from './MotionPrimitives';
 
 interface SearchSolutionItem {
   slug: string;
@@ -112,7 +115,7 @@ function useGlobalSearchData(query: string, isOpen: boolean) {
     const matchedSolutions = services
       .filter((s) =>
         matchesTokens(
-          [s.name, s.shortDescription, s.overview, s.problemsAddressed, s.deliverables],
+          [s.name, s.shortDescription, extractPlainText(s.overview), s.problemsAddressed, s.deliverables],
           tokens
         )
       )
@@ -130,7 +133,7 @@ function useGlobalSearchData(query: string, isOpen: boolean) {
             p.name,
             p.category,
             p.shortDescription,
-            p.fullDescription,
+            extractPlainText(p.fullDescription),
             p.features,
             p.benefits,
             p.pricingStatus,
@@ -150,7 +153,7 @@ function useGlobalSearchData(query: string, isOpen: boolean) {
     const matchedCourses = featuredCourses
       .filter((c) =>
         matchesTokens(
-          [c.title, c.shortDescription, c.fullDescription, c.objectives, c.outcomes],
+          [c.title, c.shortDescription, extractPlainText(c.fullDescription), c.objectives, c.outcomes],
           tokens
         )
       )
@@ -641,20 +644,29 @@ export function DesktopHeaderSearch() {
         )}
       </div>
 
-      {open && (
-        <div className="absolute right-0 mt-2 w-[min(30rem,calc(100vw-2rem))] rounded-xl bg-[#080D2B] border border-[#1A2550] shadow-2xl overflow-hidden z-50">
-          <SearchResultsContent
-            query={query}
-            results={results}
-            flattened={flattened}
-            loadingRemote={loadingRemote}
-            activeIndex={activeIndex}
-            setActiveIndex={setActiveIndex}
-            onSelectHref={handleSelect}
-            listboxId={listboxId}
-          />
-        </div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="nf-desktop-search-popover"
+            initial={{ opacity: 0, y: 6, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4, scale: 0.985 }}
+            transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
+            className="absolute right-0 mt-2 w-[min(30rem,calc(100vw-2rem))] rounded-xl bg-[#080D2B] border border-[#1A2550] shadow-2xl overflow-hidden z-50"
+          >
+            <SearchResultsContent
+              query={query}
+              results={results}
+              flattened={flattened}
+              loadingRemote={loadingRemote}
+              activeIndex={activeIndex}
+              setActiveIndex={setActiveIndex}
+              onSelectHref={handleSelect}
+              listboxId={listboxId}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -701,11 +713,10 @@ export function CompactHeaderSearchPanel({
     [navigate, onClose]
   );
 
-  if (!open) return null;
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      if (!open) return;
       if (flattened.length > 0) {
         setActiveIndex((prev) => (prev + 1) % flattened.length);
       }
@@ -727,19 +738,31 @@ export function CompactHeaderSearchPanel({
   };
 
   return (
-    <>
-      <div
-        aria-hidden="true"
-        onClick={onClose}
-        className="xl:hidden fixed inset-x-0 top-16 bottom-0 z-30 bg-black/60 backdrop-blur-[2px]"
-      />
-      <div
-        id="header-compact-search-panel"
-        role="region"
-        aria-label="Global Header Search"
-        className="xl:hidden relative z-40 border-t border-[#1A2550] bg-[#080D2B] shadow-2xl"
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            key="nf-compact-search-backdrop"
+            aria-hidden="true"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={onClose}
+            className="xl:hidden fixed inset-x-0 top-16 bottom-0 z-30 bg-black/60 backdrop-blur-[2px]"
+          />
+          <motion.div
+            key="nf-compact-search-panel"
+            id="header-compact-search-panel"
+            role="region"
+            aria-label="Global Header Search"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
+            className="xl:hidden relative z-40 border-t border-[#1A2550] bg-[#080D2B] shadow-2xl"
+          >
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <label htmlFor={inputId} className="sr-only">
             Search products, solutions, and learning courses
           </label>
@@ -795,8 +818,10 @@ export function CompactHeaderSearchPanel({
               listboxId={listboxId}
             />
           </div>
-        </div>
-      </div>
-    </>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }

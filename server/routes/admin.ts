@@ -69,12 +69,18 @@ import {
   workShowcaseWriteSchema,
   zodToFieldErrors,
 } from '../shared/validation.js';
+import { estimateReadingTimeMinutes } from '../shared/richText.js';
+import {
+  isCloudinaryConfigured,
+  uploadImageToCloudinary,
+} from '../utils/cloudinaryUpload.js';
 import { isEmailConfigured, sendTransactionalEmail } from '../utils/email.js';
 import {
   countValidActiveEnrolments,
   getValidActiveEnrolmentCountsByCourse,
 } from '../utils/enrolments.js';
 import { resolveImageUrlForStorage } from '../utils/imageResolver.js';
+import { sanitizeRichHtml } from '../utils/sanitizeRichHtml.js';
 import { normalizeImageUrl } from '../shared/media.js';
 import {
   getPaystackMode,
@@ -317,6 +323,49 @@ router.post('/resolve-image', async (req, res) => {
   }
 });
 
+router.get('/media/config', (_req, res) => {
+  res.json({
+    cloudinaryConfigured: isCloudinaryConfigured(),
+    maxFileSizeMb: 5,
+  });
+});
+
+router.post('/media/upload', async (req, res) => {
+  if (!isCloudinaryConfigured()) {
+    return res.status(503).json({
+      error:
+        'Cloudinary image upload is not configured yet. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in server environment secrets, or insert an external image URL instead.',
+      code: 'CLOUDINARY_NOT_CONFIGURED',
+    });
+  }
+  const dataUri = typeof req.body?.dataUri === 'string' ? req.body.dataUri.trim() : '';
+  const folder = typeof req.body?.folder === 'string' ? req.body.folder.trim() : 'nexaflow-cms';
+  if (!dataUri) {
+    return res.status(400).json({ error: 'Image file payload is required.' });
+  }
+  try {
+    const uploaded = await uploadImageToCloudinary({ dataUri, folder });
+    await logAdminActivity(
+      req.user!,
+      'upload_media_image',
+      'Media',
+      '',
+      `Uploaded image to Cloudinary (${folder})`
+    );
+    return res.json({
+      ok: true,
+      url: uploaded.secureUrl,
+      width: uploaded.width,
+      height: uploaded.height,
+      format: uploaded.format,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      error: err instanceof Error ? err.message : 'Unable to upload image.',
+    });
+  }
+});
+
 // 1. Admin Dashboard Overview (Real metrics only)
 router.get('/overview', async (_req, res) => {
   const [
@@ -466,7 +515,7 @@ router.post('/courses', async (req, res) => {
     title: stripHtmlTags(d.title),
     slug,
     shortDescription: stripHtmlTags(d.shortDescription),
-    fullDescription: d.fullDescription,
+    fullDescription: sanitizeRichHtml(d.fullDescription),
     coverImage: resolvedCoverImage,
     price: d.price,
     currency: d.currency,
@@ -511,7 +560,7 @@ router.patch('/courses/:id', async (req, res) => {
   if (d.title !== undefined) update.title = stripHtmlTags(d.title);
   if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
   if (d.shortDescription !== undefined) update.shortDescription = stripHtmlTags(d.shortDescription);
-  if (d.fullDescription !== undefined) update.fullDescription = d.fullDescription;
+  if (d.fullDescription !== undefined) update.fullDescription = sanitizeRichHtml(d.fullDescription);
   if (d.coverImage !== undefined) update.coverImage = await resolveImageUrlForStorage(d.coverImage);
   if (d.price !== undefined) update.price = d.price;
   if (d.currency !== undefined) update.currency = d.currency;
@@ -665,7 +714,7 @@ router.post('/courses/:courseId/lessons/bulk', async (req, res) => {
         courseId: req.params.courseId,
         moduleId: targetModuleId,
         title: stripHtmlTags(item.title),
-        notes: item.notes,
+        notes: sanitizeRichHtml(item.notes),
         youtubeUrl: item.youtubeUrl,
         duration: stripHtmlTags(item.duration),
         order: existingCount + idx + 1,
@@ -709,7 +758,7 @@ router.post('/modules/:moduleId/lessons', async (req, res) => {
     courseId: (mod as { courseId: unknown }).courseId,
     moduleId: req.params.moduleId,
     title: stripHtmlTags(parsed.data.title),
-    notes: parsed.data.notes,
+    notes: sanitizeRichHtml(parsed.data.notes),
     youtubeUrl: parsed.data.youtubeUrl,
     duration: stripHtmlTags(parsed.data.duration),
     order: parsed.data.order ?? count + 1,
@@ -737,7 +786,7 @@ router.patch('/lessons/:id', async (req, res) => {
 
   const update: Record<string, unknown> = {};
   if (parsed.data.title !== undefined) update.title = stripHtmlTags(parsed.data.title);
-  if (parsed.data.notes !== undefined) update.notes = parsed.data.notes;
+  if (parsed.data.notes !== undefined) update.notes = sanitizeRichHtml(parsed.data.notes);
   if (parsed.data.youtubeUrl !== undefined) update.youtubeUrl = parsed.data.youtubeUrl;
   if (parsed.data.duration !== undefined) update.duration = stripHtmlTags(parsed.data.duration);
   if (parsed.data.order !== undefined) update.order = parsed.data.order;
@@ -1348,7 +1397,7 @@ router.post('/products', async (req, res) => {
     slug,
     category: stripHtmlTags(d.category),
     shortDescription: stripHtmlTags(d.shortDescription),
-    fullDescription: d.fullDescription,
+    fullDescription: sanitizeRichHtml(d.fullDescription),
     features: d.features.map(stripHtmlTags).filter(Boolean),
     benefits: d.benefits.map(stripHtmlTags).filter(Boolean),
     images: resolvedImages.filter(Boolean),
@@ -1387,7 +1436,7 @@ router.patch('/products/:id', async (req, res) => {
   if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
   if (d.category !== undefined) update.category = stripHtmlTags(d.category);
   if (d.shortDescription !== undefined) update.shortDescription = stripHtmlTags(d.shortDescription);
-  if (d.fullDescription !== undefined) update.fullDescription = d.fullDescription;
+  if (d.fullDescription !== undefined) update.fullDescription = sanitizeRichHtml(d.fullDescription);
   if (d.features !== undefined) update.features = d.features.map(stripHtmlTags).filter(Boolean);
   if (d.benefits !== undefined) update.benefits = d.benefits.map(stripHtmlTags).filter(Boolean);
   if (d.images !== undefined) {
@@ -1446,7 +1495,7 @@ router.post('/services', async (req, res) => {
     name,
     slug,
     shortDescription: stripHtmlTags(d.shortDescription),
-    overview: d.overview,
+    overview: sanitizeRichHtml(d.overview),
     problemsAddressed: d.problemsAddressed.map(stripHtmlTags).filter(Boolean),
     deliverables: d.deliverables.map(stripHtmlTags).filter(Boolean),
     ctaLabel: stripHtmlTags(d.ctaLabel),
@@ -1479,7 +1528,7 @@ router.patch('/services/:id', async (req, res) => {
   if (d.name !== undefined) update.name = stripHtmlTags(d.name);
   if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
   if (d.shortDescription !== undefined) update.shortDescription = stripHtmlTags(d.shortDescription);
-  if (d.overview !== undefined) update.overview = d.overview;
+  if (d.overview !== undefined) update.overview = sanitizeRichHtml(d.overview);
   if (d.problemsAddressed !== undefined)
     update.problemsAddressed = d.problemsAddressed.map(stripHtmlTags).filter(Boolean);
   if (d.deliverables !== undefined) update.deliverables = d.deliverables.map(stripHtmlTags).filter(Boolean);
@@ -1530,14 +1579,14 @@ router.post('/articles', async (req, res) => {
   const clash = await Article.findOne({ slug }).lean();
   if (clash) return res.status(409).json({ error: `Article slug "${slug}" already exists.` });
 
-  const words = d.content.trim().split(/\s+/).filter(Boolean).length;
-  const readingTimeMinutes = Math.max(1, Math.ceil(words / 200));
+  const sanitizedContent = sanitizeRichHtml(d.content);
+  const readingTimeMinutes = estimateReadingTimeMinutes(sanitizedContent);
 
   const article = await Article.create({
     title,
     slug,
     excerpt: stripHtmlTags(d.excerpt),
-    content: d.content,
+    content: sanitizedContent,
     featuredImage: await resolveImageUrlForStorage(d.featuredImage),
     category: stripHtmlTags(d.category),
     tags: d.tags.map(stripHtmlTags).filter(Boolean),
@@ -1576,9 +1625,9 @@ router.patch('/articles/:id', async (req, res) => {
   if (d.slug !== undefined && d.slug) update.slug = slugify(d.slug);
   if (d.excerpt !== undefined) update.excerpt = stripHtmlTags(d.excerpt);
   if (d.content !== undefined) {
-    update.content = d.content;
-    const words = d.content.trim().split(/\s+/).filter(Boolean).length;
-    update.readingTimeMinutes = Math.max(1, Math.ceil(words / 200));
+    const sanitizedContent = sanitizeRichHtml(d.content);
+    update.content = sanitizedContent;
+    update.readingTimeMinutes = estimateReadingTimeMinutes(sanitizedContent);
   }
   if (d.featuredImage !== undefined) {
     update.featuredImage = await resolveImageUrlForStorage(d.featuredImage);
@@ -1737,14 +1786,14 @@ router.put('/settings', async (req, res) => {
   if (d.googleBusinessProfileUrl !== undefined) update.googleBusinessProfileUrl = d.googleBusinessProfileUrl;
   if (d.heroHeadline !== undefined) update.heroHeadline = stripHtmlTags(d.heroHeadline);
   if (d.heroSubheadline !== undefined) update.heroSubheadline = stripHtmlTags(d.heroSubheadline);
-  if (d.aboutIntro !== undefined) update.aboutIntro = stripHtmlTags(d.aboutIntro);
-  if (d.mission !== undefined) update.mission = stripHtmlTags(d.mission);
-  if (d.vision !== undefined) update.vision = stripHtmlTags(d.vision);
+  if (d.aboutIntro !== undefined) update.aboutIntro = sanitizeRichHtml(d.aboutIntro);
+  if (d.mission !== undefined) update.mission = sanitizeRichHtml(d.mission);
+  if (d.vision !== undefined) update.vision = sanitizeRichHtml(d.vision);
   if (d.values !== undefined) update.values = d.values.map(stripHtmlTags).filter(Boolean);
-  if (d.legalPrivacy !== undefined) update.legalPrivacy = d.legalPrivacy;
-  if (d.legalTerms !== undefined) update.legalTerms = d.legalTerms;
-  if (d.legalCookies !== undefined) update.legalCookies = d.legalCookies;
-  if (d.legalRefund !== undefined) update.legalRefund = d.legalRefund;
+  if (d.legalPrivacy !== undefined) update.legalPrivacy = sanitizeRichHtml(d.legalPrivacy);
+  if (d.legalTerms !== undefined) update.legalTerms = sanitizeRichHtml(d.legalTerms);
+  if (d.legalCookies !== undefined) update.legalCookies = sanitizeRichHtml(d.legalCookies);
+  if (d.legalRefund !== undefined) update.legalRefund = sanitizeRichHtml(d.legalRefund);
   if (d.gaMeasurementId !== undefined) update.gaMeasurementId = d.gaMeasurementId.toUpperCase();
   if (d.gscVerificationTag !== undefined) update.gscVerificationTag = stripHtmlTags(d.gscVerificationTag);
   if (d.retentionDays !== undefined) update.retentionDays = d.retentionDays;
@@ -2202,7 +2251,7 @@ router.post('/work', async (req, res) => {
     clientName: stripHtmlTags(d.clientName),
     industry: stripHtmlTags(d.industry),
     category: stripHtmlTags(d.category),
-    summary: stripHtmlTags(d.summary),
+    summary: sanitizeRichHtml(d.summary),
     outcomes: d.outcomes.map(stripHtmlTags).filter(Boolean),
     technologies: d.technologies.map(stripHtmlTags).filter(Boolean),
     imageUrl: await resolveImageUrlForStorage(d.imageUrl),
@@ -2237,7 +2286,7 @@ router.patch('/work/:id', async (req, res) => {
   if (d.clientName !== undefined) update.clientName = stripHtmlTags(d.clientName);
   if (d.industry !== undefined) update.industry = stripHtmlTags(d.industry);
   if (d.category !== undefined) update.category = stripHtmlTags(d.category);
-  if (d.summary !== undefined) update.summary = stripHtmlTags(d.summary);
+  if (d.summary !== undefined) update.summary = sanitizeRichHtml(d.summary);
   if (d.outcomes !== undefined) update.outcomes = d.outcomes.map(stripHtmlTags).filter(Boolean);
   if (d.technologies !== undefined)
     update.technologies = d.technologies.map(stripHtmlTags).filter(Boolean);

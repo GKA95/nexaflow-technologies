@@ -1,5 +1,7 @@
 import React, { Suspense, lazy } from 'react';
+import { MotionConfig } from 'motion/react';
 import { Layout } from './components/Layout';
+import { PageTransition } from './components/MotionPrimitives';
 import { AppProvider, useApp } from './context/AppContext';
 
 const AdminGatePage = lazy(() =>
@@ -156,15 +158,19 @@ function RouteView() {
 
   return (
     <Layout>
-      <Suspense fallback={<PageLoadingFallback />}>{pageContent}</Suspense>
+      <Suspense fallback={<PageLoadingFallback />}>
+        <PageTransition transitionKey={path}>{pageContent}</PageTransition>
+      </Suspense>
     </Layout>
   );
 }
 
 export default function App() {
   return (
-    <AppProvider>
-      <RouteView />
-    </AppProvider>
+    <MotionConfig reducedMotion="user">
+      <AppProvider>
+        <RouteView />
+      </AppProvider>
+    </MotionConfig>
   );
 }

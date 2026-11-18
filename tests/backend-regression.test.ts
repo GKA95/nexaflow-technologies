@@ -15,7 +15,10 @@ import {
   Article,
   Coupon,
   Course,
+  CourseReview,
+  Enrolment,
   Lead,
+  Lesson,
   PasswordResetToken,
   Payment,
   SupportTicket,
@@ -27,12 +30,20 @@ import {
   normalizeImageUrl,
   parseImgurUrl,
 } from '../server/shared/media.js';
+import {
+  countWordsFromRichContent,
+  estimateReadingTimeMinutes,
+  extractPlainText,
+  isHtmlContent,
+  plainTextToHtml,
+} from '../server/shared/richText.js';
 import { courseWriteSchema } from '../server/shared/validation.js';
 import { buildValidActiveEnrolmentPipeline } from '../server/utils/enrolments.js';
 import {
   assertPublicSafeUrl,
   isPrivateOrReservedIp,
 } from '../server/utils/imageResolver.js';
+import { sanitizeRichHtml } from '../server/utils/sanitizeRichHtml.js';
 
 type QueryCastable = {
   cast(model: unknown): void;
@@ -386,6 +397,25 @@ describe('Express 4 async safety and API endpoint regression checks', () => {
     assert.ok(types.includes('CollectionPage'));
     assert.ok(types.includes('BreadcrumbList'));
   });
+
+  test('protects /api/admin/media/config and /api/admin/media/upload against unauthenticated requests', async () => {
+    const [cfgRes, uploadRes] = await Promise.all([
+      fetch(`${baseUrl}/api/admin/media/config`),
+      fetch(`${baseUrl}/api/admin/media/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }),
+      }),
+    ]);
+
+    if (isDBConfigured()) {
+      assert.equal(cfgRes.status, 401);
+      assert.equal(uploadRes.status, 401);
+    } else {
+      assert.equal(cfgRes.status, 503);
+      assert.equal(uploadRes.status, 503);
+    }
+  });
 });
 
 describe('External/Imgur image normalization, SSRF guards & SSR SEO injection', () => {
@@ -529,5 +559,97 @@ describe('Strict active enrolment counting & per-course ratings toggle', () => {
     });
     assert.equal('aggregateRating' in disabledJsonLd, false);
     assert.equal('review' in disabledJsonLd, false);
+  });
+});
+
+describe('Compound indexes & rich-text HTML sanitization / helpers', () => {
+  const hasCompoundIndex = (
+    model: mongoose.Model<any>,
+    expectedKeys: Array<[string, 1 | -1]>
+  ) => {
+    const indexes = model.schema.indexes();
+    return indexes.some(([spec]) => {
+      const entries = Object.entries(spec);
+      if (entries.length !== expectedKeys.length) return false;
+      return expectedKeys.every(
+        ([key, dir], idx) => entries[idx]?.[0] === key && entries[idx]?.[1] === dir
+      );
+    });
+  };
+
+  test('models define expected compound indexes on User, SupportTicket, Enrolment, Payment, Article, Lesson, CourseReview', () => {
+    assert.equal(hasCompoundIndex(User, [['role', 1], ['createdAt', -1]]), true);
+    assert.equal(hasCompoundIndex(User, [['role', 1], ['active', 1]]), true);
+    assert.equal(hasCompoundIndex(SupportTicket, [['status', 1], ['updatedAt', -1]]), true);
+    assert.equal(hasCompoundIndex(SupportTicket, [['courseId', 1], ['status', 1]]), true);
+    assert.equal(hasCompoundIndex(Enrolment, [['status', 1], ['courseId', 1]]), true);
+    assert.equal(
+      hasCompoundIndex(Enrolment, [
+        ['userId', 1],
+        ['status', 1],
+        ['activatedAt', -1],
+      ]),
+      true
+    );
+    assert.equal(hasCompoundIndex(Payment, [['status', 1], ['createdAt', -1]]), true);
+    assert.equal(
+      hasCompoundIndex(Article, [
+        ['status', 1],
+        ['publishedAt', -1],
+        ['createdAt', -1],
+      ]),
+      true
+    );
+    assert.equal(
+      hasCompoundIndex(Lesson, [
+        ['courseId', 1],
+        ['published', 1],
+        ['order', 1],
+      ]),
+      true
+    );
+    assert.equal(
+      hasCompoundIndex(CourseReview, [
+        ['courseId', 1],
+        ['status', 1],
+        ['createdAt', -1],
+      ]),
+      true
+    );
+  });
+
+  test('sanitizeRichHtml preserves safe Tiptap formatting and strips XSS vectors', () => {
+    const dirty =
+      '<h2 style="text-align:center">Architecture <mark data-color="#FEF08A">Guide</mark></h2>' +
+      '<p><span style="color:#176BFF;font-size:18px">Overview</span> with <a href="https://example.com" onclick="alert(1)">reference</a>.</p>' +
+      '<p><a href="javascript:alert(2)">Bad link</a></p>' +
+      '<img src="https://imgur.com/aBcDe12" data-align="right" onerror="alert(3)" alt="Diagram" />' +
+      '<table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody><tr><td>Latency</td><td>12ms</td></tr></tbody></table>' +
+      '<script>window.pwned = true;</script><iframe src="https://evil.test"></iframe>';
+
+    const clean = sanitizeRichHtml(dirty);
+    assert.match(clean, /<h2[^>]*text-align:center[^>]*>/i);
+    assert.match(clean, /<mark data-color="#FEF08A">/);
+    assert.match(clean, /<a href="https:\/\/example\.com"[^>]*rel="noopener noreferrer"[^>]*>/);
+    assert.match(clean, /<img src="https:\/\/i\.imgur\.com\/aBcDe12\.jpg"[^>]*data-align="right"/);
+    assert.match(clean, /<table><thead><tr><th>Metric<\/th>/);
+    assert.equal(/<script|onerror|onclick|javascript:|<iframe/i.test(clean), false);
+  });
+
+  test('richText helpers extract plain text, count words/reading time, and upgrade legacy plaintext safely', () => {
+    assert.equal(isHtmlContent('<p>Hello <strong>world</strong></p>'), true);
+    assert.equal(isHtmlContent('Plain legacy copy with no tags'), false);
+
+    assert.equal(
+      extractPlainText('<h2>Overview</h2><p>Fast &amp; reliable <strong>systems</strong>.</p>'),
+      'Overview Fast & reliable systems.'
+    );
+    assert.equal(countWordsFromRichContent('<p>One two three four</p>'), 4);
+    assert.equal(estimateReadingTimeMinutes('<p>' + 'word '.repeat(410) + '</p>'), 3);
+
+    assert.equal(
+      plainTextToHtml('First paragraph.\nLine two.\n\nSecond <paragraph>.'),
+      '<p>First paragraph.<br />Line two.</p><p>Second &lt;paragraph&gt;.</p>'
+    );
   });
 });

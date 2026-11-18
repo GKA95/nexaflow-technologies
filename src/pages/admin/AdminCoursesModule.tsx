@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Edit2, Eye, EyeOff, Plus, RefreshCw, Star, Trash2, Video } from 'lucide-react';
+import { extractPlainText } from '../../../server/shared/richText';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { FieldError } from '../../components/FieldError';
 import { MediaImage } from '../../components/MediaImage';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
+import { LazyRichTextEditor } from '../../components/admin/LazyRichTextEditor';
+import { StructuredListEditor } from '../../components/admin/StructuredListEditor';
 import { useApp } from '../../context/AppContext';
 import type { CourseItem, LessonItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
@@ -58,6 +62,9 @@ export function AdminCoursesModule() {
   const [savingLesson, setSavingLesson] = useState(false);
   const [addingModId, setAddingModId] = useState<string | null>(null);
   const [togglingRatingsId, setTogglingRatingsId] = useState<string | null>(null);
+  const [courseDirty, setCourseDirty] = useState(false);
+  const [coursePreview, setCoursePreview] = useState(false);
+  const [discardCourseAction, setDiscardCourseAction] = useState<(() => void) | null>(null);
   const [courseErrors, setCourseErrors] = useState<FieldErrors>({});
   const [multiVideoErrors, setMultiVideoErrors] = useState<FieldErrors>({});
   const [lessonErrors, setLessonErrors] = useState<FieldErrors>({});
@@ -74,6 +81,30 @@ export function AdminCoursesModule() {
   useEffect(() => {
     loadCourses();
   }, [loadCourses]);
+
+  useEffect(() => {
+    if (!courseDirty || !editingCourse) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [courseDirty, editingCourse]);
+
+  const requestOpenCourse = (next: Partial<CourseItem> | null) => {
+    const apply = () => {
+      setCourseErrors({});
+      setCoursePreview(false);
+      setCourseDirty(false);
+      setEditingCourse(next);
+    };
+    if (courseDirty && editingCourse) {
+      setDiscardCourseAction(() => apply);
+    } else {
+      apply();
+    }
+  };
 
   const [resolvingCover, setResolvingCover] = useState(false);
 
@@ -121,8 +152,8 @@ export function AdminCoursesModule() {
       coverImage: normalizeImageUrl(editingCourse.coverImage || ''),
       price: Number(editingCourse.price ?? 0),
       currency: (editingCourse.currency || 'GHS').trim().toUpperCase(),
-      objectives: editingCourse.objectives || [],
-      outcomes: editingCourse.outcomes || [],
+      objectives: (editingCourse.objectives || []).map((s) => s.trim()).filter(Boolean),
+      outcomes: (editingCourse.outcomes || []).map((s) => s.trim()).filter(Boolean),
       published: Boolean(editingCourse.published),
       ratingsEnabled: editingCourse.ratingsEnabled !== false,
       order: Number(editingCourse.order ?? 0),
@@ -154,6 +185,8 @@ export function AdminCoursesModule() {
       }
       showToast(isNew ? 'Course created.' : 'Course updated.', 'success');
       setEditingCourse(null);
+      setCourseDirty(false);
+      setCoursePreview(false);
       setCourseErrors({});
       loadCourses();
       refreshBootstrap();
@@ -368,9 +401,8 @@ export function AdminCoursesModule() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            setCourseErrors({});
-            setEditingCourse({
+          onClick={() =>
+            requestOpenCourse({
               title: '',
               slug: '',
               shortDescription: '',
@@ -382,8 +414,8 @@ export function AdminCoursesModule() {
               outcomes: [],
               published: false,
               ratingsEnabled: true,
-            });
-          }}
+            })
+          }
           className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
         >
           <Plus className="w-4 h-4" />
@@ -397,241 +429,265 @@ export function AdminCoursesModule() {
           noValidate
           className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
         >
-          <h2 className="text-lg font-bold">
-            {editingCourse._id ? `Edit Course: ${editingCourse.title}` : 'Create New Course'}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium mb-1">Course Title *</label>
-              <input
-                type="text"
-                value={editingCourse.title || ''}
-                onChange={(e) => {
-                  setEditingCourse({ ...editingCourse, title: e.target.value });
-                  setCourseErrors((p) => ({ ...p, title: '' }));
-                }}
-                aria-invalid={Boolean(courseErrors.title)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  courseErrors.title
-                )}
-              />
-              <FieldError message={courseErrors.title} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Slug (auto if blank)</label>
-              <input
-                type="text"
-                value={editingCourse.slug || ''}
-                onChange={(e) => {
-                  setEditingCourse({ ...editingCourse, slug: e.target.value });
-                  setCourseErrors((p) => ({ ...p, slug: '' }));
-                }}
-                aria-invalid={Boolean(courseErrors.slug)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  courseErrors.slug
-                )}
-              />
-              <FieldError message={courseErrors.slug} />
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold">
+              {editingCourse._id ? `Edit Course: ${editingCourse.title}` : 'Create New Course'}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setCoursePreview((p) => !p)}
+              className="text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+            >
+              {coursePreview ? 'Back to Editor' : 'Preview Overview'}
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium mb-1">Price</label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={editingCourse.price ?? 0}
-                onChange={(e) => {
-                  setEditingCourse({ ...editingCourse, price: Number(e.target.value) });
-                  setCourseErrors((p) => ({ ...p, price: '' }));
-                }}
-                aria-invalid={Boolean(courseErrors.price)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  courseErrors.price
-                )}
-              />
-              <FieldError message={courseErrors.price} />
+          {coursePreview ? (
+            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] p-6 space-y-4">
+              <p className="text-xs font-mono text-[#176BFF] dark:text-[#00D4FF]">
+                {(editingCourse.currency || 'GHS').toUpperCase()} {editingCourse.price ?? 0} ·{' '}
+                {editingCourse.published ? 'Published' : 'Draft'}
+              </p>
+              <h3 className="text-2xl font-bold">{editingCourse.title || 'Untitled Course'}</h3>
+              {editingCourse.shortDescription && (
+                <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">
+                  {editingCourse.shortDescription}
+                </p>
+              )}
+              <RichContentRenderer content={editingCourse.fullDescription || ''} />
             </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Currency</label>
-              <select
-                value={(editingCourse.currency || 'GHS').toUpperCase()}
-                onChange={(e) => {
-                  setEditingCourse({ ...editingCourse, currency: e.target.value });
-                  setCourseErrors((p) => ({ ...p, currency: '' }));
-                }}
-                aria-invalid={Boolean(courseErrors.currency)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  courseErrors.currency
-                )}
-              >
-                <option value="GHS">GHS (Ghana Cedi)</option>
-                <option value="USD">USD (US Dollar)</option>
-                <option value="NGN">NGN (Nigerian Naira)</option>
-                <option value="KES">KES (Kenyan Shilling)</option>
-                <option value="EUR">EUR (Euro)</option>
-                <option value="GBP">GBP (British Pound)</option>
-              </select>
-              <FieldError message={courseErrors.currency} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Cover Image URL</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={editingCourse.coverImage || ''}
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Course Title *</label>
+                  <input
+                    type="text"
+                    value={editingCourse.title || ''}
+                    onChange={(e) => {
+                      setEditingCourse({ ...editingCourse, title: e.target.value });
+                      setCourseDirty(true);
+                      setCourseErrors((p) => ({ ...p, title: '' }));
+                    }}
+                    aria-invalid={Boolean(courseErrors.title)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      courseErrors.title
+                    )}
+                  />
+                  <FieldError message={courseErrors.title} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Slug (auto if blank)</label>
+                  <input
+                    type="text"
+                    value={editingCourse.slug || ''}
+                    onChange={(e) => {
+                      setEditingCourse({ ...editingCourse, slug: e.target.value });
+                      setCourseDirty(true);
+                      setCourseErrors((p) => ({ ...p, slug: '' }));
+                    }}
+                    aria-invalid={Boolean(courseErrors.slug)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      courseErrors.slug
+                    )}
+                  />
+                  <FieldError message={courseErrors.slug} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Price</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editingCourse.price ?? 0}
+                    onChange={(e) => {
+                      setEditingCourse({ ...editingCourse, price: Number(e.target.value) });
+                      setCourseDirty(true);
+                      setCourseErrors((p) => ({ ...p, price: '' }));
+                    }}
+                    aria-invalid={Boolean(courseErrors.price)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      courseErrors.price
+                    )}
+                  />
+                  <FieldError message={courseErrors.price} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Currency</label>
+                  <select
+                    value={(editingCourse.currency || 'GHS').toUpperCase()}
+                    onChange={(e) => {
+                      setEditingCourse({ ...editingCourse, currency: e.target.value });
+                      setCourseDirty(true);
+                      setCourseErrors((p) => ({ ...p, currency: '' }));
+                    }}
+                    aria-invalid={Boolean(courseErrors.currency)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      courseErrors.currency
+                    )}
+                  >
+                    <option value="GHS">GHS (Ghana Cedi)</option>
+                    <option value="USD">USD (US Dollar)</option>
+                    <option value="NGN">NGN (Nigerian Naira)</option>
+                    <option value="KES">KES (Kenyan Shilling)</option>
+                    <option value="EUR">EUR (Euro)</option>
+                    <option value="GBP">GBP (British Pound)</option>
+                  </select>
+                  <FieldError message={courseErrors.currency} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Cover Image URL</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={editingCourse.coverImage || ''}
+                      onChange={(e) => {
+                        setEditingCourse({ ...editingCourse, coverImage: e.target.value });
+                        setCourseDirty(true);
+                        setCourseErrors((p) => ({ ...p, coverImage: '' }));
+                      }}
+                      onBlur={(e) => {
+                        void resolveCoverLink(e.target.value, true);
+                      }}
+                      placeholder="https://i.imgur.com/... or https://imgur.com/... or /assets/images/..."
+                      aria-invalid={Boolean(courseErrors.coverImage)}
+                      className={fieldBorderClass(
+                        'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                        courseErrors.coverImage
+                      )}
+                    />
+                    {editingCourse.coverImage?.trim() && (
+                      <button
+                        type="button"
+                        disabled={resolvingCover}
+                        onClick={() => void resolveCoverLink(editingCourse.coverImage || '', false)}
+                        title="Resolve Imgur / external link"
+                        className="shrink-0 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-2.5 py-2 text-xs font-medium hover:border-[#00D4FF] disabled:opacity-60 inline-flex items-center gap-1"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${resolvingCover ? 'animate-spin' : ''}`} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] text-[#4A5578] dark:text-[#AEB8D4]">
+                    Imgur links (direct, page, or album), Google Drive links, and local paths are normalized automatically.
+                  </p>
+                  <FieldError message={courseErrors.coverImage} />
+                </div>
+              </div>
+
+              {editingCourse.coverImage?.trim() && (
+                <div className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] p-3 flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="w-full sm:w-44 aspect-video rounded-lg overflow-hidden border border-[#DCE3F2] dark:border-[#1A2550] bg-[#080D2B] shrink-0">
+                    <MediaImage
+                      src={editingCourse.coverImage}
+                      alt={editingCourse.title || 'Course cover preview'}
+                      fallbackLabel="Preview unavailable"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0 text-xs space-y-1">
+                    <p className="font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                      Live Cover Preview
+                    </p>
+                    <p className="font-mono text-[11px] text-[#4A5578] dark:text-[#AEB8D4] break-all">
+                      {normalizeImageUrl(editingCourse.coverImage)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium mb-1">Short Summary *</label>
+                <textarea
+                  rows={2}
+                  value={editingCourse.shortDescription || ''}
                   onChange={(e) => {
-                    setEditingCourse({ ...editingCourse, coverImage: e.target.value });
-                    setCourseErrors((p) => ({ ...p, coverImage: '' }));
+                    setEditingCourse({ ...editingCourse, shortDescription: e.target.value });
+                    setCourseDirty(true);
+                    setCourseErrors((p) => ({ ...p, shortDescription: '' }));
                   }}
-                  onBlur={(e) => {
-                    void resolveCoverLink(e.target.value, true);
-                  }}
-                  placeholder="https://i.imgur.com/... or https://imgur.com/... or /assets/images/..."
-                  aria-invalid={Boolean(courseErrors.coverImage)}
+                  placeholder="Concise summary shown on course catalogue cards and hero banner"
+                  aria-invalid={Boolean(courseErrors.shortDescription)}
                   className={fieldBorderClass(
                     'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                    courseErrors.coverImage
+                    courseErrors.shortDescription
                   )}
                 />
-                {editingCourse.coverImage?.trim() && (
-                  <button
-                    type="button"
-                    disabled={resolvingCover}
-                    onClick={() => void resolveCoverLink(editingCourse.coverImage || '', false)}
-                    title="Resolve Imgur / external link"
-                    className="shrink-0 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-2.5 py-2 text-xs font-medium hover:border-[#00D4FF] disabled:opacity-60 inline-flex items-center gap-1"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${resolvingCover ? 'animate-spin' : ''}`} />
-                  </button>
-                )}
+                <FieldError message={courseErrors.shortDescription} />
               </div>
-              <p className="mt-1 text-[11px] text-[#4A5578] dark:text-[#AEB8D4]">
-                Imgur links (direct, page, or album), Google Drive links, and local paths are normalized automatically.
-              </p>
-              <FieldError message={courseErrors.coverImage} />
-            </div>
-          </div>
 
-          {editingCourse.coverImage?.trim() && (
-            <div className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] p-3 flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="w-full sm:w-44 aspect-video rounded-lg overflow-hidden border border-[#DCE3F2] dark:border-[#1A2550] bg-[#080D2B] shrink-0">
-                <MediaImage
-                  src={editingCourse.coverImage}
-                  alt={editingCourse.title || 'Course cover preview'}
-                  fallbackLabel="Preview unavailable"
-                  className="w-full h-full object-cover"
+              <LazyRichTextEditor
+                label="Main Course Description (Full Overview for All Sub-Videos)"
+                compact
+                minHeightClass="min-h-[240px]"
+                value={editingCourse.fullDescription || ''}
+                onChange={(html) => {
+                  setEditingCourse((prev) => (prev ? { ...prev, fullDescription: html } : prev));
+                  setCourseDirty(true);
+                  setCourseErrors((p) => ({ ...p, fullDescription: '' }));
+                }}
+                placeholder="Write the comprehensive overview covering the entire course and all video lessons inside it..."
+                error={courseErrors.fullDescription}
+                saveStatus={savingCourse ? 'saving' : courseDirty ? 'dirty' : 'idle'}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <StructuredListEditor
+                  label="Course Objectives"
+                  items={editingCourse.objectives || []}
+                  onChange={(next) => {
+                    setEditingCourse({ ...editingCourse, objectives: next });
+                    setCourseDirty(true);
+                  }}
+                  placeholder="Add a learning objective..."
+                  emptyHint="No course objectives listed yet."
+                />
+                <StructuredListEditor
+                  label="Learning Outcomes"
+                  items={editingCourse.outcomes || []}
+                  onChange={(next) => {
+                    setEditingCourse({ ...editingCourse, outcomes: next });
+                    setCourseDirty(true);
+                  }}
+                  placeholder="Add a practical outcome..."
+                  emptyHint="No learning outcomes listed yet."
                 />
               </div>
-              <div className="min-w-0 text-xs space-y-1">
-                <p className="font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                  Live Cover Preview
-                </p>
-                <p className="font-mono text-[11px] text-[#4A5578] dark:text-[#AEB8D4] break-all">
-                  {normalizeImageUrl(editingCourse.coverImage)}
-                </p>
+
+              <div className="flex flex-wrap items-center gap-6">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editingCourse.published)}
+                    onChange={(e) => {
+                      setEditingCourse({ ...editingCourse, published: e.target.checked });
+                      setCourseDirty(true);
+                    }}
+                  />
+                  Publish Course Publicly
+                </label>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editingCourse.ratingsEnabled !== false}
+                    onChange={(e) => {
+                      setEditingCourse({ ...editingCourse, ratingsEnabled: e.target.checked });
+                      setCourseDirty(true);
+                    }}
+                  />
+                  Enable Course Ratings &amp; Reviews
+                </label>
               </div>
-            </div>
+            </>
           )}
-
-          <div>
-            <label className="block text-xs font-medium mb-1">Short Summary *</label>
-            <textarea
-              rows={2}
-              value={editingCourse.shortDescription || ''}
-              onChange={(e) => {
-                setEditingCourse({ ...editingCourse, shortDescription: e.target.value });
-                setCourseErrors((p) => ({ ...p, shortDescription: '' }));
-              }}
-              placeholder="Concise summary shown on course catalogue cards and hero banner"
-              aria-invalid={Boolean(courseErrors.shortDescription)}
-              className={fieldBorderClass(
-                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                courseErrors.shortDescription
-              )}
-            />
-            <FieldError message={courseErrors.shortDescription} />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium mb-1">
-              Main Course Description (Full Overview for All Sub-Videos)
-            </label>
-            <textarea
-              rows={5}
-              value={editingCourse.fullDescription || ''}
-              onChange={(e) => {
-                setEditingCourse({ ...editingCourse, fullDescription: e.target.value });
-                setCourseErrors((p) => ({ ...p, fullDescription: '' }));
-              }}
-              placeholder="Write the comprehensive overview covering the entire course and all video lessons inside it..."
-              aria-invalid={Boolean(courseErrors.fullDescription)}
-              className={fieldBorderClass(
-                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                courseErrors.fullDescription
-              )}
-            />
-            <FieldError message={courseErrors.fullDescription} />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium mb-1">Objectives (one per line)</label>
-              <textarea
-                rows={3}
-                value={(editingCourse.objectives || []).join('\n')}
-                onChange={(e) =>
-                  setEditingCourse({
-                    ...editingCourse,
-                    objectives: e.target.value.split('\n').filter(Boolean),
-                  })
-                }
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Learning Outcomes (one per line)</label>
-              <textarea
-                rows={3}
-                value={(editingCourse.outcomes || []).join('\n')}
-                onChange={(e) =>
-                  setEditingCourse({
-                    ...editingCourse,
-                    outcomes: e.target.value.split('\n').filter(Boolean),
-                  })
-                }
-                className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-6">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={Boolean(editingCourse.published)}
-                onChange={(e) => setEditingCourse({ ...editingCourse, published: e.target.checked })}
-              />
-              Publish Course Publicly
-            </label>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={editingCourse.ratingsEnabled !== false}
-                onChange={(e) =>
-                  setEditingCourse({ ...editingCourse, ratingsEnabled: e.target.checked })
-                }
-              />
-              Enable Course Ratings &amp; Reviews
-            </label>
-          </div>
 
           <div className="flex flex-wrap gap-3">
             <button
@@ -643,10 +699,7 @@ export function AdminCoursesModule() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setEditingCourse(null);
-                setCourseErrors({});
-              }}
+              onClick={() => requestOpenCourse(null)}
               className="min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs font-medium"
             >
               Cancel
@@ -899,23 +952,19 @@ export function AdminCoursesModule() {
               <FieldError message={lessonErrors.duration} />
             </div>
           </div>
-          <div>
-            <textarea
-              rows={2}
-              placeholder="Sub-video notes..."
-              value={editingLesson.notes}
-              onChange={(e) => {
-                setEditingLesson({ ...editingLesson, notes: e.target.value });
-                setLessonErrors((p) => ({ ...p, notes: '' }));
-              }}
-              aria-invalid={Boolean(lessonErrors.notes)}
-              className={fieldBorderClass(
-                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                lessonErrors.notes
-              )}
-            />
-            <FieldError message={lessonErrors.notes} />
-          </div>
+          <LazyRichTextEditor
+            label="Sub-Video Lesson Notes"
+            compact
+            enableMedia={false}
+            minHeightClass="min-h-[140px]"
+            value={editingLesson.notes}
+            onChange={(html) => {
+              setEditingLesson({ ...editingLesson, notes: html });
+              setLessonErrors((p) => ({ ...p, notes: '' }));
+            }}
+            placeholder="Write structured summary notes, resource links, or key takeaways for learners..."
+            error={lessonErrors.notes}
+          />
           <div className="flex gap-2">
             <button
               type="submit"
@@ -968,7 +1017,7 @@ export function AdminCoursesModule() {
                     <h2 className="mt-1 text-xl font-bold">{course.title}</h2>
                     {(course.fullDescription || course.shortDescription) && (
                       <p className="mt-1.5 text-xs text-[#4A5578] dark:text-[#AEB8D4] line-clamp-2">
-                        {course.fullDescription || course.shortDescription}
+                        {extractPlainText(course.fullDescription) || course.shortDescription}
                       </p>
                     )}
                   </div>
@@ -1017,10 +1066,7 @@ export function AdminCoursesModule() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setCourseErrors({});
-                      setEditingCourse(course);
-                    }}
+                    onClick={() => requestOpenCourse(course)}
                     className="min-h-[40px] inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs font-medium"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -1148,6 +1194,19 @@ export function AdminCoursesModule() {
         confirmLabel="Delete"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(discardCourseAction)}
+        title="Discard Unsaved Course Changes?"
+        message="You have unsaved changes to this course. Leave without saving?"
+        confirmLabel="Discard Changes"
+        onConfirm={() => {
+          const fn = discardCourseAction;
+          setDiscardCourseAction(null);
+          fn?.();
+        }}
+        onCancel={() => setDiscardCourseAction(null)}
       />
     </div>
   );

@@ -3,6 +3,8 @@ import { AppLink } from '../../components/AppLink';
 import { CouponApplyBar } from '../../components/CouponApplyBar';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
+import { HeroEntrance, Reveal, StaggerGrid, StaggerItem } from '../../components/MotionPrimitives';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 import { SEOHead } from '../../components/SEOHead';
 import { StarRatingDisplay } from '../../components/StarRating';
 import { useApp } from '../../context/AppContext';
@@ -90,53 +92,61 @@ export function HomePage() {
       />
 
       {/* 1. Hero Proposition Section */}
-      <section className="relative bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550]">
+      <section className="relative overflow-hidden bg-[#03051B] nf-hero-ambient text-[#F7F8FF] border-b border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-24">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-center">
-              <p className="text-xs font-medium tracking-wider uppercase text-[#00D4FF] mb-3">
-                {settings?.descriptor || 'AI, Data & Digital Solutions'}
-              </p>
-              <h1 className="text-[clamp(1.85rem,4.4vw,3.15rem)] font-bold tracking-tight text-[#F7F8FF] leading-[1.12] max-w-2xl">
-                {settings?.heroHeadline ||
-                  'Intelligent systems, reliable data, and practical digital engineering.'}
-              </h1>
-              <p className="mt-4 sm:mt-5 text-base sm:text-lg text-[#AEB8D4] leading-relaxed max-w-2xl">
-                {settings?.heroSubheadline ||
-                  'NexaFlow Technologies partners with organisations to build AI automation, custom web platforms, data analytics, applied machine learning, and structured technical training.'}
-              </p>
+              <HeroEntrance delay={0}>
+                <p className="text-xs font-medium tracking-wider uppercase text-[#00D4FF] mb-3">
+                  {settings?.descriptor || 'AI, Data & Digital Solutions'}
+                </p>
+              </HeroEntrance>
+              <HeroEntrance delay={0.06}>
+                <h1 className="text-[clamp(1.85rem,4.4vw,3.15rem)] font-bold tracking-tight text-[#F7F8FF] leading-[1.12] max-w-2xl">
+                  {settings?.heroHeadline ||
+                    'Intelligent systems, reliable data, and practical digital engineering.'}
+                </h1>
+              </HeroEntrance>
+              <HeroEntrance delay={0.12}>
+                <p className="mt-4 sm:mt-5 text-base sm:text-lg text-[#AEB8D4] leading-relaxed max-w-2xl">
+                  {settings?.heroSubheadline ||
+                    'NexaFlow Technologies partners with organisations to build AI automation, custom web platforms, data analytics, applied machine learning, and structured technical training.'}
+                </p>
+              </HeroEntrance>
 
               {/* Primary CTA + clean balanced exploration links */}
-              <div className="mt-7 sm:mt-8 flex flex-wrap items-center gap-3">
-                <AppLink
-                  to="/contact?type=consultation"
-                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-colors whitespace-nowrap"
-                >
-                  Request a Consultation
-                  <ArrowRight className="w-4 h-4" />
-                </AppLink>
-                <AppLink
-                  to="/solutions"
-                  className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
-                >
-                  Explore Solutions
-                </AppLink>
-                <AppLink
-                  to="/products"
-                  className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
-                >
-                  Explore Products
-                </AppLink>
-                <AppLink
-                  to="/learn"
-                  className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
-                >
-                  Explore Courses
-                </AppLink>
-              </div>
+              <HeroEntrance delay={0.18}>
+                <div className="mt-7 sm:mt-8 flex flex-wrap items-center gap-3">
+                  <AppLink
+                    to="/contact?type=consultation"
+                    className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-5 py-3 text-sm font-semibold text-white transition-all active:scale-[0.99] whitespace-nowrap"
+                  >
+                    Request a Consultation
+                    <ArrowRight className="w-4 h-4" />
+                  </AppLink>
+                  <AppLink
+                    to="/solutions"
+                    className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
+                  >
+                    Explore Solutions
+                  </AppLink>
+                  <AppLink
+                    to="/products"
+                    className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
+                  >
+                    Explore Products
+                  </AppLink>
+                  <AppLink
+                    to="/learn"
+                    className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg border border-[#1A2550] bg-[#080D2B] hover:border-[#00D4FF]/60 px-4 py-3 text-sm font-medium text-[#F7F8FF] transition-colors whitespace-nowrap"
+                  >
+                    Explore Courses
+                  </AppLink>
+                </div>
+              </HeroEntrance>
             </div>
 
-            <div className="lg:col-span-5">
+            <HeroEntrance delay={0.12} className="lg:col-span-5">
               <div className="h-full min-h-[220px] sm:min-h-[280px] rounded-xl overflow-hidden border border-[#1A2550] bg-[#080D2B]">
                 <MediaImage
                   src="/assets/images/hero_nexaflow_architecture.jpg"
@@ -149,7 +159,7 @@ export function HomePage() {
                   className="w-full h-full object-cover"
                 />
               </div>
-            </div>
+            </HeroEntrance>
           </div>
         </div>
       </section>
@@ -157,7 +167,7 @@ export function HomePage() {
       {/* 2. Featured Solutions / Services */}
       <section className="py-16 lg:py-24 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+          <Reveal className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
                 Core Solutions &amp; Engineering Services
@@ -173,46 +183,47 @@ export function HomePage() {
               View all solutions
               <ArrowRight className="w-4 h-4" />
             </AppLink>
-          </div>
+          </Reveal>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {services.map((service, idx) => (
-              <article
-                key={service.slug}
-                className="group rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 sm:p-8 flex flex-col justify-between hover:border-[#176BFF]/60 transition-colors"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-4 text-xs text-[#4A5578] dark:text-[#AEB8D4] font-mono tabular-nums mb-3">
-                    <span>0{idx + 1}. Service Capability</span>
-                    <Compass className="w-4 h-4 text-[#176BFF] dark:text-[#00D4FF]" />
+              <StaggerItem key={service.slug} className="flex">
+                <article
+                  className="group w-full rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 sm:p-8 flex flex-col justify-between nf-card-interactive hover:border-[#176BFF]/60"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-4 text-xs text-[#4A5578] dark:text-[#AEB8D4] font-mono tabular-nums mb-3">
+                      <span>0{idx + 1}. Service Capability</span>
+                      <Compass className="w-4 h-4 text-[#176BFF] dark:text-[#00D4FF] transition-transform duration-200 group-hover:scale-110" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                      {service.name}
+                    </h3>
+                    <p className="mt-2.5 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
+                      {service.shortDescription}
+                    </p>
                   </div>
-                  <h3 className="text-xl font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                    {service.name}
-                  </h3>
-                  <p className="mt-2.5 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
-                    {service.shortDescription}
-                  </p>
-                </div>
 
-                <div className="mt-6 pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550] flex items-center justify-between">
-                  <AppLink
-                    to={`/solutions/${service.slug}`}
-                    className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
-                  >
-                    Explore {service.name}
-                    <ArrowRight className="w-4 h-4" />
-                  </AppLink>
-                </div>
-              </article>
+                  <div className="mt-6 pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550] flex items-center justify-between">
+                    <AppLink
+                      to={`/solutions/${service.slug}`}
+                      className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                    >
+                      Explore {service.name}
+                      <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                    </AppLink>
+                  </div>
+                </article>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerGrid>
         </div>
       </section>
 
       {/* 3. Featured Products */}
       <section className="py-16 lg:py-20 bg-[#EEF2FA]/60 dark:bg-[#080D2B]/40 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+          <Reveal className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
                 Products
@@ -228,7 +239,7 @@ export function HomePage() {
               Browse product catalogue
               <ArrowRight className="w-4 h-4" />
             </AppLink>
-          </div>
+          </Reveal>
 
           {products.length === 0 ? (
             <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-8 text-center">
@@ -238,49 +249,50 @@ export function HomePage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <StaggerGrid className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {products.map((product) => (
-                <article
-                  key={product.slug}
-                  className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden grid grid-cols-1 sm:grid-cols-5 items-stretch"
-                >
-                  <div className="sm:col-span-2 aspect-video sm:aspect-auto sm:min-h-[180px] bg-[#03051B]">
-                    <MediaImage
-                      src={product.images?.[0] || '/assets/images/product_gridmind_ai.jpg'}
-                      alt={product.name}
-                      width={640}
-                      height={360}
-                      sizes="(max-width: 639px) 100vw, (max-width: 1023px) 40vw, 22vw"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="sm:col-span-3 p-5 sm:p-6 flex flex-col justify-between">
-                    <div>
-                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span>{product.category}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{product.pricingStatus}</span>
+                <StaggerItem key={product.slug} className="flex">
+                  <article
+                    className="group w-full rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden grid grid-cols-1 sm:grid-cols-5 items-stretch nf-card-interactive hover:border-[#176BFF]/60"
+                  >
+                    <div className="sm:col-span-2 aspect-video sm:aspect-auto sm:min-h-[180px] bg-[#03051B] overflow-hidden">
+                      <MediaImage
+                        src={product.images?.[0] || '/assets/images/product_gridmind_ai.jpg'}
+                        alt={product.name}
+                        width={640}
+                        height={360}
+                        sizes="(max-width: 639px) 100vw, (max-width: 1023px) 40vw, 22vw"
+                        className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+                      />
+                    </div>
+                    <div className="sm:col-span-3 p-5 sm:p-6 flex flex-col justify-between">
+                      <div>
+                        <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span>{product.category}</span>
+                          <span aria-hidden="true">·</span>
+                          <span>{product.pricingStatus}</span>
+                        </div>
+                        <h3 className="mt-2 text-xl font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                          {product.name}
+                        </h3>
+                        <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
+                          {product.shortDescription}
+                        </p>
                       </div>
-                      <h3 className="mt-2 text-xl font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                        {product.name}
-                      </h3>
-                      <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
-                        {product.shortDescription}
-                      </p>
+                      <div className="mt-4">
+                        <AppLink
+                          to={`/products/${product.slug}`}
+                          className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                        >
+                          View product details
+                          <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                        </AppLink>
+                      </div>
                     </div>
-                    <div className="mt-4">
-                      <AppLink
-                        to={`/products/${product.slug}`}
-                        className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
-                      >
-                        View product details
-                        <ArrowRight className="w-4 h-4" />
-                      </AppLink>
-                    </div>
-                  </div>
-                </article>
+                  </article>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGrid>
           )}
         </div>
       </section>
@@ -288,7 +300,7 @@ export function HomePage() {
       {/* 4. Featured Courses (NexaFlow Learn) */}
       <section className="py-16 lg:py-20 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+          <Reveal className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
                 NexaFlow Learn
@@ -304,12 +316,12 @@ export function HomePage() {
               Explore course catalogue
               <ArrowRight className="w-4 h-4" />
             </AppLink>
-          </div>
+          </Reveal>
 
           {/* Front-page Coupon Code Input */}
-          <div className="mb-8">
+          <Reveal delay={0.05} className="mb-8">
             <CouponApplyBar variant="surface" compact />
-          </div>
+          </Reveal>
 
           {featuredCourses.length === 0 ? (
             <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-8 sm:p-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
@@ -334,84 +346,85 @@ export function HomePage() {
               </AppLink>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {featuredCourses.map((course) => {
                 const pricing = getCourseDiscountPricing(course, appliedCoupon);
                 return (
-                  <article
-                    key={course.slug}
-                    className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="aspect-video bg-[#03051B]">
-                        <MediaImage
-                          src={course.coverImage}
-                          alt={course.title}
-                          fallbackLabel={course.title}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="p-5 sm:p-6">
-                        <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
-                          <span>{course.moduleCount ?? 0} Modules</span>
-                          <span aria-hidden="true">·</span>
-                          <span>{course.lessonCount ?? 0} Lessons</span>
-                          <span aria-hidden="true">·</span>
-                          {course.price > 0 ? (
-                            pricing.applies ? (
-                              <span className="inline-flex items-center gap-1.5 font-mono">
-                                <span className="line-through opacity-60">
-                                  {course.currency} {formatMoneyAmount(pricing.originalPrice)}
+                  <StaggerItem key={course.slug} className="flex">
+                    <article
+                      className="group w-full rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden flex flex-col justify-between nf-card-interactive hover:border-[#176BFF]/60"
+                    >
+                      <div>
+                        <div className="aspect-video bg-[#03051B] overflow-hidden">
+                          <MediaImage
+                            src={course.coverImage}
+                            alt={course.title}
+                            fallbackLabel={course.title}
+                            className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+                          />
+                        </div>
+                        <div className="p-5 sm:p-6">
+                          <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+                            <span>{course.moduleCount ?? 0} Modules</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{course.lessonCount ?? 0} Lessons</span>
+                            <span aria-hidden="true">·</span>
+                            {course.price > 0 ? (
+                              pricing.applies ? (
+                                <span className="inline-flex items-center gap-1.5 font-mono">
+                                  <span className="line-through opacity-60">
+                                    {course.currency} {formatMoneyAmount(pricing.originalPrice)}
+                                  </span>
+                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                    {pricing.finalPrice <= 0
+                                      ? 'Free'
+                                      : `${course.currency} ${formatMoneyAmount(pricing.finalPrice)}`}
+                                  </span>
+                                  <span className="text-[11px] font-semibold text-[#176BFF] dark:text-[#00D4FF]">
+                                    (-{pricing.discountPercent}%)
+                                  </span>
                                 </span>
-                                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                                  {pricing.finalPrice <= 0
-                                    ? 'Free'
-                                    : `${course.currency} ${formatMoneyAmount(pricing.finalPrice)}`}
+                              ) : (
+                                <span className="font-mono font-medium text-[#070B24] dark:text-[#F7F8FF]">
+                                  {course.currency} {course.price}
                                 </span>
-                                <span className="text-[11px] font-semibold text-[#176BFF] dark:text-[#00D4FF]">
-                                  (-{pricing.discountPercent}%)
-                                </span>
-                              </span>
+                              )
                             ) : (
                               <span className="font-mono font-medium text-[#070B24] dark:text-[#F7F8FF]">
-                                {course.currency} {course.price}
+                                Free
                               </span>
-                            )
-                          ) : (
-                            <span className="font-mono font-medium text-[#070B24] dark:text-[#F7F8FF]">
-                              Free
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="mt-2 text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                          {course.title}
-                        </h3>
-                        {course.ratingsEnabled !== false && (
-                          <div className="mt-2">
-                            <StarRatingDisplay
-                              rating={course.averageRating}
-                              count={course.reviewCount}
-                              size="xs"
-                            />
+                            )}
                           </div>
-                        )}
-                        <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] line-clamp-3">
-                          {course.shortDescription}
-                        </p>
+                          <h3 className="mt-2 text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                            {course.title}
+                          </h3>
+                          {course.ratingsEnabled !== false && (
+                            <div className="mt-2">
+                              <StarRatingDisplay
+                                rating={course.averageRating}
+                                count={course.reviewCount}
+                                size="xs"
+                              />
+                            </div>
+                          )}
+                          <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] line-clamp-3">
+                            {course.shortDescription}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="px-5 sm:px-6 pb-5 sm:pb-6">
-                      <AppLink
-                        to={`/learn/${course.slug}`}
-                        className="w-full min-h-[44px] inline-flex items-center justify-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
-                      >
-                        View Course
-                      </AppLink>
-                    </div>
-                  </article>
+                      <div className="px-5 sm:px-6 pb-5 sm:pb-6">
+                        <AppLink
+                          to={`/learn/${course.slug}`}
+                          className="w-full min-h-[44px] inline-flex items-center justify-center rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
+                        >
+                          View Course
+                        </AppLink>
+                      </div>
+                    </article>
+                  </StaggerItem>
                 );
               })}
-            </div>
+            </StaggerGrid>
           )}
         </div>
       </section>
@@ -419,7 +432,7 @@ export function HomePage() {
       {/* 5. Work Done & Client Engagements */}
       <section className="py-16 lg:py-20 bg-[#EEF2FA]/60 dark:bg-[#080D2B]/40 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+          <Reveal className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
                 Selected Work &amp; Client Delivery
@@ -435,7 +448,7 @@ export function HomePage() {
               Discuss a similar project
               <ArrowRight className="w-4 h-4" />
             </AppLink>
-          </div>
+          </Reveal>
 
           {workItems.length === 0 ? (
             <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-8 flex items-center gap-4">
@@ -450,76 +463,75 @@ export function HomePage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {workItems.map((work) => (
-                <article
-                  key={work._id}
-                  className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden flex flex-col justify-between"
-                >
-                  <div>
-                    {work.imageUrl && (
-                      <div className="aspect-video bg-[#03051B]">
-                        <MediaImage
-                          src={work.imageUrl}
-                          alt={work.title}
-                          fallbackLabel={work.title}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    )}
-                    <div className="p-6">
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-[#176BFF] dark:text-[#00D4FF] font-medium">
-                        <span>{work.category}</span>
-                        {(work.clientName || work.industry) && (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="text-[#4A5578] dark:text-[#AEB8D4]">
-                              {[work.clientName, work.industry].filter(Boolean).join(' — ')}
-                            </span>
-                          </>
+                <StaggerItem key={work._id} className="flex">
+                  <article
+                    className="group w-full rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden flex flex-col justify-between nf-card-interactive hover:border-[#176BFF]/60"
+                  >
+                    <div>
+                      {work.imageUrl && (
+                        <div className="aspect-video bg-[#03051B] overflow-hidden">
+                          <MediaImage
+                            src={work.imageUrl}
+                            alt={work.title}
+                            fallbackLabel={work.title}
+                            className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+                          />
+                        </div>
+                      )}
+                      <div className="p-6">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-[#176BFF] dark:text-[#00D4FF] font-medium">
+                          <span>{work.category}</span>
+                          {(work.clientName || work.industry) && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span className="text-[#4A5578] dark:text-[#AEB8D4]">
+                                {[work.clientName, work.industry].filter(Boolean).join(' — ')}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <h3 className="mt-2 text-lg font-bold text-[#070B24] dark:text-[#F7F8FF]">
+                          {work.title}
+                        </h3>
+                        <RichContentRenderer content={work.summary} compact className="mt-2" />
+
+                        {work.outcomes?.length > 0 && (
+                          <ul className="mt-4 space-y-1.5 text-xs text-[#070B24] dark:text-[#F7F8FF]">
+                            {work.outcomes.slice(0, 3).map((outcome) => (
+                              <li key={outcome} className="flex items-start gap-2">
+                                <Check className="w-3.5 h-3.5 text-[#00D4FF] shrink-0 mt-0.5" />
+                                <span>{outcome}</span>
+                              </li>
+                            ))}
+                          </ul>
                         )}
                       </div>
-                      <h3 className="mt-2 text-lg font-bold text-[#070B24] dark:text-[#F7F8FF]">
-                        {work.title}
-                      </h3>
-                      <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
-                        {work.summary}
-                      </p>
-
-                      {work.outcomes?.length > 0 && (
-                        <ul className="mt-4 space-y-1.5 text-xs text-[#070B24] dark:text-[#F7F8FF]">
-                          {work.outcomes.slice(0, 3).map((outcome) => (
-                            <li key={outcome} className="flex items-start gap-2">
-                              <Check className="w-3.5 h-3.5 text-[#00D4FF] shrink-0 mt-0.5" />
-                              <span>{outcome}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
                     </div>
-                  </div>
 
-                  {(work.technologies?.length > 0 || work.projectUrl) && (
-                    <div className="px-6 pb-5 pt-3 border-t border-[#DCE3F2] dark:border-[#1A2550] flex items-center justify-between gap-3">
-                      <p className="text-[11px] font-mono text-[#4A5578] dark:text-[#AEB8D4] truncate">
-                        {work.technologies?.join(' · ')}
-                      </p>
-                      {work.projectUrl && (
-                        <a
-                          href={work.projectUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-h-[44px] inline-flex items-center gap-1 text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline shrink-0"
-                        >
-                          View
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </div>
-                  )}
-                </article>
+                    {(work.technologies?.length > 0 || work.projectUrl) && (
+                      <div className="px-6 pb-5 pt-3 border-t border-[#DCE3F2] dark:border-[#1A2550] flex items-center justify-between gap-3">
+                        <p className="text-[11px] font-mono text-[#4A5578] dark:text-[#AEB8D4] truncate">
+                          {work.technologies?.join(' · ')}
+                        </p>
+                        {work.projectUrl && (
+                          <a
+                            href={work.projectUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="min-h-[44px] inline-flex items-center gap-1 text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline shrink-0"
+                          >
+                            View
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGrid>
           )}
         </div>
       </section>
@@ -527,14 +539,14 @@ export function HomePage() {
       {/* 6. Client Testimonials */}
       <section className="py-16 lg:py-20 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-10">
+          <Reveal className="mb-10">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
               Client Testimonials
             </h2>
             <p className="mt-2 text-sm sm:text-base text-[#4A5578] dark:text-[#AEB8D4] max-w-2xl">
               Feedback from organisations and teams who have worked with NexaFlow Technologies.
             </p>
-          </div>
+          </Reveal>
 
           {testimonials.length === 0 ? (
             <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-8 flex items-center gap-4">
@@ -549,44 +561,45 @@ export function HomePage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {testimonials.map((t) => (
-                <article
-                  key={t._id}
-                  className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <StarRatingDisplay
-                        rating={t.rating}
-                        showEmptyLabel={false}
-                        size="xs"
-                      />
-                      <Quote className="w-4 h-4 text-[#176BFF]/40 dark:text-[#00D4FF]/40 shrink-0" />
+                <StaggerItem key={t._id} className="flex">
+                  <article
+                    className="w-full rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 flex flex-col justify-between nf-card-interactive"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <StarRatingDisplay
+                          rating={t.rating}
+                          showEmptyLabel={false}
+                          size="xs"
+                        />
+                        <Quote className="w-4 h-4 text-[#176BFF]/40 dark:text-[#00D4FF]/40 shrink-0" />
+                      </div>
+                      <p className="mt-4 text-sm text-[#070B24] dark:text-[#F7F8FF] leading-relaxed">
+                        &ldquo;{t.quote}&rdquo;
+                      </p>
                     </div>
-                    <p className="mt-4 text-sm text-[#070B24] dark:text-[#F7F8FF] leading-relaxed">
-                      &ldquo;{t.quote}&rdquo;
-                    </p>
-                  </div>
 
-                  <div className="mt-5 pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550]">
-                    <p className="text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                      {t.authorName}
-                    </p>
-                    {(t.authorRole || t.company) && (
-                      <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
-                        {[t.authorRole, t.company].filter(Boolean).join(', ')}
+                    <div className="mt-5 pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550]">
+                      <p className="text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                        {t.authorName}
                       </p>
-                    )}
-                    {t.workTitle && (
-                      <p className="mt-1 text-[11px] font-mono text-[#176BFF] dark:text-[#00D4FF]">
-                        {t.workTitle}
-                      </p>
-                    )}
-                  </div>
-                </article>
+                      {(t.authorRole || t.company) && (
+                        <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                          {[t.authorRole, t.company].filter(Boolean).join(', ')}
+                        </p>
+                      )}
+                      {t.workTitle && (
+                        <p className="mt-1 text-[11px] font-mono text-[#176BFF] dark:text-[#00D4FF]">
+                          {t.workTitle}
+                        </p>
+                      )}
+                    </div>
+                  </article>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGrid>
           )}
         </div>
       </section>
@@ -595,7 +608,7 @@ export function HomePage() {
       <section className="py-16 lg:py-20 bg-[#EEF2FA]/60 dark:bg-[#080D2B]/40 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-            <div className="lg:col-span-5">
+            <Reveal className="lg:col-span-5">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
                 Why Organisations Work With NexaFlow
               </h2>
@@ -610,31 +623,30 @@ export function HomePage() {
                   </li>
                 ))}
               </ul>
-            </div>
+            </Reveal>
 
-            <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <StaggerGrid className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {workflowSteps.map((w) => (
-                <div
-                  key={w.step}
-                  className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6"
-                >
-                  <h3 className="text-base font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                    {w.step}
-                  </h3>
-                  <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
-                    {w.text}
-                  </p>
-                </div>
+                <StaggerItem key={w.step} className="flex">
+                  <div className="w-full rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 nf-card-interactive">
+                    <h3 className="text-base font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                      {w.step}
+                    </h3>
+                    <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
+                      {w.text}
+                    </p>
+                  </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGrid>
           </div>
         </div>
       </section>
 
-      {/* 6. Selected Insights / Articles */}
+      {/* 8. Selected Insights / Articles */}
       <section className="py-16 lg:py-20 border-b border-[#DCE3F2] dark:border-[#1A2550]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+          <Reveal className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
                 Insights &amp; Resources
@@ -650,7 +662,7 @@ export function HomePage() {
               Read all insights
               <ArrowRight className="w-4 h-4" />
             </AppLink>
-          </div>
+          </Reveal>
 
           {featuredArticles.length === 0 ? (
             <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-8 flex items-center gap-4">
@@ -665,46 +677,47 @@ export function HomePage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <StaggerGrid className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {featuredArticles.map((art) => (
-                <article
-                  key={art.slug}
-                  className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex items-center gap-2">
-                      <span>{art.category}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{art.readingTimeMinutes} min read</span>
+                <StaggerItem key={art.slug} className="flex">
+                  <article
+                    className="group w-full rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 flex flex-col justify-between nf-card-interactive hover:border-[#176BFF]/60"
+                  >
+                    <div>
+                      <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex items-center gap-2">
+                        <span>{art.category}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{art.readingTimeMinutes} min read</span>
+                      </div>
+                      <h3 className="mt-2.5 text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                        {art.title}
+                      </h3>
+                      <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] line-clamp-3">
+                        {art.excerpt}
+                      </p>
                     </div>
-                    <h3 className="mt-2.5 text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                      {art.title}
-                    </h3>
-                    <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] line-clamp-3">
-                      {art.excerpt}
-                    </p>
-                  </div>
-                  <div className="mt-4">
-                    <AppLink
-                      to={`/insights/${art.slug}`}
-                      className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
-                    >
-                      Read article
-                      <ArrowRight className="w-4 h-4" />
-                    </AppLink>
-                  </div>
-                </article>
+                    <div className="mt-4">
+                      <AppLink
+                        to={`/insights/${art.slug}`}
+                        className="min-h-[44px] inline-flex items-center gap-1.5 text-sm font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+                      >
+                        Read article
+                        <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                      </AppLink>
+                    </div>
+                  </article>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGrid>
           )}
         </div>
       </section>
 
-      {/* 7. Lead Generation Section */}
+      {/* 9. Lead Generation Section */}
       <section className="py-16 lg:py-24">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-            <div className="lg:col-span-5">
+            <Reveal className="lg:col-span-5">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
                 Start a Technical Conversation
               </h2>
@@ -736,8 +749,8 @@ export function HomePage() {
                 )}
                 {settings?.generalLocation && <p>Region: {settings.generalLocation}</p>}
               </div>
-            </div>
-            <div className="lg:col-span-7">
+            </Reveal>
+            <Reveal delay={0.08} className="lg:col-span-7">
               <LeadForm
                 interestType="consultation"
                 interestSlug="homepage-consultation"
@@ -747,7 +760,7 @@ export function HomePage() {
                 subheading="Tell us what you are looking to build or automate."
                 submitLabel="Request Consultation"
               />
-            </div>
+            </Reveal>
           </div>
         </div>
       </section>

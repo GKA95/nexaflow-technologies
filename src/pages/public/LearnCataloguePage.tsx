@@ -4,11 +4,13 @@ import { AppLink } from '../../components/AppLink';
 import { CouponApplyBar } from '../../components/CouponApplyBar';
 import { LeadForm } from '../../components/LeadForm';
 import { MediaImage } from '../../components/MediaImage';
+import { HeroEntrance, Reveal, StaggerGrid, StaggerItem } from '../../components/MotionPrimitives';
 import { SEOHead } from '../../components/SEOHead';
 import { StarRatingDisplay } from '../../components/StarRating';
 import { useApp } from '../../context/AppContext';
 import type { CourseItem } from '../../types';
 import { formatMoneyAmount, getCourseDiscountPricing } from '../../utils/pricing';
+import { extractPlainText } from '../../../server/shared/richText';
 
 export function LearnCataloguePage() {
   const { seoPages, appliedCoupon, searchParams } = useApp();
@@ -33,7 +35,12 @@ export function LearnCataloguePage() {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return courses;
     return courses.filter((c) => {
-      const hay = [c.title, c.shortDescription, c.fullDescription, c.focusKeyword]
+      const hay = [
+        c.title,
+        c.shortDescription,
+        extractPlainText(c.fullDescription),
+        c.focusKeyword,
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -54,18 +61,25 @@ export function LearnCataloguePage() {
         noIndex={seo?.noIndex}
       />
 
-      <section className="bg-[#03051B] text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16">
+      <section className="bg-[#03051B] nf-hero-ambient text-[#F7F8FF] border-b border-[#1A2550] py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
-            NexaFlow Learn
-          </p>
-          <h1 className="mt-3 text-[clamp(1.8rem,4.2vw,3rem)] font-bold tracking-tight max-w-3xl">
-            Structured Courses for Practitioners &amp; Teams
-          </h1>
-          <p className="mt-4 text-base text-[#AEB8D4] max-w-2xl leading-relaxed">
-            Enrol in guided video courses with module progress tracking, learner support tickets, and verified online payments.
-          </p>
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+          <HeroEntrance delay={0}>
+            <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
+              NexaFlow Learn
+            </p>
+          </HeroEntrance>
+          <HeroEntrance delay={0.06}>
+            <h1 className="mt-3 text-[clamp(1.8rem,4.2vw,3rem)] font-bold tracking-tight max-w-3xl">
+              Structured Courses for Practitioners &amp; Teams
+            </h1>
+          </HeroEntrance>
+          <HeroEntrance delay={0.12}>
+            <p className="mt-4 text-base text-[#AEB8D4] max-w-2xl leading-relaxed">
+              Enrol in guided video courses with module progress tracking, learner support tickets, and verified online payments.
+            </p>
+          </HeroEntrance>
+          <HeroEntrance delay={0.16}>
+            <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
             <div className="lg:col-span-7">
               <CouponApplyBar variant="dark" compact />
             </div>
@@ -98,7 +112,8 @@ export function LearnCataloguePage() {
                 )}
               </div>
             </div>
-          </div>
+            </div>
+          </HeroEntrance>
         </div>
       </section>
 
@@ -141,91 +156,92 @@ export function LearnCataloguePage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <StaggerGrid className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredCourses.map((course) => {
                 const pricing = getCourseDiscountPricing(course, appliedCoupon);
                 return (
-                  <article
-                    key={course.slug}
-                    className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="aspect-video bg-[#03051B]">
-                        <MediaImage
-                          src={course.coverImage}
-                          alt={course.title}
-                          fallbackLabel={course.title}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="p-5 sm:p-6">
-                        <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
-                          <span>{course.moduleCount ?? 0} Modules</span>
-                          <span aria-hidden="true">·</span>
-                          <span>{course.lessonCount ?? 0} Lessons</span>
-                          <span aria-hidden="true">·</span>
-                          {course.price > 0 ? (
-                            pricing.applies ? (
-                              <span className="inline-flex items-center gap-1.5 font-mono">
-                                <span className="line-through opacity-60">
-                                  {course.currency} {formatMoneyAmount(pricing.originalPrice)}
+                  <StaggerItem key={course.slug} className="flex">
+                    <article
+                      className="group w-full rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] overflow-hidden flex flex-col justify-between nf-card-interactive hover:border-[#176BFF]/60"
+                    >
+                      <div>
+                        <div className="aspect-video bg-[#03051B] overflow-hidden">
+                          <MediaImage
+                            src={course.coverImage}
+                            alt={course.title}
+                            fallbackLabel={course.title}
+                            className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+                          />
+                        </div>
+                        <div className="p-5 sm:p-6">
+                          <div className="text-xs text-[#4A5578] dark:text-[#AEB8D4] flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+                            <span>{course.moduleCount ?? 0} Modules</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{course.lessonCount ?? 0} Lessons</span>
+                            <span aria-hidden="true">·</span>
+                            {course.price > 0 ? (
+                              pricing.applies ? (
+                                <span className="inline-flex items-center gap-1.5 font-mono">
+                                  <span className="line-through opacity-60">
+                                    {course.currency} {formatMoneyAmount(pricing.originalPrice)}
+                                  </span>
+                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                    {pricing.finalPrice <= 0
+                                      ? 'Free'
+                                      : `${course.currency} ${formatMoneyAmount(pricing.finalPrice)}`}
+                                  </span>
+                                  <span className="text-[11px] font-semibold text-[#176BFF] dark:text-[#00D4FF]">
+                                    (-{pricing.discountPercent}%)
+                                  </span>
                                 </span>
-                                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                                  {pricing.finalPrice <= 0
-                                    ? 'Free'
-                                    : `${course.currency} ${formatMoneyAmount(pricing.finalPrice)}`}
+                              ) : (
+                                <span className="font-mono font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                                  {course.currency} {course.price}
                                 </span>
-                                <span className="text-[11px] font-semibold text-[#176BFF] dark:text-[#00D4FF]">
-                                  (-{pricing.discountPercent}%)
-                                </span>
-                              </span>
+                              )
                             ) : (
                               <span className="font-mono font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                                {course.currency} {course.price}
+                                Free
                               </span>
-                            )
-                          ) : (
-                            <span className="font-mono font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                              Free
-                            </span>
-                          )}
-                        </div>
-                        <h2 className="mt-2 text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
-                          {course.title}
-                        </h2>
-                        {course.ratingsEnabled !== false && (
-                          <div className="mt-2">
-                            <StarRatingDisplay
-                              rating={course.averageRating}
-                              count={course.reviewCount}
-                              size="xs"
-                            />
+                            )}
                           </div>
-                        )}
-                        <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
-                          {course.shortDescription}
-                        </p>
+                          <h2 className="mt-2 text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
+                            {course.title}
+                          </h2>
+                          {course.ratingsEnabled !== false && (
+                            <div className="mt-2">
+                              <StarRatingDisplay
+                                rating={course.averageRating}
+                                count={course.reviewCount}
+                                size="xs"
+                              />
+                            </div>
+                          )}
+                          <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
+                            {course.shortDescription}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="px-5 sm:px-6 pb-5 sm:pb-6">
-                      <AppLink
-                        to={`/learn/${course.slug}`}
-                        className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
-                      >
-                        View Curriculum &amp; Enrol
-                        <ArrowRight className="w-4 h-4" />
-                      </AppLink>
-                    </div>
-                  </article>
+                      <div className="px-5 sm:px-6 pb-5 sm:pb-6">
+                        <AppLink
+                          to={`/learn/${course.slug}`}
+                          className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] py-2.5 text-sm font-semibold text-white transition-colors"
+                        >
+                          View Curriculum &amp; Enrol
+                          <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                        </AppLink>
+                      </div>
+                    </article>
+                  </StaggerItem>
                 );
               })}
-            </div>
+            </StaggerGrid>
           )}
         </div>
       </section>
 
       <section className="py-12 sm:py-16">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <Reveal className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <LeadForm
             interestType="course"
             interestSlug="training-programmes"
@@ -233,7 +249,7 @@ export function LearnCataloguePage() {
             heading="Enquire About Training Programmes"
             subheading="Interested in upcoming cohorts or custom corporate workshops for your team?"
           />
-        </div>
+        </Reveal>
       </section>
     </>
   );

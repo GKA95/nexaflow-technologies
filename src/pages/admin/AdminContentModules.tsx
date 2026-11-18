@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Edit2, Eye, EyeOff, Plus, Send, Trash2 } from 'lucide-react';
+import { Edit2, Eye, EyeOff, Plus, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { estimateReadingTimeMinutes } from '../../../server/shared/richText';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { FieldError } from '../../components/FieldError';
+import { MediaImage } from '../../components/MediaImage';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
+import { LazyRichTextEditor } from '../../components/admin/LazyRichTextEditor';
+import { StructuredListEditor } from '../../components/admin/StructuredListEditor';
 import { useApp } from '../../context/AppContext';
 import type { ArticleItem, ProductItem, ServiceItem, SupportTicketItem } from '../../types';
 import { apiFetch } from '../../utils/authSession';
@@ -19,6 +24,9 @@ export function AdminProductsModule() {
   const { showToast, refreshBootstrap } = useApp();
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [editing, setEditing] = useState<Partial<ProductItem> | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
   const [delTarget, setDelTarget] = useState<ProductItem | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
@@ -32,6 +40,30 @@ export function AdminProductsModule() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!dirty || !editing) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty, editing]);
+
+  const requestOpenProduct = (next: Partial<ProductItem> | null) => {
+    const apply = () => {
+      setErrors({});
+      setPreviewMode(false);
+      setDirty(false);
+      setEditing(next);
+    };
+    if (dirty && editing) {
+      setDiscardAction(() => apply);
+    } else {
+      apply();
+    }
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editing || saving) return;
@@ -41,8 +73,8 @@ export function AdminProductsModule() {
       category: editing.category || 'Software Product',
       shortDescription: editing.shortDescription || '',
       fullDescription: editing.fullDescription || '',
-      features: editing.features || [],
-      benefits: editing.benefits || [],
+      features: (editing.features || []).map((s) => s.trim()).filter(Boolean),
+      benefits: (editing.benefits || []).map((s) => s.trim()).filter(Boolean),
       images: editing.images || [],
       demoLink: editing.demoLink || '',
       pricingStatus: editing.pricingStatus || 'Contact for Pricing',
@@ -72,6 +104,8 @@ export function AdminProductsModule() {
       if (res.ok) {
         showToast('Product saved.', 'success');
         setEditing(null);
+        setDirty(false);
+        setPreviewMode(false);
         setErrors({});
         load();
         refreshBootstrap();
@@ -95,9 +129,8 @@ export function AdminProductsModule() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            setErrors({});
-            setEditing({
+          onClick={() =>
+            requestOpenProduct({
               name: '',
               slug: '',
               category: 'AI Software',
@@ -110,8 +143,8 @@ export function AdminProductsModule() {
               pricingStatus: 'Contact for Pricing',
               published: true,
               order: products.length + 1,
-            });
-          }}
+            })
+          }
           className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
         >
           <Plus className="w-4 h-4" />
@@ -125,152 +158,194 @@ export function AdminProductsModule() {
           noValidate
           className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <input
-                placeholder="Product Name *"
-                value={editing.name || ''}
-                onChange={(e) => {
-                  setEditing({ ...editing, name: e.target.value });
-                  setErrors((p) => ({ ...p, name: '' }));
-                }}
-                aria-invalid={Boolean(errors.name)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  errors.name
-                )}
-              />
-              <FieldError message={errors.name} />
-            </div>
-            <div>
-              <input
-                placeholder="Category"
-                value={editing.category || ''}
-                onChange={(e) => {
-                  setEditing({ ...editing, category: e.target.value });
-                  setErrors((p) => ({ ...p, category: '' }));
-                }}
-                aria-invalid={Boolean(errors.category)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  errors.category
-                )}
-              />
-              <FieldError message={errors.category} />
-            </div>
-            <div>
-              <input
-                placeholder="Pricing / Availability Status"
-                value={editing.pricingStatus || ''}
-                onChange={(e) => {
-                  setEditing({ ...editing, pricingStatus: e.target.value });
-                  setErrors((p) => ({ ...p, pricingStatus: '' }));
-                }}
-                aria-invalid={Boolean(errors.pricingStatus)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  errors.pricingStatus
-                )}
-              />
-              <FieldError message={errors.pricingStatus} />
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-bold">
+              {editing._id ? `Edit Product: ${editing.name}` : 'Create Product'}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setPreviewMode((p) => !p)}
+              className="text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+            >
+              {previewMode ? 'Back to Editor' : 'Preview Overview'}
+            </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <input
-                placeholder="Demo URL (optional)"
-                value={editing.demoLink || ''}
-                onChange={(e) => {
-                  setEditing({ ...editing, demoLink: e.target.value });
-                  setErrors((p) => ({ ...p, demoLink: '' }));
-                }}
-                aria-invalid={Boolean(errors.demoLink)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  errors.demoLink
-                )}
-              />
-              <FieldError message={errors.demoLink} />
-            </div>
-            <div>
-              <input
-                placeholder="Image URL"
-                value={editing.images?.[0] || ''}
-                onChange={(e) => {
-                  setEditing({ ...editing, images: e.target.value ? [e.target.value] : [] });
-                  setErrors((p) => ({ ...p, 'images.0': '', images: '' }));
-                }}
-                aria-invalid={Boolean(errors['images.0'] || errors.images)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  errors['images.0'] || errors.images
-                )}
-              />
-              <FieldError message={errors['images.0'] || errors.images} />
-            </div>
-          </div>
-          <div>
-            <textarea
-              rows={2}
-              placeholder="Short Description *"
-              value={editing.shortDescription || ''}
-              onChange={(e) => {
-                setEditing({ ...editing, shortDescription: e.target.value });
-                setErrors((p) => ({ ...p, shortDescription: '' }));
-              }}
-              aria-invalid={Boolean(errors.shortDescription)}
-              className={fieldBorderClass(
-                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                errors.shortDescription
+
+          {previewMode ? (
+            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] p-6 space-y-4">
+              <p className="text-xs font-mono text-[#176BFF] dark:text-[#00D4FF]">
+                {editing.category || 'Product'} · {editing.pricingStatus || 'Contact for Pricing'}
+              </p>
+              <h3 className="text-2xl font-bold">{editing.name || 'Untitled Product'}</h3>
+              {editing.shortDescription && (
+                <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">
+                  {editing.shortDescription}
+                </p>
               )}
-            />
-            <FieldError message={errors.shortDescription} />
-          </div>
-          <div>
-            <textarea
-              rows={3}
-              placeholder="Full Description"
-              value={editing.fullDescription || ''}
-              onChange={(e) => {
-                setEditing({ ...editing, fullDescription: e.target.value });
-                setErrors((p) => ({ ...p, fullDescription: '' }));
-              }}
-              aria-invalid={Boolean(errors.fullDescription)}
-              className={fieldBorderClass(
-                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                errors.fullDescription
-              )}
-            />
-            <FieldError message={errors.fullDescription} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <textarea
-              rows={3}
-              placeholder="Features (one per line)"
-              value={(editing.features || []).join('\n')}
-              onChange={(e) =>
-                setEditing({ ...editing, features: e.target.value.split('\n').filter(Boolean) })
-              }
-              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-            <textarea
-              rows={3}
-              placeholder="Benefits (one per line)"
-              value={(editing.benefits || []).join('\n')}
-              onChange={(e) =>
-                setEditing({ ...editing, benefits: e.target.value.split('\n').filter(Boolean) })
-              }
-              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={Boolean(editing.published)}
-              onChange={(e) => setEditing({ ...editing, published: e.target.checked })}
-            />
-            Published
-          </label>
+              <RichContentRenderer content={editing.fullDescription || ''} />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <input
+                    placeholder="Product Name *"
+                    value={editing.name || ''}
+                    onChange={(e) => {
+                      setEditing({ ...editing, name: e.target.value });
+                      setDirty(true);
+                      setErrors((p) => ({ ...p, name: '' }));
+                    }}
+                    aria-invalid={Boolean(errors.name)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors.name
+                    )}
+                  />
+                  <FieldError message={errors.name} />
+                </div>
+                <div>
+                  <input
+                    placeholder="Category"
+                    value={editing.category || ''}
+                    onChange={(e) => {
+                      setEditing({ ...editing, category: e.target.value });
+                      setDirty(true);
+                      setErrors((p) => ({ ...p, category: '' }));
+                    }}
+                    aria-invalid={Boolean(errors.category)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors.category
+                    )}
+                  />
+                  <FieldError message={errors.category} />
+                </div>
+                <div>
+                  <input
+                    placeholder="Pricing / Availability Status"
+                    value={editing.pricingStatus || ''}
+                    onChange={(e) => {
+                      setEditing({ ...editing, pricingStatus: e.target.value });
+                      setDirty(true);
+                      setErrors((p) => ({ ...p, pricingStatus: '' }));
+                    }}
+                    aria-invalid={Boolean(errors.pricingStatus)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors.pricingStatus
+                    )}
+                  />
+                  <FieldError message={errors.pricingStatus} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <input
+                    placeholder="Demo URL (optional)"
+                    value={editing.demoLink || ''}
+                    onChange={(e) => {
+                      setEditing({ ...editing, demoLink: e.target.value });
+                      setDirty(true);
+                      setErrors((p) => ({ ...p, demoLink: '' }));
+                    }}
+                    aria-invalid={Boolean(errors.demoLink)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors.demoLink
+                    )}
+                  />
+                  <FieldError message={errors.demoLink} />
+                </div>
+                <div>
+                  <input
+                    placeholder="Image URL"
+                    value={editing.images?.[0] || ''}
+                    onChange={(e) => {
+                      setEditing({ ...editing, images: e.target.value ? [e.target.value] : [] });
+                      setDirty(true);
+                      setErrors((p) => ({ ...p, 'images.0': '', images: '' }));
+                    }}
+                    aria-invalid={Boolean(errors['images.0'] || errors.images)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors['images.0'] || errors.images
+                    )}
+                  />
+                  <FieldError message={errors['images.0'] || errors.images} />
+                </div>
+              </div>
+              <div>
+                <textarea
+                  rows={2}
+                  placeholder="Short Description *"
+                  value={editing.shortDescription || ''}
+                  onChange={(e) => {
+                    setEditing({ ...editing, shortDescription: e.target.value });
+                    setDirty(true);
+                    setErrors((p) => ({ ...p, shortDescription: '' }));
+                  }}
+                  aria-invalid={Boolean(errors.shortDescription)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    errors.shortDescription
+                  )}
+                />
+                <FieldError message={errors.shortDescription} />
+              </div>
+
+              <LazyRichTextEditor
+                label="Full Product Description"
+                compact
+                minHeightClass="min-h-[200px]"
+                value={editing.fullDescription || ''}
+                onChange={(html) => {
+                  setEditing((prev) => (prev ? { ...prev, fullDescription: html } : prev));
+                  setDirty(true);
+                  setErrors((p) => ({ ...p, fullDescription: '' }));
+                }}
+                placeholder="Write a comprehensive product overview with headings, bullet points, links, and formatting..."
+                error={errors.fullDescription}
+                saveStatus={saving ? 'saving' : dirty ? 'dirty' : 'idle'}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <StructuredListEditor
+                  label="Core Capabilities / Features"
+                  items={editing.features || []}
+                  onChange={(next) => {
+                    setEditing({ ...editing, features: next });
+                    setDirty(true);
+                  }}
+                  placeholder="Add a product feature..."
+                  emptyHint="No features added yet."
+                />
+                <StructuredListEditor
+                  label="Business Benefits"
+                  items={editing.benefits || []}
+                  onChange={(next) => {
+                    setEditing({ ...editing, benefits: next });
+                    setDirty(true);
+                  }}
+                  placeholder="Add a business benefit..."
+                  emptyHint="No benefits added yet."
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(editing.published)}
+                  onChange={(e) => {
+                    setEditing({ ...editing, published: e.target.checked });
+                    setDirty(true);
+                  }}
+                />
+                Published
+              </label>
+            </>
+          )}
+
           <div className="flex gap-2">
             <button
               type="submit"
@@ -281,10 +356,7 @@ export function AdminProductsModule() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setEditing(null);
-                setErrors({});
-              }}
+              onClick={() => requestOpenProduct(null)}
               className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs"
             >
               Cancel
@@ -308,10 +380,7 @@ export function AdminProductsModule() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setErrors({});
-                  setEditing(p);
-                }}
+                onClick={() => requestOpenProduct(p)}
                 className="inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs"
               >
                 <Edit2 className="w-3.5 h-3.5" /> Edit
@@ -342,6 +411,19 @@ export function AdminProductsModule() {
         }}
         onCancel={() => setDelTarget(null)}
       />
+
+      <ConfirmDialog
+        open={Boolean(discardAction)}
+        title="Discard Unsaved Changes?"
+        message="You have unsaved changes to this product. Leave without saving?"
+        confirmLabel="Discard Changes"
+        onConfirm={() => {
+          const fn = discardAction;
+          setDiscardAction(null);
+          fn?.();
+        }}
+        onCancel={() => setDiscardAction(null)}
+      />
     </div>
   );
 }
@@ -350,6 +432,9 @@ export function AdminServicesModule() {
   const { showToast, refreshBootstrap } = useApp();
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [editing, setEditing] = useState<Partial<ServiceItem> | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
 
@@ -362,6 +447,30 @@ export function AdminServicesModule() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!dirty || !editing) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty, editing]);
+
+  const requestOpenService = (next: Partial<ServiceItem> | null) => {
+    const apply = () => {
+      setErrors({});
+      setPreviewMode(false);
+      setDirty(false);
+      setEditing(next);
+    };
+    if (dirty && editing) {
+      setDiscardAction(() => apply);
+    } else {
+      apply();
+    }
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editing || saving) return;
@@ -370,8 +479,8 @@ export function AdminServicesModule() {
       slug: editing.slug || '',
       shortDescription: editing.shortDescription || '',
       overview: editing.overview || '',
-      problemsAddressed: editing.problemsAddressed || [],
-      deliverables: editing.deliverables || [],
+      problemsAddressed: (editing.problemsAddressed || []).map((s) => s.trim()).filter(Boolean),
+      deliverables: (editing.deliverables || []).map((s) => s.trim()).filter(Boolean),
       ctaLabel: editing.ctaLabel || 'Request Consultation',
       coverImage: editing.coverImage || '',
       published: Boolean(editing.published),
@@ -400,6 +509,8 @@ export function AdminServicesModule() {
       if (res.ok) {
         showToast('Service saved.', 'success');
         setEditing(null);
+        setDirty(false);
+        setPreviewMode(false);
         setErrors({});
         load();
         refreshBootstrap();
@@ -423,9 +534,8 @@ export function AdminServicesModule() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            setErrors({});
-            setEditing({
+          onClick={() =>
+            requestOpenService({
               name: '',
               slug: '',
               shortDescription: '',
@@ -435,8 +545,8 @@ export function AdminServicesModule() {
               ctaLabel: 'Request Consultation',
               published: true,
               order: services.length + 1,
-            });
-          }}
+            })
+          }
           className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
         >
           <Plus className="w-4 h-4" />
@@ -450,125 +560,156 @@ export function AdminServicesModule() {
           noValidate
           className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <input
-                placeholder="Service Name *"
-                value={editing.name || ''}
-                onChange={(e) => {
-                  setEditing({ ...editing, name: e.target.value });
-                  setErrors((p) => ({ ...p, name: '' }));
-                }}
-                aria-invalid={Boolean(errors.name)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  errors.name
-                )}
-              />
-              <FieldError message={errors.name} />
-            </div>
-            <div>
-              <input
-                type="number"
-                placeholder="Order"
-                value={editing.order ?? 1}
-                onChange={(e) => {
-                  setEditing({ ...editing, order: Number(e.target.value) });
-                  setErrors((p) => ({ ...p, order: '' }));
-                }}
-                aria-invalid={Boolean(errors.order)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  errors.order
-                )}
-              />
-              <FieldError message={errors.order} />
-            </div>
-            <div>
-              <input
-                placeholder="CTA Button Label"
-                value={editing.ctaLabel || ''}
-                onChange={(e) => {
-                  setEditing({ ...editing, ctaLabel: e.target.value });
-                  setErrors((p) => ({ ...p, ctaLabel: '' }));
-                }}
-                aria-invalid={Boolean(errors.ctaLabel)}
-                className={fieldBorderClass(
-                  'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                  errors.ctaLabel
-                )}
-              />
-              <FieldError message={errors.ctaLabel} />
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-bold">
+              {editing._id ? `Edit Service: ${editing.name}` : 'Create Service Page'}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setPreviewMode((p) => !p)}
+              className="text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
+            >
+              {previewMode ? 'Back to Editor' : 'Preview Overview'}
+            </button>
           </div>
-          <div>
-            <textarea
-              rows={2}
-              placeholder="Short Description *"
-              value={editing.shortDescription || ''}
-              onChange={(e) => {
-                setEditing({ ...editing, shortDescription: e.target.value });
-                setErrors((p) => ({ ...p, shortDescription: '' }));
-              }}
-              aria-invalid={Boolean(errors.shortDescription)}
-              className={fieldBorderClass(
-                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                errors.shortDescription
+
+          {previewMode ? (
+            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] p-6 space-y-4">
+              <h3 className="text-2xl font-bold">{editing.name || 'Untitled Service'}</h3>
+              {editing.shortDescription && (
+                <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">
+                  {editing.shortDescription}
+                </p>
               )}
-            />
-            <FieldError message={errors.shortDescription} />
-          </div>
-          <div>
-            <textarea
-              rows={3}
-              placeholder="Detailed Overview"
-              value={editing.overview || ''}
-              onChange={(e) => {
-                setEditing({ ...editing, overview: e.target.value });
-                setErrors((p) => ({ ...p, overview: '' }));
-              }}
-              aria-invalid={Boolean(errors.overview)}
-              className={fieldBorderClass(
-                'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                errors.overview
-              )}
-            />
-            <FieldError message={errors.overview} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <textarea
-              rows={3}
-              placeholder="Problems Addressed (one per line)"
-              value={(editing.problemsAddressed || []).join('\n')}
-              onChange={(e) =>
-                setEditing({
-                  ...editing,
-                  problemsAddressed: e.target.value.split('\n').filter(Boolean),
-                })
-              }
-              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-            <textarea
-              rows={3}
-              placeholder="Deliverables (one per line)"
-              value={(editing.deliverables || []).join('\n')}
-              onChange={(e) =>
-                setEditing({
-                  ...editing,
-                  deliverables: e.target.value.split('\n').filter(Boolean),
-                })
-              }
-              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={Boolean(editing.published)}
-              onChange={(e) => setEditing({ ...editing, published: e.target.checked })}
-            />
-            Published
-          </label>
+              <RichContentRenderer content={editing.overview || ''} />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <input
+                    placeholder="Service Name *"
+                    value={editing.name || ''}
+                    onChange={(e) => {
+                      setEditing({ ...editing, name: e.target.value });
+                      setDirty(true);
+                      setErrors((p) => ({ ...p, name: '' }));
+                    }}
+                    aria-invalid={Boolean(errors.name)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors.name
+                    )}
+                  />
+                  <FieldError message={errors.name} />
+                </div>
+                <div>
+                  <input
+                    type="number"
+                    placeholder="Order"
+                    value={editing.order ?? 1}
+                    onChange={(e) => {
+                      setEditing({ ...editing, order: Number(e.target.value) });
+                      setDirty(true);
+                      setErrors((p) => ({ ...p, order: '' }));
+                    }}
+                    aria-invalid={Boolean(errors.order)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors.order
+                    )}
+                  />
+                  <FieldError message={errors.order} />
+                </div>
+                <div>
+                  <input
+                    placeholder="CTA Button Label"
+                    value={editing.ctaLabel || ''}
+                    onChange={(e) => {
+                      setEditing({ ...editing, ctaLabel: e.target.value });
+                      setDirty(true);
+                      setErrors((p) => ({ ...p, ctaLabel: '' }));
+                    }}
+                    aria-invalid={Boolean(errors.ctaLabel)}
+                    className={fieldBorderClass(
+                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                      errors.ctaLabel
+                    )}
+                  />
+                  <FieldError message={errors.ctaLabel} />
+                </div>
+              </div>
+              <div>
+                <textarea
+                  rows={2}
+                  placeholder="Short Description *"
+                  value={editing.shortDescription || ''}
+                  onChange={(e) => {
+                    setEditing({ ...editing, shortDescription: e.target.value });
+                    setDirty(true);
+                    setErrors((p) => ({ ...p, shortDescription: '' }));
+                  }}
+                  aria-invalid={Boolean(errors.shortDescription)}
+                  className={fieldBorderClass(
+                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
+                    errors.shortDescription
+                  )}
+                />
+                <FieldError message={errors.shortDescription} />
+              </div>
+
+              <LazyRichTextEditor
+                label="Detailed Service Overview"
+                compact
+                minHeightClass="min-h-[220px]"
+                value={editing.overview || ''}
+                onChange={(html) => {
+                  setEditing((prev) => (prev ? { ...prev, overview: html } : prev));
+                  setDirty(true);
+                  setErrors((p) => ({ ...p, overview: '' }));
+                }}
+                placeholder="Write detailed solution overview, architecture breakdown, and implementation scope..."
+                error={errors.overview}
+                saveStatus={saving ? 'saving' : dirty ? 'dirty' : 'idle'}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <StructuredListEditor
+                  label="Problems Addressed"
+                  items={editing.problemsAddressed || []}
+                  onChange={(next) => {
+                    setEditing({ ...editing, problemsAddressed: next });
+                    setDirty(true);
+                  }}
+                  placeholder="Add problem addressed..."
+                  emptyHint="No problems listed yet."
+                />
+                <StructuredListEditor
+                  label="Core Deliverables"
+                  items={editing.deliverables || []}
+                  onChange={(next) => {
+                    setEditing({ ...editing, deliverables: next });
+                    setDirty(true);
+                  }}
+                  placeholder="Add deliverable..."
+                  emptyHint="No deliverables listed yet."
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(editing.published)}
+                  onChange={(e) => {
+                    setEditing({ ...editing, published: e.target.checked });
+                    setDirty(true);
+                  }}
+                />
+                Published
+              </label>
+            </>
+          )}
+
           <div className="flex gap-2">
             <button
               type="submit"
@@ -579,10 +720,7 @@ export function AdminServicesModule() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setEditing(null);
-                setErrors({});
-              }}
+              onClick={() => requestOpenService(null)}
               className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs"
             >
               Cancel
@@ -623,10 +761,7 @@ export function AdminServicesModule() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setErrors({});
-                  setEditing(s);
-                }}
+                onClick={() => requestOpenService(s)}
                 className="inline-flex items-center gap-1 rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs"
               >
                 <Edit2 className="w-3.5 h-3.5" /> Edit
@@ -635,14 +770,40 @@ export function AdminServicesModule() {
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(discardAction)}
+        title="Discard Unsaved Changes?"
+        message="You have unsaved changes to this service page. Leave without saving?"
+        confirmLabel="Discard Changes"
+        onConfirm={() => {
+          const fn = discardAction;
+          setDiscardAction(null);
+          fn?.();
+        }}
+        onCancel={() => setDiscardAction(null)}
+      />
     </div>
   );
+}
+
+interface StoredArticleDraft {
+  data: Partial<ArticleItem>;
+  savedAt: number;
+}
+
+function getArticleDraftKey(articleId?: string): string {
+  return `nexaflow_draft_article_${articleId || 'new'}`;
 }
 
 export function AdminBlogModule() {
   const { showToast, refreshBootstrap } = useApp();
   const [articles, setArticles] = useState<ArticleItem[]>([]);
   const [editing, setEditing] = useState<Partial<ArticleItem> | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'local-draft'>('idle');
+  const [recoverableDraft, setRecoverableDraft] = useState<StoredArticleDraft | null>(null);
+  const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
@@ -656,9 +817,72 @@ export function AdminBlogModule() {
     load();
   }, [load]);
 
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!dirty || !editing) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty, editing]);
+
+  // Debounced local auto-draft backup so edits aren't lost across accidental reloads
+  useEffect(() => {
+    if (!editing || !dirty) return;
+    setSaveState('dirty');
+    const timer = window.setTimeout(() => {
+      try {
+        const key = getArticleDraftKey(editing._id);
+        const payload: StoredArticleDraft = { data: editing, savedAt: Date.now() };
+        localStorage.setItem(key, JSON.stringify(payload));
+        setSaveState('local-draft');
+      } catch {
+        // Ignore storage quota issues
+      }
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [editing, dirty]);
+
+  const openArticleEditor = (next: Partial<ArticleItem> | null) => {
+    const apply = () => {
+      setErrors({});
+      setPreviewMode(false);
+      setDirty(false);
+      setSaveState('idle');
+      setRecoverableDraft(null);
+      setEditing(next);
+
+      if (next) {
+        try {
+          const raw = localStorage.getItem(getArticleDraftKey(next._id));
+          if (raw) {
+            const parsed = JSON.parse(raw) as StoredArticleDraft;
+            if (
+              parsed?.data &&
+              (parsed.data.content !== next.content ||
+                parsed.data.title !== next.title ||
+                parsed.data.excerpt !== next.excerpt)
+            ) {
+              setRecoverableDraft(parsed);
+            }
+          }
+        } catch {
+          // Ignore malformed draft
+        }
+      }
+    };
+
+    if (dirty && editing) {
+      setDiscardAction(() => apply);
+    } else {
+      apply();
+    }
+  };
+
+  const persistArticle = async (statusOverride?: 'draft' | 'published') => {
     if (!editing || saving) return;
+    const effectiveStatus = (statusOverride || editing.status || 'draft') as 'draft' | 'published';
     const candidate = {
       title: editing.title || '',
       slug: editing.slug || '',
@@ -668,7 +892,7 @@ export function AdminBlogModule() {
       category: editing.category || 'Engineering',
       tags: editing.tags || [],
       authorName: editing.authorName || 'NexaFlow Editorial',
-      status: (editing.status || 'draft') as 'draft' | 'published',
+      status: effectiveStatus,
       ctaLabel: editing.ctaLabel || '',
       ctaHref: editing.ctaHref || '',
     };
@@ -680,6 +904,7 @@ export function AdminBlogModule() {
     }
     setErrors({});
     setSaving(true);
+    setSaveState('saving');
     try {
       const isNew = !editing._id;
       const res = await apiFetch(
@@ -688,24 +913,41 @@ export function AdminBlogModule() {
           method: isNew ? 'POST' : 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ ...editing, ...check.data }),
+          body: JSON.stringify({ ...editing, ...check.data, status: effectiveStatus }),
         }
       );
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
-        showToast('Article saved.', 'success');
+        try {
+          localStorage.removeItem(getArticleDraftKey(editing._id));
+        } catch {
+          // Ignore
+        }
+        showToast(
+          effectiveStatus === 'published' ? 'Article published!' : 'Article draft saved.',
+          'success'
+        );
         setEditing(null);
+        setDirty(false);
+        setSaveState('idle');
+        setRecoverableDraft(null);
         setPreviewMode(false);
         setErrors({});
         load();
         refreshBootstrap();
       } else {
+        setSaveState('dirty');
         if (d.fieldErrors) setErrors(d.fieldErrors);
         showToast(d.error || 'Error saving article.', 'error');
       }
     } finally {
       setSaving(false);
     }
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await persistArticle();
   };
 
   return (
@@ -719,9 +961,8 @@ export function AdminBlogModule() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            setErrors({});
-            setEditing({
+          onClick={() =>
+            openArticleEditor({
               title: '',
               slug: '',
               excerpt: '',
@@ -732,8 +973,8 @@ export function AdminBlogModule() {
               status: 'draft',
               ctaLabel: 'Request Consultation',
               ctaHref: '/contact?type=consultation',
-            });
-          }}
+            })
+          }
           className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] px-4 py-2 text-xs font-semibold text-white"
         >
           <Plus className="w-4 h-4" />
@@ -747,25 +988,103 @@ export function AdminBlogModule() {
           noValidate
           className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 space-y-4"
         >
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold">{editing._id ? 'Edit Article' : 'New Article'}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-bold">{editing._id ? 'Edit Article' : 'New Article'}</h2>
+              <span
+                className={`text-[11px] font-mono uppercase px-2 py-0.5 rounded border ${
+                  editing.status === 'published'
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300'
+                }`}
+              >
+                {editing.status === 'published' ? 'Published' : 'Draft'}
+              </span>
+            </div>
             <button
               type="button"
               onClick={() => setPreviewMode((p) => !p)}
-              className="text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF]"
+              className="text-xs font-semibold text-[#176BFF] dark:text-[#00D4FF] hover:underline"
             >
               {previewMode ? 'Back to Editor' : 'Preview Layout'}
             </button>
           </div>
 
+          {recoverableDraft && (
+            <div className="rounded-lg border border-[#00D4FF]/40 bg-[#00D4FF]/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <span className="text-[#070B24] dark:text-[#F7F8FF]">
+                A local unsaved draft from{' '}
+                <strong>{new Date(recoverableDraft.savedAt).toLocaleTimeString()}</strong> was
+                found in your browser.
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing({ ...editing, ...recoverableDraft.data });
+                    setRecoverableDraft(null);
+                    setDirty(true);
+                    showToast('Local draft restored.', 'info');
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md bg-[#176BFF] px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Restore Draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem(getArticleDraftKey(editing._id));
+                    } catch {
+                      // Ignore
+                    }
+                    setRecoverableDraft(null);
+                  }}
+                  className="rounded-md border border-[#DCE3F2] dark:border-[#1A2550] px-2.5 py-1.5 text-xs"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
           {previewMode ? (
-            <div className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] p-6 space-y-4">
-              <p className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
-                {editing.category} · By {editing.authorName}
-              </p>
-              <h3 className="text-2xl font-bold">{editing.title}</h3>
-              <p className="text-sm text-[#4A5578] dark:text-[#AEB8D4]">{editing.excerpt}</p>
-              <div className="whitespace-pre-line text-sm leading-relaxed">{editing.content}</div>
+            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] p-6 sm:p-8 space-y-5">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[#4A5578] dark:text-[#AEB8D4]">
+                <span className="text-[#176BFF] dark:text-[#00D4FF]">{editing.category}</span>
+                <span>·</span>
+                <span>By {editing.authorName || 'NexaFlow Editorial'}</span>
+                <span>·</span>
+                <span className="tabular-nums">
+                  {estimateReadingTimeMinutes(editing.content)} min read
+                </span>
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-bold leading-tight">
+                {editing.title || 'Untitled Article'}
+              </h3>
+              {editing.excerpt && (
+                <p className="text-base text-[#4A5578] dark:text-[#AEB8D4]">{editing.excerpt}</p>
+              )}
+              {editing.featuredImage?.trim() && (
+                <div className="aspect-video w-full max-w-2xl rounded-xl overflow-hidden border border-[#DCE3F2] dark:border-[#1A2550] bg-[#080D2B]">
+                  <MediaImage
+                    src={editing.featuredImage}
+                    alt={editing.title || 'Article cover preview'}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              <div className="pt-2 border-t border-[#DCE3F2] dark:border-[#1A2550]">
+                <RichContentRenderer content={editing.content || ''} />
+              </div>
+              {(editing.tags || []).length > 0 && (
+                <div className="pt-4 border-t border-[#DCE3F2] dark:border-[#1A2550] flex flex-wrap gap-2 text-xs font-mono text-[#4A5578] dark:text-[#AEB8D4]">
+                  {(editing.tags || []).map((t) => (
+                    <span key={t}>#{t}</span>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -776,6 +1095,7 @@ export function AdminBlogModule() {
                     value={editing.title || ''}
                     onChange={(e) => {
                       setEditing({ ...editing, title: e.target.value });
+                      setDirty(true);
                       setErrors((p) => ({ ...p, title: '' }));
                     }}
                     aria-invalid={Boolean(errors.title)}
@@ -792,6 +1112,7 @@ export function AdminBlogModule() {
                     value={editing.slug || ''}
                     onChange={(e) => {
                       setEditing({ ...editing, slug: e.target.value });
+                      setDirty(true);
                       setErrors((p) => ({ ...p, slug: '' }));
                     }}
                     aria-invalid={Boolean(errors.slug)}
@@ -811,6 +1132,7 @@ export function AdminBlogModule() {
                     value={editing.category || ''}
                     onChange={(e) => {
                       setEditing({ ...editing, category: e.target.value });
+                      setDirty(true);
                       setErrors((p) => ({ ...p, category: '' }));
                     }}
                     aria-invalid={Boolean(errors.category)}
@@ -827,6 +1149,7 @@ export function AdminBlogModule() {
                     value={editing.authorName || ''}
                     onChange={(e) => {
                       setEditing({ ...editing, authorName: e.target.value });
+                      setDirty(true);
                       setErrors((p) => ({ ...p, authorName: '' }));
                     }}
                     aria-invalid={Boolean(errors.authorName)}
@@ -839,9 +1162,10 @@ export function AdminBlogModule() {
                 </div>
                 <select
                   value={editing.status || 'draft'}
-                  onChange={(e) =>
-                    setEditing({ ...editing, status: e.target.value as 'draft' | 'published' })
-                  }
+                  onChange={(e) => {
+                    setEditing({ ...editing, status: e.target.value as 'draft' | 'published' });
+                    setDirty(true);
+                  }}
                   className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                 >
                   <option value="draft">Draft</option>
@@ -853,6 +1177,7 @@ export function AdminBlogModule() {
                     value={editing.featuredImage || ''}
                     onChange={(e) => {
                       setEditing({ ...editing, featuredImage: e.target.value });
+                      setDirty(true);
                       setErrors((p) => ({ ...p, featuredImage: '' }));
                     }}
                     aria-invalid={Boolean(errors.featuredImage)}
@@ -872,6 +1197,7 @@ export function AdminBlogModule() {
                   value={editing.excerpt || ''}
                   onChange={(e) => {
                     setEditing({ ...editing, excerpt: e.target.value });
+                    setDirty(true);
                     setErrors((p) => ({ ...p, excerpt: '' }));
                   }}
                   aria-invalid={Boolean(errors.excerpt)}
@@ -882,69 +1208,79 @@ export function AdminBlogModule() {
                 />
                 <FieldError message={errors.excerpt} />
               </div>
-              <div>
-                <textarea
-                  rows={8}
-                  placeholder="Article Content *"
-                  value={editing.content || ''}
-                  onChange={(e) => {
-                    setEditing({ ...editing, content: e.target.value });
-                    setErrors((p) => ({ ...p, content: '' }));
-                  }}
-                  aria-invalid={Boolean(errors.content)}
-                  className={fieldBorderClass(
-                    'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm',
-                    errors.content
-                  )}
-                />
-                <FieldError message={errors.content} />
-              </div>
+
+              <LazyRichTextEditor
+                label="Article Body *"
+                minHeightClass="min-h-[340px]"
+                value={editing.content || ''}
+                onChange={(html) => {
+                  setEditing((prev) => (prev ? { ...prev, content: html } : prev));
+                  setDirty(true);
+                  setErrors((p) => ({ ...p, content: '' }));
+                }}
+                placeholder="Write your article with headings, formatted callouts, code snippets, tables, and visual assets..."
+                error={errors.content}
+                saveStatus={saveState}
+              />
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <input
                   placeholder="Tags (comma separated)"
                   value={(editing.tags || []).join(', ')}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setEditing({
                       ...editing,
                       tags: e.target.value
                         .split(',')
                         .map((t) => t.trim())
                         .filter(Boolean),
-                    })
-                  }
+                    });
+                    setDirty(true);
+                  }}
                   className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                 />
                 <input
                   placeholder="SEO Title"
                   value={editing.seoTitle || ''}
-                  onChange={(e) => setEditing({ ...editing, seoTitle: e.target.value })}
+                  onChange={(e) => {
+                    setEditing({ ...editing, seoTitle: e.target.value });
+                    setDirty(true);
+                  }}
                   className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
                 />
               </div>
               <input
                 placeholder="SEO Meta Description"
                 value={editing.seoDescription || ''}
-                onChange={(e) => setEditing({ ...editing, seoDescription: e.target.value })}
+                onChange={(e) => {
+                  setEditing({ ...editing, seoDescription: e.target.value });
+                  setDirty(true);
+                }}
                 className="w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3 py-2 text-sm"
               />
             </>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              type="submit"
+              type="button"
               disabled={saving}
-              className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-4 py-2 text-xs font-semibold text-white"
+              onClick={() => void persistArticle('draft')}
+              className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] hover:border-[#176BFF] disabled:opacity-60 px-4 py-2 text-xs font-semibold"
             >
-              {saving ? 'Saving...' : 'Save Article'}
+              {saving ? 'Saving...' : 'Save as Draft'}
             </button>
             <button
               type="button"
-              onClick={() => {
-                setEditing(null);
-                setPreviewMode(false);
-                setErrors({});
-              }}
+              disabled={saving}
+              onClick={() => void persistArticle('published')}
+              className="rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-60 px-4 py-2 text-xs font-semibold text-white"
+            >
+              {saving ? 'Publishing...' : 'Save & Publish'}
+            </button>
+            <button
+              type="button"
+              onClick={() => openArticleEditor(null)}
               className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-4 py-2 text-xs"
             >
               Cancel
@@ -973,10 +1309,7 @@ export function AdminBlogModule() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setErrors({});
-                    setEditing(a);
-                  }}
+                  onClick={() => openArticleEditor(a)}
                   className="rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] px-3 py-1.5 text-xs"
                 >
                   Edit
@@ -1000,6 +1333,19 @@ export function AdminBlogModule() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(discardAction)}
+        title="Discard Unsaved Article Changes?"
+        message="You have unsaved changes in this article. Leave without saving to the database?"
+        confirmLabel="Discard Changes"
+        onConfirm={() => {
+          const fn = discardAction;
+          setDiscardAction(null);
+          fn?.();
+        }}
+        onCancel={() => setDiscardAction(null)}
+      />
     </div>
   );
 }

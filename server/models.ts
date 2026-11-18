@@ -17,6 +17,8 @@ const UserSchema = new Schema(
   { timestamps: true }
 );
 UserSchema.index({ secondaryEmails: 1 });
+UserSchema.index({ role: 1, createdAt: -1 });
+UserSchema.index({ role: 1, active: 1 });
 
 const PasswordResetTokenSchema = new Schema(
   {
@@ -53,6 +55,7 @@ const CourseSchema = new Schema(
   },
   { timestamps: true }
 );
+CourseSchema.index({ published: 1, order: 1, createdAt: -1 });
 
 const ModuleSchema = new Schema(
   {
@@ -79,6 +82,8 @@ const LessonSchema = new Schema(
   { timestamps: true }
 );
 LessonSchema.index({ moduleId: 1, order: 1 });
+LessonSchema.index({ courseId: 1, published: 1, order: 1 });
+LessonSchema.index({ moduleId: 1, published: 1, order: 1 });
 
 const EnrolmentSchema = new Schema(
   {
@@ -91,6 +96,8 @@ const EnrolmentSchema = new Schema(
   { timestamps: true }
 );
 EnrolmentSchema.index({ userId: 1, courseId: 1 }, { unique: true });
+EnrolmentSchema.index({ status: 1, courseId: 1 });
+EnrolmentSchema.index({ userId: 1, status: 1, activatedAt: -1 });
 
 const PaymentSchema = new Schema(
   {
@@ -124,6 +131,8 @@ const PaymentSchema = new Schema(
   { timestamps: true }
 );
 PaymentSchema.index({ createdAt: -1 });
+PaymentSchema.index({ status: 1, createdAt: -1 });
+PaymentSchema.index({ userId: 1, createdAt: -1 });
 
 const LessonProgressSchema = new Schema(
   {
@@ -160,6 +169,9 @@ const SupportTicketSchema = new Schema(
   },
   { timestamps: true }
 );
+SupportTicketSchema.index({ status: 1, updatedAt: -1 });
+SupportTicketSchema.index({ userId: 1, updatedAt: -1 });
+SupportTicketSchema.index({ courseId: 1, status: 1 });
 
 const SupportMessageSchema = new Schema(
   {
@@ -171,6 +183,7 @@ const SupportMessageSchema = new Schema(
   },
   { timestamps: true }
 );
+SupportMessageSchema.index({ ticketId: 1, createdAt: 1 });
 
 const LeadSchema = new Schema(
   {
@@ -232,6 +245,7 @@ const LeadActivitySchema = new Schema(
   },
   { timestamps: true }
 );
+LeadActivitySchema.index({ leadId: 1, createdAt: -1 });
 
 const ProductSchema = new Schema(
   {
@@ -256,6 +270,7 @@ const ProductSchema = new Schema(
   },
   { timestamps: true }
 );
+ProductSchema.index({ published: 1, order: 1, createdAt: 1 });
 
 const ServiceSchema = new Schema(
   {
@@ -278,6 +293,7 @@ const ServiceSchema = new Schema(
   },
   { timestamps: true }
 );
+ServiceSchema.index({ published: 1, order: 1, createdAt: 1 });
 
 const ArticleSchema = new Schema(
   {
@@ -309,6 +325,8 @@ const ArticleSchema = new Schema(
   },
   { timestamps: true }
 );
+ArticleSchema.index({ status: 1, publishedAt: -1, createdAt: -1 });
+ArticleSchema.index({ status: 1, category: 1, publishedAt: -1 });
 
 const CategorySchema = new Schema(
   {
@@ -427,6 +445,8 @@ const NotificationSchema = new Schema(
   },
   { timestamps: true }
 );
+NotificationSchema.index({ targetRole: 1, read: 1, createdAt: -1 });
+NotificationSchema.index({ userId: 1, targetRole: 1, createdAt: -1 });
 
 const AdminActivitySchema = new Schema(
   {
@@ -452,6 +472,8 @@ const AnalyticsEventSchema = new Schema(
   { timestamps: true }
 );
 AnalyticsEventSchema.index({ createdAt: -1 });
+AnalyticsEventSchema.index({ eventType: 1, createdAt: -1 });
+AnalyticsEventSchema.index({ eventType: 1, path: 1 });
 
 const WorkShowcaseSchema = new Schema(
   {
@@ -459,7 +481,7 @@ const WorkShowcaseSchema = new Schema(
     clientName: { type: String, default: '', trim: true, maxlength: 140 },
     industry: { type: String, default: '', trim: true, maxlength: 100 },
     category: { type: String, default: 'AI Automation', trim: true, maxlength: 100 },
-    summary: { type: String, required: true, maxlength: 1500 },
+    summary: { type: String, required: true, maxlength: 12000 },
     outcomes: [{ type: String }],
     technologies: [{ type: String }],
     imageUrl: { type: String, default: '' },
@@ -470,6 +492,7 @@ const WorkShowcaseSchema = new Schema(
   },
   { timestamps: true }
 );
+WorkShowcaseSchema.index({ published: 1, featured: -1, order: 1, createdAt: -1 });
 
 const TestimonialSchema = new Schema(
   {
@@ -485,6 +508,7 @@ const TestimonialSchema = new Schema(
   },
   { timestamps: true }
 );
+TestimonialSchema.index({ published: 1, featured: -1, order: 1, createdAt: -1 });
 
 const CourseReviewSchema = new Schema(
   {
@@ -500,6 +524,8 @@ const CourseReviewSchema = new Schema(
   { timestamps: true }
 );
 CourseReviewSchema.index({ courseId: 1, userId: 1 }, { unique: true });
+CourseReviewSchema.index({ courseId: 1, status: 1, createdAt: -1 });
+CourseReviewSchema.index({ status: 1, createdAt: -1 });
 
 const OAuthPollResultSchema = new Schema(
   {

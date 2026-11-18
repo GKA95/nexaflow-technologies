@@ -31,6 +31,7 @@ import {
   Testimonial,
   WorkShowcase,
 } from '../models.js';
+import { extractPlainText } from '../shared/richText.js';
 import { couponValidateSchema, leadFormSchema, zodToFieldErrors } from '../shared/validation.js';
 import { calculateCouponDiscount, validateCouponForPricing } from '../utils/coupons.js';
 import { sendTransactionalEmail } from '../utils/email.js';
@@ -352,7 +353,7 @@ router.get('/search', async (req, res) => {
           [
             s.name as string,
             s.shortDescription as string,
-            s.overview as string,
+            extractPlainText(s.overview as string),
             s.problemsAddressed as string[],
             s.deliverables as string[],
             s.focusKeyword as string,
@@ -375,7 +376,7 @@ router.get('/search', async (req, res) => {
             p.name as string,
             p.category as string,
             p.shortDescription as string,
-            p.fullDescription as string,
+            extractPlainText(p.fullDescription as string),
             p.features as string[],
             p.benefits as string[],
             p.pricingStatus as string,
@@ -400,7 +401,7 @@ router.get('/search', async (req, res) => {
           [
             c.title as string,
             c.shortDescription as string,
-            c.fullDescription as string,
+            extractPlainText(c.fullDescription as string),
             c.objectives as string[],
             c.outcomes as string[],
             c.focusKeyword as string,
