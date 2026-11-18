@@ -128,6 +128,7 @@ export interface CourseItem {
   objectives: string[];
   outcomes: string[];
   published: boolean;
+  ratingsEnabled?: boolean;
   order: number;
   moduleCount?: number;
   lessonCount?: number;

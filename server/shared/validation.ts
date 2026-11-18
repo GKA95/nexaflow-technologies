@@ -288,6 +288,7 @@ export const courseWriteSchema = z.object({
   objectives: z.array(z.string().trim().max(300)).max(30).optional().default([]),
   outcomes: z.array(z.string().trim().max(300)).max(30).optional().default([]),
   published: z.boolean().optional().default(false),
+  ratingsEnabled: z.boolean().optional().default(true),
   order: z.number().int().min(0).max(9999).optional().default(0),
   seoTitle: z.string().trim().max(180).optional().default(''),
   seoDescription: z.string().trim().max(400).optional().default(''),

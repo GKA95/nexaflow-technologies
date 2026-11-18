@@ -42,6 +42,7 @@ const CourseSchema = new Schema(
     objectives: [{ type: String }],
     outcomes: [{ type: String }],
     published: { type: Boolean, default: false, index: true },
+    ratingsEnabled: { type: Boolean, default: true },
     order: { type: Number, default: 0 },
     seoTitle: { type: String, default: '' },
     seoDescription: { type: String, default: '' },

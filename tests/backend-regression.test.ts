@@ -14,18 +14,21 @@ import {
 import {
   Article,
   Coupon,
+  Course,
   Lead,
   PasswordResetToken,
   Payment,
   SupportTicket,
   User,
 } from '../server/models.js';
-import { renderSeoInjectedHtml } from '../server/routes/seo.js';
+import { buildCourseJsonLd, renderSeoInjectedHtml } from '../server/routes/seo.js';
 import {
   needsServerImageResolution,
   normalizeImageUrl,
   parseImgurUrl,
 } from '../server/shared/media.js';
+import { courseWriteSchema } from '../server/shared/validation.js';
+import { buildValidActiveEnrolmentPipeline } from '../server/utils/enrolments.js';
 import {
   assertPublicSafeUrl,
   isPrivateOrReservedIp,
@@ -455,5 +458,76 @@ describe('External/Imgur image normalization, SSRF guards & SSR SEO injection', 
           });
       });
     });
+  });
+});
+
+describe('Strict active enrolment counting & per-course ratings toggle', () => {
+  test('buildValidActiveEnrolmentPipeline enforces active status and existing User + Course documents', () => {
+    const pipeline = buildValidActiveEnrolmentPipeline();
+    assert.deepEqual(pipeline[0], { $match: { status: 'active' } });
+
+    const userLookup = pipeline.find(
+      (s) => '$lookup' in s && (s.$lookup as { from?: string }).from === User.collection.name
+    );
+    const courseLookup = pipeline.find(
+      (s) => '$lookup' in s && (s.$lookup as { from?: string }).from === Course.collection.name
+    );
+    assert.ok(userLookup, 'Pipeline should join against User collection');
+    assert.ok(courseLookup, 'Pipeline should join against Course collection');
+
+    const unwindPaths = pipeline
+      .filter((s) => '$unwind' in s)
+      .map((s) => (s as { $unwind: string }).$unwind);
+    assert.deepEqual(unwindPaths, ['$_user', '$_course']);
+  });
+
+  test('courseWriteSchema and partial patch validate ratingsEnabled with default true', () => {
+    const createParsed = courseWriteSchema.parse({
+      title: 'Production AI Architecture',
+      shortDescription: 'Learn to architect and deploy scalable enterprise systems.',
+      price: 250,
+      currency: 'GHS',
+    });
+    assert.equal(createParsed.ratingsEnabled, true);
+
+    const disablePatch = courseWriteSchema.partial().safeParse({ ratingsEnabled: false });
+    assert.equal(disablePatch.success, true);
+    if (disablePatch.success) {
+      assert.equal(disablePatch.data.ratingsEnabled, false);
+    }
+
+    const invalidPatch = courseWriteSchema.partial().safeParse({ ratingsEnabled: 'off' });
+    assert.equal(invalidPatch.success, false);
+  });
+
+  test('buildCourseJsonLd omits aggregateRating and review when ratingsEnabled is false', () => {
+    const stats = { moduleCount: 4, lessonCount: 16, averageRating: 4.9, reviewCount: 12 };
+    const reviews = [{ authorName: 'Ama Mensah', rating: 5, title: 'Great', comment: 'Very practical!' }];
+
+    const enabledJsonLd = buildCourseJsonLd({
+      course: { title: 'AI Systems', price: 300, currency: 'GHS', ratingsEnabled: true },
+      baseUrl: 'https://nexaflow.test',
+      canonicalUrl: 'https://nexaflow.test/learn/ai-systems',
+      siteName: 'NexaFlow',
+      description: 'Hands-on AI course.',
+      ogImage: 'https://nexaflow.test/og-image.png',
+      stats,
+      reviews,
+    });
+    assert.ok(enabledJsonLd.aggregateRating);
+    assert.ok(Array.isArray(enabledJsonLd.review));
+
+    const disabledJsonLd = buildCourseJsonLd({
+      course: { title: 'AI Systems', price: 300, currency: 'GHS', ratingsEnabled: false },
+      baseUrl: 'https://nexaflow.test',
+      canonicalUrl: 'https://nexaflow.test/learn/ai-systems',
+      siteName: 'NexaFlow',
+      description: 'Hands-on AI course.',
+      ogImage: 'https://nexaflow.test/og-image.png',
+      stats,
+      reviews,
+    });
+    assert.equal('aggregateRating' in disabledJsonLd, false);
+    assert.equal('review' in disabledJsonLd, false);
   });
 });

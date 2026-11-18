@@ -489,123 +489,125 @@ export function CoursePlayerPage({ slug }: { slug: string }) {
             </div>
 
             {/* Course Star Rating & Learner Review */}
-            <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4">
-              {stats.percent === 100 && (
-                <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 flex items-start gap-2.5 text-xs text-emerald-700 dark:text-emerald-300">
-                  <Award className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Course Completed!</strong> You&apos;ve finished all videos in this course. Share your star rating and review below to help future learners.
-                  </span>
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-mono uppercase tracking-wider text-[#00D4FF]">
-                    Course Feedback
-                  </p>
-                  <h2 className="mt-0.5 text-lg font-bold text-[#070B24] dark:text-[#F7F8FF]">
-                    {savedReview ? 'Your Course Review' : 'Rate & Review This Course'}
-                  </h2>
-                </div>
-                {savedReview && (
-                  <StarRatingDisplay
-                    rating={savedReview.rating}
-                    showEmptyLabel={false}
-                    size="sm"
-                  />
+            {course.ratingsEnabled !== false && (
+              <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 sm:p-6 space-y-4">
+                {stats.percent === 100 && (
+                  <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 flex items-start gap-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+                    <Award className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Course Completed!</strong> You&apos;ve finished all videos in this course. Share your star rating and review below to help future learners.
+                    </span>
+                  </div>
                 )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-[#00D4FF]">
+                      Course Feedback
+                    </p>
+                    <h2 className="mt-0.5 text-lg font-bold text-[#070B24] dark:text-[#F7F8FF]">
+                      {savedReview ? 'Your Course Review' : 'Rate & Review This Course'}
+                    </h2>
+                  </div>
+                  {savedReview && (
+                    <StarRatingDisplay
+                      rating={savedReview.rating}
+                      showEmptyLabel={false}
+                      size="sm"
+                    />
+                  )}
+                </div>
+
+                <form onSubmit={handleSubmitReview} noValidate className="space-y-4">
+                  <div>
+                    <span className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
+                      Star Rating *
+                    </span>
+                    <StarRatingPicker
+                      value={reviewRating}
+                      onChange={(r) => {
+                        setReviewRating(r);
+                        setReviewErrors((p) => ({ ...p, rating: '' }));
+                      }}
+                      disabled={reviewSubmitting}
+                    />
+                    <FieldError error={reviewErrors.rating} />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor={`${uid}-rtitle`}
+                      className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                    >
+                      Review Headline (Optional)
+                    </label>
+                    <input
+                      id={`${uid}-rtitle`}
+                      aria-invalid={Boolean(reviewErrors.title)}
+                      value={reviewTitle}
+                      onChange={(e) => {
+                        setReviewTitle(e.target.value);
+                        setReviewErrors((p) => ({ ...p, title: '' }));
+                      }}
+                      maxLength={140}
+                      placeholder="e.g., Clear practical walkthrough of automation pipelines"
+                      className={fieldBorderClass(
+                        'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
+                        reviewErrors.title
+                      )}
+                    />
+                    <FieldError error={reviewErrors.title} />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor={`${uid}-rcomment`}
+                      className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
+                    >
+                      Your Review *
+                    </label>
+                    <textarea
+                      id={`${uid}-rcomment`}
+                      required
+                      minLength={3}
+                      maxLength={2000}
+                      rows={3}
+                      aria-invalid={Boolean(reviewErrors.comment)}
+                      value={reviewComment}
+                      onChange={(e) => {
+                        setReviewComment(e.target.value);
+                        setReviewErrors((p) => ({ ...p, comment: '' }));
+                      }}
+                      placeholder="What did you find most helpful in this course?"
+                      className={fieldBorderClass(
+                        'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
+                        reviewErrors.comment
+                      )}
+                    />
+                    <FieldError error={reviewErrors.comment} />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                      {savedReview
+                        ? `Last submitted on ${new Date(savedReview.createdAt).toLocaleDateString()}`
+                        : 'Reviews appear publicly on the course page.'}
+                    </span>
+                    <button
+                      type="submit"
+                      disabled={reviewSubmitting}
+                      className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-50 px-5 py-2 text-xs font-semibold text-white transition-colors whitespace-nowrap"
+                    >
+                      {reviewSubmitting
+                        ? 'Submitting...'
+                        : savedReview
+                          ? 'Update Review'
+                          : 'Submit Review'}
+                    </button>
+                  </div>
+                </form>
               </div>
-
-              <form onSubmit={handleSubmitReview} noValidate className="space-y-4">
-                <div>
-                  <span className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5">
-                    Star Rating *
-                  </span>
-                  <StarRatingPicker
-                    value={reviewRating}
-                    onChange={(r) => {
-                      setReviewRating(r);
-                      setReviewErrors((p) => ({ ...p, rating: '' }));
-                    }}
-                    disabled={reviewSubmitting}
-                  />
-                  <FieldError error={reviewErrors.rating} />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor={`${uid}-rtitle`}
-                    className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
-                  >
-                    Review Headline (Optional)
-                  </label>
-                  <input
-                    id={`${uid}-rtitle`}
-                    aria-invalid={Boolean(reviewErrors.title)}
-                    value={reviewTitle}
-                    onChange={(e) => {
-                      setReviewTitle(e.target.value);
-                      setReviewErrors((p) => ({ ...p, title: '' }));
-                    }}
-                    maxLength={140}
-                    placeholder="e.g., Clear practical walkthrough of automation pipelines"
-                    className={fieldBorderClass(
-                      'w-full min-h-[44px] rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
-                      reviewErrors.title
-                    )}
-                  />
-                  <FieldError error={reviewErrors.title} />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor={`${uid}-rcomment`}
-                    className="block text-xs font-medium text-[#4A5578] dark:text-[#AEB8D4] mb-1.5"
-                  >
-                    Your Review *
-                  </label>
-                  <textarea
-                    id={`${uid}-rcomment`}
-                    required
-                    minLength={3}
-                    maxLength={2000}
-                    rows={3}
-                    aria-invalid={Boolean(reviewErrors.comment)}
-                    value={reviewComment}
-                    onChange={(e) => {
-                      setReviewComment(e.target.value);
-                      setReviewErrors((p) => ({ ...p, comment: '' }));
-                    }}
-                    placeholder="What did you find most helpful in this course?"
-                    className={fieldBorderClass(
-                      'w-full rounded-lg border border-[#DCE3F2] dark:border-[#1A2550] bg-[#F6F8FC] dark:bg-[#03051B] px-3.5 py-2 text-sm text-[#070B24] dark:text-[#F7F8FF] focus:outline-none focus:border-[#176BFF]',
-                      reviewErrors.comment
-                    )}
-                  />
-                  <FieldError error={reviewErrors.comment} />
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <span className="text-xs text-[#4A5578] dark:text-[#AEB8D4]">
-                    {savedReview
-                      ? `Last submitted on ${new Date(savedReview.createdAt).toLocaleDateString()}`
-                      : 'Reviews appear publicly on the course page.'}
-                  </span>
-                  <button
-                    type="submit"
-                    disabled={reviewSubmitting}
-                    className="w-full sm:w-auto min-h-[44px] rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] disabled:opacity-50 px-5 py-2 text-xs font-semibold text-white transition-colors whitespace-nowrap"
-                  >
-                    {reviewSubmitting
-                      ? 'Submitting...'
-                      : savedReview
-                        ? 'Update Review'
-                        : 'Submit Review'}
-                  </button>
-                </div>
-              </form>
-            </div>
+            )}
           </div>
 
           {/* Sub-Videos Playlist Sidebar */}

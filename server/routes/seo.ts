@@ -264,7 +264,7 @@ function buildProductOfferSchema(pricingStatus: string | undefined): Record<stri
   };
 }
 
-function buildCourseJsonLd(params: {
+export function buildCourseJsonLd(params: {
   course: Record<string, unknown>;
   baseUrl: string;
   canonicalUrl: string;
@@ -275,6 +275,7 @@ function buildCourseJsonLd(params: {
   reviews?: Array<Record<string, unknown>>;
 }): Record<string, unknown> {
   const { course, baseUrl, canonicalUrl, siteName, description, ogImage, stats, reviews } = params;
+  const ratingsEnabled = course.ratingsEnabled !== false;
   const title = cleanText(course.title, 180);
   const price = Number(course.price || 0);
   const currency = cleanText(course.currency, 10).toUpperCase() || 'GHS';
@@ -320,7 +321,7 @@ function buildCourseJsonLd(params: {
     };
   }
 
-  if (stats && stats.reviewCount > 0 && stats.averageRating > 0) {
+  if (ratingsEnabled && stats && stats.reviewCount > 0 && stats.averageRating > 0) {
     schema.aggregateRating = {
       '@type': 'AggregateRating',
       ratingValue: stats.averageRating,
@@ -330,7 +331,7 @@ function buildCourseJsonLd(params: {
     };
   }
 
-  if (reviews && reviews.length > 0) {
+  if (ratingsEnabled && reviews && reviews.length > 0) {
     schema.review = reviews.slice(0, 5).map((r) => ({
       '@type': 'Review',
       author: {
@@ -608,7 +609,7 @@ export async function resolveSeoMetadataForPath(
         ? Course.find({ published: true })
             .sort({ order: 1, createdAt: -1 })
             .select(
-              'title slug shortDescription coverImage price currency noIndex objectives outcomes updatedAt'
+              'title slug shortDescription coverImage price currency noIndex ratingsEnabled objectives outcomes updatedAt'
             )
             .lean()
         : Promise.resolve([]),
@@ -691,20 +692,26 @@ export async function resolveSeoMetadataForPath(
       description = 'The requested course could not be found in the NexaFlow Learn catalog.';
       noIndex = true;
     } else {
+      const ratingsEnabled = course.ratingsEnabled !== false;
       const [statsMap, publishedReviews] = await Promise.all([
         getCourseSeoStatsMap([course._id]),
-        CourseReview.find({ courseId: course._id, status: 'published' })
-          .sort({ createdAt: -1 })
-          .limit(5)
-          .select('authorName rating title comment createdAt')
-          .lean(),
+        ratingsEnabled
+          ? CourseReview.find({ courseId: course._id, status: 'published' })
+              .sort({ createdAt: -1 })
+              .limit(5)
+              .select('authorName rating title comment createdAt')
+              .lean()
+          : Promise.resolve([]),
       ]);
-      const stats = statsMap.get(String(course._id)) || {
+      const rawStats = statsMap.get(String(course._id)) || {
         moduleCount: 0,
         lessonCount: 0,
         averageRating: 0,
         reviewCount: 0,
       };
+      const stats = ratingsEnabled
+        ? rawStats
+        : { ...rawStats, averageRating: 0, reviewCount: 0 };
       const courseTitle = cleanText(course.title, 180);
       heading = courseTitle;
       title = cleanText(course.seoTitle, 200) || `${courseTitle} | NexaFlow Learn`;
@@ -736,6 +743,7 @@ export async function resolveSeoMetadataForPath(
         slug: String(course.slug || slug),
         price: Number(course.price || 0),
         currency: cleanText(course.currency, 10) || 'GHS',
+        ratingsEnabled,
         ...stats,
       };
       structuredData = [
@@ -1792,12 +1800,16 @@ router.get('/api/seo/catalog-index', async (req, res) => {
     const courses = dbCourses.map((c) => {
       const cSlug = String(c.slug || '');
       const path = `/learn/${cSlug}`;
-      const stats = courseStatsMap.get(String(c._id)) || {
+      const ratingsEnabled = c.ratingsEnabled !== false;
+      const rawStats = courseStatsMap.get(String(c._id)) || {
         moduleCount: 0,
         lessonCount: 0,
         averageRating: 0,
         reviewCount: 0,
       };
+      const stats = ratingsEnabled
+        ? rawStats
+        : { ...rawStats, averageRating: 0, reviewCount: 0 };
       return {
         id: String(c._id),
         slug: cSlug,
@@ -1824,6 +1836,7 @@ router.get('/api/seo/catalog-index', async (req, res) => {
         keywords: normalizeKeywords(typeof c.focusKeyword === 'string' ? c.focusKeyword : ''),
         price: Number(c.price || 0),
         currency: cleanText(c.currency, 10) || 'GHS',
+        ratingsEnabled,
         ...stats,
         updatedAt: c.updatedAt ? new Date(c.updatedAt as string | Date).toISOString() : null,
       };

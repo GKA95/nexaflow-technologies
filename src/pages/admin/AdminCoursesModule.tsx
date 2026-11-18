@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Edit2, Eye, EyeOff, Plus, RefreshCw, Trash2, Video } from 'lucide-react';
+import { Edit2, Eye, EyeOff, Plus, RefreshCw, Star, Trash2, Video } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { FieldError } from '../../components/FieldError';
 import { MediaImage } from '../../components/MediaImage';
@@ -57,6 +57,7 @@ export function AdminCoursesModule() {
   const [savingCourse, setSavingCourse] = useState(false);
   const [savingLesson, setSavingLesson] = useState(false);
   const [addingModId, setAddingModId] = useState<string | null>(null);
+  const [togglingRatingsId, setTogglingRatingsId] = useState<string | null>(null);
   const [courseErrors, setCourseErrors] = useState<FieldErrors>({});
   const [multiVideoErrors, setMultiVideoErrors] = useState<FieldErrors>({});
   const [lessonErrors, setLessonErrors] = useState<FieldErrors>({});
@@ -123,6 +124,7 @@ export function AdminCoursesModule() {
       objectives: editingCourse.objectives || [],
       outcomes: editingCourse.outcomes || [],
       published: Boolean(editingCourse.published),
+      ratingsEnabled: editingCourse.ratingsEnabled !== false,
       order: Number(editingCourse.order ?? 0),
     };
     const check = validateWithSchema(courseWriteSchema, candidate);
@@ -169,6 +171,35 @@ export function AdminCoursesModule() {
     });
     loadCourses();
     refreshBootstrap();
+  };
+
+  const toggleRatings = async (c: CourseItem) => {
+    if (togglingRatingsId === c._id) return;
+    const nextEnabled = !(c.ratingsEnabled !== false);
+    setTogglingRatingsId(c._id);
+    try {
+      const res = await apiFetch(`/api/admin/courses/${c._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ratingsEnabled: nextEnabled }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Could not update course ratings setting.', 'error');
+        return;
+      }
+      showToast(
+        nextEnabled
+          ? `Course ratings turned ON for "${c.title}".`
+          : `Course ratings turned OFF for "${c.title}".`,
+        'success'
+      );
+      await loadCourses();
+      refreshBootstrap();
+    } finally {
+      setTogglingRatingsId(null);
+    }
   };
 
   const addModule = async (courseId: string) => {
@@ -350,6 +381,7 @@ export function AdminCoursesModule() {
               objectives: [],
               outcomes: [],
               published: false,
+              ratingsEnabled: true,
             });
           }}
           className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#176BFF] hover:bg-[#0F56D6] px-4 py-2 text-xs font-semibold text-white"
@@ -579,14 +611,27 @@ export function AdminCoursesModule() {
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={Boolean(editingCourse.published)}
-              onChange={(e) => setEditingCourse({ ...editingCourse, published: e.target.checked })}
-            />
-            Publish Course Publicly
-          </label>
+          <div className="flex flex-wrap items-center gap-6">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(editingCourse.published)}
+                onChange={(e) => setEditingCourse({ ...editingCourse, published: e.target.checked })}
+              />
+              Publish Course Publicly
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={editingCourse.ratingsEnabled !== false}
+                onChange={(e) =>
+                  setEditingCourse({ ...editingCourse, ratingsEnabled: e.target.checked })
+                }
+              />
+              Enable Course Ratings &amp; Reviews
+            </label>
+          </div>
 
           <div className="flex flex-wrap gap-3">
             <button
@@ -917,7 +962,8 @@ export function AdminCoursesModule() {
                   <div className="min-w-0">
                     <p className="text-xs font-mono text-[#4A5578] dark:text-[#AEB8D4]">
                       {course.published ? 'Published' : 'Draft'} · {course.currency} {course.price} ·{' '}
-                      {course.lessonCount ?? 0} videos · {course.enrolmentsCount ?? 0} learners
+                      {course.lessonCount ?? 0} videos · {course.enrolmentsCount ?? 0} learners ·{' '}
+                      {course.ratingsEnabled !== false ? 'Ratings On' : 'Ratings Off'}
                     </p>
                     <h2 className="mt-1 text-xl font-bold">{course.title}</h2>
                     {(course.fullDescription || course.shortDescription) && (
@@ -935,6 +981,31 @@ export function AdminCoursesModule() {
                   >
                     <Video className="w-3.5 h-3.5" />
                     + Add Sub-Videos
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={course.ratingsEnabled !== false}
+                    disabled={togglingRatingsId === course._id}
+                    onClick={() => void toggleRatings(course)}
+                    title={
+                      course.ratingsEnabled !== false
+                        ? 'Click to hide star ratings and reviews for this course'
+                        : 'Click to show star ratings and reviews for this course'
+                    }
+                    className={`min-h-[40px] inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
+                      course.ratingsEnabled !== false
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : 'border-[#DCE3F2] dark:border-[#1A2550] text-[#4A5578] dark:text-[#AEB8D4]'
+                    }`}
+                  >
+                    <Star
+                      className={`w-3.5 h-3.5 ${
+                        course.ratingsEnabled !== false
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'text-[#4A5578] dark:text-[#AEB8D4]'
+                      }`}
+                    />
+                    {course.ratingsEnabled !== false ? 'Ratings: On' : 'Ratings: Off'}
                   </button>
                   <button
                     type="button"

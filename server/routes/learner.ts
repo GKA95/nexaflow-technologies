@@ -244,11 +244,14 @@ router.get('/courses/:slug/learn', async (req, res) => {
     }
   }
 
+  const ratingsEnabled = courseObj.ratingsEnabled !== false;
   const [modules, lessons, progress, myReview] = await Promise.all([
     Module.find({ courseId: courseObj._id }).sort({ order: 1 }).lean(),
     Lesson.find({ courseId: courseObj._id, published: true }).sort({ order: 1 }).lean(),
     LessonProgress.find({ userId: req.user!.id, courseId: courseObj._id }).lean(),
-    CourseReview.findOne({ courseId: courseObj._id, userId: req.user!.id }).lean(),
+    ratingsEnabled
+      ? CourseReview.findOne({ courseId: courseObj._id, userId: req.user!.id }).lean()
+      : Promise.resolve(null),
   ]);
 
   const progressMap = new Map(
@@ -277,7 +280,10 @@ router.get('/courses/:slug/learn', async (req, res) => {
 
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.json({
-    course: courseObj,
+    course: {
+      ...courseObj,
+      ratingsEnabled,
+    },
     modules: structuredModules,
     stats: {
       totalLessons: enrichedLessons.length,
@@ -307,7 +313,17 @@ router.post('/courses/:slug/review', async (req, res) => {
   const course = await Course.findOne({ slug }).lean();
   if (!course) return res.status(404).json({ error: 'Course not found.' });
 
-  const courseObj = course as { _id: unknown; title: string; slug: string };
+  const courseObj = course as {
+    _id: unknown;
+    title: string;
+    slug: string;
+    ratingsEnabled?: boolean;
+  };
+  if (courseObj.ratingsEnabled === false) {
+    return res.status(403).json({
+      error: 'Course ratings and reviews are currently turned off for this course.',
+    });
+  }
   const isAdmin = req.user!.role === 'admin' || req.user!.role === 'super_admin';
 
   if (!isAdmin) {

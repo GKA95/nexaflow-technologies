@@ -386,13 +386,15 @@ export function HomePage() {
                         <h3 className="mt-2 text-lg font-semibold text-[#070B24] dark:text-[#F7F8FF]">
                           {course.title}
                         </h3>
-                        <div className="mt-2">
-                          <StarRatingDisplay
-                            rating={course.averageRating}
-                            count={course.reviewCount}
-                            size="xs"
-                          />
-                        </div>
+                        {course.ratingsEnabled !== false && (
+                          <div className="mt-2">
+                            <StarRatingDisplay
+                              rating={course.averageRating}
+                              count={course.reviewCount}
+                              size="xs"
+                            />
+                          </div>
+                        )}
                         <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] line-clamp-3">
                           {course.shortDescription}
                         </p>

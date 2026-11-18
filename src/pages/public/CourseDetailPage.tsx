@@ -183,7 +183,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
         availability: 'https://schema.org/InStock',
         url: courseCanonical,
       },
-      ...((course.reviewCount || 0) > 0
+      ...(course.ratingsEnabled !== false && (course.reviewCount || 0) > 0
         ? {
             aggregateRating: {
               '@type': 'AggregateRating',
@@ -261,14 +261,16 @@ export function CourseDetailPage({ slug }: { slug: string }) {
               <h1 className="text-[clamp(1.75rem,4vw,3rem)] font-bold tracking-tight">
                 {course.title}
               </h1>
-              <div className="mt-3">
-                <StarRatingDisplay
-                  rating={course.averageRating}
-                  count={course.reviewCount}
-                  size="sm"
-                  className="[&_span]:text-[#F7F8FF]"
-                />
-              </div>
+              {course.ratingsEnabled !== false && (
+                <div className="mt-3">
+                  <StarRatingDisplay
+                    rating={course.averageRating}
+                    count={course.reviewCount}
+                    size="sm"
+                    className="[&_span]:text-[#F7F8FF]"
+                  />
+                </div>
+              )}
               <p className="mt-4 text-base sm:text-lg text-[#AEB8D4] leading-relaxed">
                 {course.shortDescription}
               </p>
@@ -435,107 +437,109 @@ export function CourseDetailPage({ slug }: { slug: string }) {
             </div>
 
             {/* Learner Reviews & Star Ratings */}
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
-                  Learner Reviews &amp; Ratings
-                </h2>
-                <StarRatingDisplay
-                  rating={course.averageRating}
-                  count={course.reviewCount}
-                  size="sm"
-                />
-              </div>
-
-              {reviews.length === 0 ? (
-                <div className="mt-4 rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 text-sm text-[#4A5578] dark:text-[#AEB8D4]">
-                  No reviews have been submitted for this course yet. Enrolled learners can leave a star rating and review inside the classroom after watching the videos.
+            {course.ratingsEnabled !== false && (
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
+                    Learner Reviews &amp; Ratings
+                  </h2>
+                  <StarRatingDisplay
+                    rating={course.averageRating}
+                    count={course.reviewCount}
+                    size="sm"
+                  />
                 </div>
-              ) : (
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
-                    <div className="sm:col-span-4 text-center sm:border-r border-[#DCE3F2] dark:border-[#1A2550] sm:pr-4">
-                      <p className="text-4xl font-bold font-mono tabular-nums text-[#070B24] dark:text-[#F7F8FF]">
-                        {(course.averageRating || 0).toFixed(1)}
-                      </p>
-                      <div className="mt-1 flex justify-center">
-                        <StarRatingDisplay
-                          rating={course.averageRating}
-                          showEmptyLabel={false}
-                          size="sm"
-                        />
-                      </div>
-                      <p className="mt-1 text-xs text-[#4A5578] dark:text-[#AEB8D4]">
-                        {reviews.length} {reviews.length === 1 ? 'learner review' : 'learner reviews'}
-                      </p>
-                    </div>
 
-                    <div className="sm:col-span-8 space-y-1.5">
-                      {[5, 4, 3, 2, 1].map((star) => {
-                        const starCount = reviews.filter((r) => Math.round(r.rating) === star).length;
-                        const pct = reviews.length > 0 ? Math.round((starCount / reviews.length) * 100) : 0;
-                        return (
-                          <div key={star} className="flex items-center gap-2.5 text-xs">
-                            <span className="w-8 font-mono text-[#4A5578] dark:text-[#AEB8D4] tabular-nums">
-                              {star}★
-                            </span>
-                            <div className="flex-1 h-2 rounded-full bg-[#EEF2FA] dark:bg-[#10183A] overflow-hidden">
-                              <div
-                                className="h-full bg-amber-400 rounded-full"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <span className="w-8 text-right font-mono text-[#4A5578] dark:text-[#AEB8D4] tabular-nums">
-                              {starCount}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                {reviews.length === 0 ? (
+                  <div className="mt-4 rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-6 text-sm text-[#4A5578] dark:text-[#AEB8D4]">
+                    No reviews have been submitted for this course yet. Enrolled learners can leave a star rating and review inside the classroom after watching the videos.
                   </div>
-
-                  <div className="space-y-3">
-                    {reviews.map((rev) => (
-                      <article
-                        key={rev._id}
-                        className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <StarRatingDisplay
-                              rating={rev.rating}
-                              showEmptyLabel={false}
-                              size="xs"
-                            />
-                            {rev.completedCourse && (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                Verified Completion
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs font-mono text-[#4A5578] dark:text-[#AEB8D4]">
-                            {new Date(rev.createdAt).toLocaleDateString()}
-                          </span>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5 grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
+                      <div className="sm:col-span-4 text-center sm:border-r border-[#DCE3F2] dark:border-[#1A2550] sm:pr-4">
+                        <p className="text-4xl font-bold font-mono tabular-nums text-[#070B24] dark:text-[#F7F8FF]">
+                          {(course.averageRating || 0).toFixed(1)}
+                        </p>
+                        <div className="mt-1 flex justify-center">
+                          <StarRatingDisplay
+                            rating={course.averageRating}
+                            showEmptyLabel={false}
+                            size="sm"
+                          />
                         </div>
+                        <p className="mt-1 text-xs text-[#4A5578] dark:text-[#AEB8D4]">
+                          {reviews.length} {reviews.length === 1 ? 'learner review' : 'learner reviews'}
+                        </p>
+                      </div>
 
-                        {rev.title && (
-                          <h3 className="mt-2 text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF]">
-                            {rev.title}
-                          </h3>
-                        )}
-                        <p className="mt-1.5 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
-                          {rev.comment}
-                        </p>
-                        <p className="mt-2.5 text-xs font-medium text-[#070B24] dark:text-[#F7F8FF]">
-                          — {rev.authorName}
-                        </p>
-                      </article>
-                    ))}
+                      <div className="sm:col-span-8 space-y-1.5">
+                        {[5, 4, 3, 2, 1].map((star) => {
+                          const starCount = reviews.filter((r) => Math.round(r.rating) === star).length;
+                          const pct = reviews.length > 0 ? Math.round((starCount / reviews.length) * 100) : 0;
+                          return (
+                            <div key={star} className="flex items-center gap-2.5 text-xs">
+                              <span className="w-8 font-mono text-[#4A5578] dark:text-[#AEB8D4] tabular-nums">
+                                {star}★
+                              </span>
+                              <div className="flex-1 h-2 rounded-full bg-[#EEF2FA] dark:bg-[#10183A] overflow-hidden">
+                                <div
+                                  className="h-full bg-amber-400 rounded-full"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className="w-8 text-right font-mono text-[#4A5578] dark:text-[#AEB8D4] tabular-nums">
+                                {starCount}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {reviews.map((rev) => (
+                        <article
+                          key={rev._id}
+                          className="rounded-xl border border-[#DCE3F2] dark:border-[#1A2550] bg-white dark:bg-[#080D2B] p-5"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <StarRatingDisplay
+                                rating={rev.rating}
+                                showEmptyLabel={false}
+                                size="xs"
+                              />
+                              {rev.completedCourse && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Verified Completion
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs font-mono text-[#4A5578] dark:text-[#AEB8D4]">
+                              {new Date(rev.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+
+                          {rev.title && (
+                            <h3 className="mt-2 text-sm font-semibold text-[#070B24] dark:text-[#F7F8FF]">
+                              {rev.title}
+                            </h3>
+                          )}
+                          <p className="mt-1.5 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
+                            {rev.comment}
+                          </p>
+                          <p className="mt-2.5 text-xs font-medium text-[#070B24] dark:text-[#F7F8FF]">
+                            — {rev.authorName}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="lg:col-span-5">

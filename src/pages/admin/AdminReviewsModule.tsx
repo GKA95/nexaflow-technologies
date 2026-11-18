@@ -16,6 +16,7 @@ interface CourseSummary {
   _id: string;
   title: string;
   slug: string;
+  ratingsEnabled?: boolean;
 }
 
 export function AdminReviewsModule() {
@@ -154,6 +155,7 @@ export function AdminReviewsModule() {
             {courses.map((c) => (
               <option key={c._id} value={c._id}>
                 {c.title}
+                {c.ratingsEnabled === false ? ' (Ratings Off)' : ''}
               </option>
             ))}
           </select>

@@ -193,13 +193,15 @@ export function LearnCataloguePage() {
                         <h2 className="mt-2 text-xl font-bold text-[#070B24] dark:text-[#F7F8FF]">
                           {course.title}
                         </h2>
-                        <div className="mt-2">
-                          <StarRatingDisplay
-                            rating={course.averageRating}
-                            count={course.reviewCount}
-                            size="xs"
-                          />
-                        </div>
+                        {course.ratingsEnabled !== false && (
+                          <div className="mt-2">
+                            <StarRatingDisplay
+                              rating={course.averageRating}
+                              count={course.reviewCount}
+                              size="xs"
+                            />
+                          </div>
+                        )}
                         <p className="mt-2 text-sm text-[#4A5578] dark:text-[#AEB8D4] leading-relaxed">
                           {course.shortDescription}
                         </p>

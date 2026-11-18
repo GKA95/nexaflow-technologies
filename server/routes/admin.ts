@@ -70,6 +70,10 @@ import {
   zodToFieldErrors,
 } from '../shared/validation.js';
 import { isEmailConfigured, sendTransactionalEmail } from '../utils/email.js';
+import {
+  countValidActiveEnrolments,
+  getValidActiveEnrolmentCountsByCourse,
+} from '../utils/enrolments.js';
 import { resolveImageUrlForStorage } from '../utils/imageResolver.js';
 import { normalizeImageUrl } from '../shared/media.js';
 import {
@@ -292,6 +296,10 @@ router.post('/setup', authLimiter, requireDatabase, async (req, res) => {
 });
 
 // All routes below strictly require MongoDB + Authenticated Admin Role
+router.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+});
 router.use(requireDatabase, requireAuth, requireAdmin);
 
 router.post('/resolve-image', async (req, res) => {
@@ -328,7 +336,7 @@ router.get('/overview', async (_req, res) => {
   ] = await Promise.all([
     User.countDocuments({ role: 'learner' }),
     Course.countDocuments({ published: true }),
-    Enrolment.countDocuments({ status: 'active' }),
+    countValidActiveEnrolments(),
     Payment.aggregate([
       { $match: { status: 'success' } },
       { $group: { _id: '$currency', total: { $sum: '$amount' }, count: { $sum: 1 } } },
@@ -378,14 +386,11 @@ router.get('/overview', async (_req, res) => {
 
 // 2. Course, Module & Lesson Management
 router.get('/courses', async (_req, res) => {
-  const [courses, allModules, allLessons, enrolmentAgg] = await Promise.all([
+  const [courses, allModules, allLessons, enrolmentCountByCourse] = await Promise.all([
     Course.find().sort({ order: 1, createdAt: -1 }).lean(),
     Module.find().sort({ order: 1 }).lean(),
     Lesson.find().sort({ order: 1 }).lean(),
-    Enrolment.aggregate([
-      { $match: { status: 'active' } },
-      { $group: { _id: '$courseId', count: { $sum: 1 } } },
-    ]),
+    getValidActiveEnrolmentCountsByCourse(),
   ]);
 
   const lessonsByModule = new Map<string, Array<Record<string, unknown>>>();
@@ -411,16 +416,12 @@ router.get('/courses', async (_req, res) => {
     else modulesByCourse.set(cId, [modWithLessons]);
   }
 
-  const enrolmentCountByCourse = new Map<string, number>();
-  for (const row of enrolmentAgg as Array<{ _id: unknown; count: number }>) {
-    enrolmentCountByCourse.set(String(row._id), Number(row.count || 0));
-  }
-
   const enriched = (courses as Array<Record<string, unknown>>).map((c) => {
     const cId = String(c._id);
     const modules = modulesByCourse.get(cId) || [];
     return {
       ...c,
+      ratingsEnabled: c.ratingsEnabled !== false,
       moduleCount: modules.length,
       lessonCount: lessonCountByCourse.get(cId) || 0,
       enrolmentsCount: enrolmentCountByCourse.get(cId) || 0,
@@ -472,6 +473,7 @@ router.post('/courses', async (req, res) => {
     objectives: d.objectives.map(stripHtmlTags).filter(Boolean),
     outcomes: d.outcomes.map(stripHtmlTags).filter(Boolean),
     published: d.published,
+    ratingsEnabled: d.ratingsEnabled,
     order: d.order,
     seoTitle: stripHtmlTags(d.seoTitle),
     seoDescription: stripHtmlTags(d.seoDescription),
@@ -516,6 +518,7 @@ router.patch('/courses/:id', async (req, res) => {
   if (d.objectives !== undefined) update.objectives = d.objectives.map(stripHtmlTags).filter(Boolean);
   if (d.outcomes !== undefined) update.outcomes = d.outcomes.map(stripHtmlTags).filter(Boolean);
   if (d.published !== undefined) update.published = d.published;
+  if (d.ratingsEnabled !== undefined) update.ratingsEnabled = d.ratingsEnabled;
   if (d.order !== undefined) update.order = d.order;
   if (d.seoTitle !== undefined) update.seoTitle = stripHtmlTags(d.seoTitle);
   if (d.seoDescription !== undefined) update.seoDescription = stripHtmlTags(d.seoDescription);
@@ -540,6 +543,9 @@ router.delete('/courses/:id', async (req, res) => {
   await Promise.all([
     Lesson.deleteMany({ courseId: course._id }),
     Module.deleteMany({ courseId: course._id }),
+    Enrolment.deleteMany({ courseId: course._id }),
+    LessonProgress.deleteMany({ courseId: course._id }),
+    CourseReview.deleteMany({ courseId: course._id }),
     Course.deleteOne({ _id: course._id }),
   ]);
   await logAdminActivity(req.user!, 'delete_course', 'Course', req.params.id, course.title);
@@ -795,6 +801,7 @@ router.get('/learners', async (req, res) => {
 
   const enrolmentsByUser = new Map<string, Array<Record<string, unknown>>>();
   for (const enr of allEnrolments as Array<Record<string, unknown>>) {
+    if (!enr.courseId) continue;
     const uId = String(enr.userId);
     const list = enrolmentsByUser.get(uId);
     if (list) list.push(enr);
@@ -947,6 +954,7 @@ router.delete('/learners/:id', async (req, res) => {
   await Promise.all([
     Enrolment.deleteMany({ userId: l._id }),
     LessonProgress.deleteMany({ userId: l._id }),
+    CourseReview.deleteMany({ userId: l._id }),
     PasswordResetToken.deleteMany({ userId: l._id }),
     Notification.deleteMany({ userId: l._id }),
     ...(ticketIds.length > 0
@@ -2374,7 +2382,7 @@ router.get('/reviews', async (req, res) => {
       .populate('userId', 'name email')
       .sort({ createdAt: -1 })
       .lean(),
-    Course.find().select('_id title slug').sort({ order: 1, createdAt: -1 }).lean(),
+    Course.find().select('_id title slug ratingsEnabled').sort({ order: 1, createdAt: -1 }).lean(),
   ]);
 
   res.json({ reviews, courses });

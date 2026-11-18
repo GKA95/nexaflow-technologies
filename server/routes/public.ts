@@ -191,9 +191,13 @@ router.get('/bootstrap', async (_req, res) => {
 
   const enrichedCourses = courses.map((c: Record<string, unknown>) => {
     const idStr = String(c._id);
-    const rating = ratingMap.get(idStr) || { averageRating: 0, reviewCount: 0 };
+    const ratingsEnabled = c.ratingsEnabled !== false;
+    const rating = ratingsEnabled
+      ? ratingMap.get(idStr) || { averageRating: 0, reviewCount: 0 }
+      : { averageRating: 0, reviewCount: 0 };
     return {
       ...c,
+      ratingsEnabled,
       moduleCount: moduleMap.get(idStr) || 0,
       lessonCount: lessonMap.get(idStr) || 0,
       ...rating,
@@ -265,9 +269,13 @@ router.get('/courses', async (_req, res) => {
   ]);
   const enriched = courses.map((c: Record<string, unknown>) => {
     const idStr = String(c._id);
-    const rating = ratingMap.get(idStr) || { averageRating: 0, reviewCount: 0 };
+    const ratingsEnabled = c.ratingsEnabled !== false;
+    const rating = ratingsEnabled
+      ? ratingMap.get(idStr) || { averageRating: 0, reviewCount: 0 }
+      : { averageRating: 0, reviewCount: 0 };
     return {
       ...c,
+      ratingsEnabled,
       moduleCount: moduleMap.get(idStr) || 0,
       lessonCount: lessonMap.get(idStr) || 0,
       ...rating,
@@ -431,6 +439,7 @@ router.get('/courses/:slug', async (req, res) => {
   if (!course) return res.status(404).json({ error: 'Course not found.' });
 
   const courseObj = course as Record<string, unknown>;
+  const ratingsEnabled = courseObj.ratingsEnabled !== false;
   const [modules, lessons, reviews] = await Promise.all([
     Module.find({ courseId: courseObj._id }).sort({ order: 1 }).lean(),
     // Explicitly omit youtubeUrl on public preview endpoint
@@ -438,10 +447,12 @@ router.get('/courses/:slug', async (req, res) => {
       .sort({ order: 1 })
       .select('_id moduleId title duration order')
       .lean(),
-    CourseReview.find({ courseId: courseObj._id, status: 'published' })
-      .sort({ createdAt: -1 })
-      .select('_id courseId authorName rating title comment completedCourse status createdAt')
-      .lean(),
+    ratingsEnabled
+      ? CourseReview.find({ courseId: courseObj._id, status: 'published' })
+          .sort({ createdAt: -1 })
+          .select('_id courseId authorName rating title comment completedCourse status createdAt')
+          .lean()
+      : Promise.resolve([]),
   ]);
 
   const curriculum = modules.map((mod: Record<string, unknown>) => ({
@@ -449,9 +460,9 @@ router.get('/courses/:slug', async (req, res) => {
     lessons: lessons.filter((l: Record<string, unknown>) => String(l.moduleId) === String(mod._id)),
   }));
 
-  const reviewCount = reviews.length;
+  const reviewCount = ratingsEnabled ? reviews.length : 0;
   const averageRating =
-    reviewCount > 0
+    ratingsEnabled && reviewCount > 0
       ? Math.round(
           (reviews.reduce((sum, r) => sum + Number((r as { rating?: number }).rating || 0), 0) /
             reviewCount) *
@@ -462,6 +473,7 @@ router.get('/courses/:slug', async (req, res) => {
   res.json({
     course: {
       ...courseObj,
+      ratingsEnabled,
       moduleCount: modules.length,
       lessonCount: lessons.length,
       averageRating,
