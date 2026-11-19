@@ -65,7 +65,7 @@ export function LearnCataloguePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <HeroEntrance delay={0}>
             <p className="text-xs font-medium uppercase tracking-wider text-[#00D4FF]">
-              NexaFlow Learn
+              Courses
             </p>
           </HeroEntrance>
           <HeroEntrance delay={0.06}>

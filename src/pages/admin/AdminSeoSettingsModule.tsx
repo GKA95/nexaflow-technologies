@@ -37,7 +37,7 @@ const PAGE_LABELS: Record<string, string> = {
   about: 'About (/about)',
   solutions: 'Solutions (/solutions)',
   products: 'Products (/products)',
-  learn: 'Learn (/learn)',
+  learn: 'Courses (/learn)',
   insights: 'Insights (/insights)',
   contact: 'Contact (/contact)',
 };

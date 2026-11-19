@@ -102,10 +102,13 @@ function RouteView() {
   } else if (path.startsWith('/products/')) {
     const slug = path.slice('/products/'.length);
     pageContent = <ProductDetailPage slug={slug} />;
-  } else if (path === '/learn') {
+  } else if (path === '/learn' || path === '/courses') {
     pageContent = <LearnCataloguePage />;
   } else if (path.startsWith('/learn/')) {
     const slug = path.slice('/learn/'.length);
+    pageContent = <CourseDetailPage slug={slug} />;
+  } else if (path.startsWith('/courses/')) {
+    const slug = path.slice('/courses/'.length);
     pageContent = <CourseDetailPage slug={slug} />;
   } else if (path === '/insights') {
     pageContent = <InsightsPage />;

@@ -670,7 +670,7 @@ export async function resolveSeoMetadataForPath(
       },
       buildBreadcrumbJsonLd(ctx.baseUrl, [
         { name: 'Home', path: '/' },
-        { name: 'Learn', path: '/learn' },
+        { name: 'Courses', path: '/learn' },
       ]),
     ];
   } else if (targetPath.startsWith('/learn/')) {
@@ -760,7 +760,7 @@ export async function resolveSeoMetadataForPath(
         }),
         buildBreadcrumbJsonLd(ctx.baseUrl, [
           { name: 'Home', path: '/' },
-          { name: 'Learn', path: '/learn' },
+          { name: 'Courses', path: '/learn' },
           { name: courseTitle, path: `/learn/${String(course.slug || slug)}` },
         ]),
       ];

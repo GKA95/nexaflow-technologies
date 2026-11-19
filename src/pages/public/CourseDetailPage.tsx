@@ -202,7 +202,7 @@ export function CourseDetailPage({ slug }: { slug: string }) {
       '@type': 'BreadcrumbList',
       itemListElement: [
         { '@type': 'ListItem', position: 1, name: 'Home', item: `${origin}/` },
-        { '@type': 'ListItem', position: 2, name: 'Learn', item: `${origin}/learn` },
+        { '@type': 'ListItem', position: 2, name: 'Courses', item: `${origin}/learn` },
         { '@type': 'ListItem', position: 3, name: course.title, item: courseCanonical },
       ],
     },

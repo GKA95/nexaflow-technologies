@@ -26,7 +26,7 @@ function buildFallbackBreadcrumbSchema(
     about: 'About',
     solutions: 'Solutions',
     products: 'Products',
-    learn: 'Learn',
+    learn: 'Courses',
     insights: 'Insights',
     contact: 'Contact',
     legal: 'Legal',

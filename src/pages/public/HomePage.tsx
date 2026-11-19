@@ -303,7 +303,7 @@ export function HomePage() {
           <Reveal className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#070B24] dark:text-[#F7F8FF]">
-                NexaFlow Learn
+                Courses
               </h2>
               <p className="mt-2 text-sm sm:text-base text-[#4A5578] dark:text-[#AEB8D4] max-w-2xl">
                 Structured video courses, progress tracking, and direct instructor support for learners.

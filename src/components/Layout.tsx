@@ -37,7 +37,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { label: 'Solutions', href: '/solutions' },
     { label: 'Products', href: '/products' },
-    { label: 'Learn', href: '/learn' },
+    { label: 'Courses', href: '/learn' },
     { label: 'Insights', href: '/insights' },
     { label: 'About', href: '/about' },
   ];
@@ -505,7 +505,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     to="/learn"
                     className="inline-flex items-center min-h-[40px] py-1 text-left hover:text-[#00D4FF] transition-colors"
                   >
-                    NexaFlow Learn
+                    Courses
                   </AppLink>
                 </li>
                 <li>
